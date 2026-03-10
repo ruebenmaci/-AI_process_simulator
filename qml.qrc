@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/qt/qml/chatgpt5_qt_adt_simulator">
+        <file>qml/Main.qml</file>
+    </qresource>
+</RCC>

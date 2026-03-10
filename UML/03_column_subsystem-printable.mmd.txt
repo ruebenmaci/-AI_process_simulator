@@ -1,0 +1,99 @@
+flowchart TB
+
+  subgraph UOM["Unit Operation Module: Column (ADT)"]
+
+    subgraph TESTS["tests/unitops/column/ColumnTests/"]
+      T_INV["test_invariants.cpp"]
+      T_DATA["TestData.hpp"]
+      T_MORE["additional basis/value/UI mapping tests"]
+    end
+
+    subgraph QCOL["qml/unitops/column/"]
+      Q_EDIT["ColumnEditorDialog.qml\n(main host editor window/dialog)"]
+      Q_VIEW["ColumnView.qml"]
+      Q_SPEC["SpecsPanel.qml"]
+      Q_DRAW["DrawConfigView.qml"]
+      Q_TRAY["TrayRow.qml"]
+      Q_MB["MaterialBalanceView.qml"]
+      Q_SUM["RunSummaryView.qml"]
+      Q_RES["RunResultsView.qml"]
+      Q_LOG["RunLogView.qml"]
+      Q_DIAG["DiagnosticsPanel.qml"]
+      Q_HYSYS["HysysColumnMockup.qml\n(optional legacy/mock)"]
+    end
+
+    subgraph CCOL["cpp/unitops/column/"]
+      C_STATE["ColumnUnitState.h/.cpp\n(node wrapper + lifecycle + persistence)"]
+      C_APP["AppState.h/.cpp\n(column-specific UI+solver state)"]
+
+      subgraph C_SIM["sim/"]
+        C_SOLV["ColumnSolver.hpp/.cpp"]
+        C_CCS["CounterCurrentColumnSimulator.hpp/.cpp"]
+      end
+
+      subgraph C_TH["thermo/"]
+        C_TYPES["ThermoTypes.hpp"]
+        C_PH["PHFlash.hpp/.cpp"]
+        C_FL["Flash.hpp/.cpp"]
+        C_EOSK["EOSK.hpp/.cpp"]
+        C_ENTH["Enthalpy.hpp/.cpp"]
+        C_EOS_DIR["eos/*"]
+        C_PC_DIR["pseudocomponents/*"]
+      end
+
+      subgraph C_MODELS["models/"]
+        C_M_TRAY["TrayModel.h/.cpp"]
+        C_M_DIAG["DiagnosticsModel.h/.cpp"]
+        C_M_LOG["RunLogModel.h/.cpp"]
+        C_M_MB["MaterialBalanceModel.h/.cpp"]
+      end
+
+      subgraph C_CFG["config/"]
+        C_CFG_INIT["CrudeInitialSettings.hpp/.cpp"]
+      end
+
+      subgraph C_UTIL["util/"]
+        C_LOGLEVEL["LogLevel.hpp"]
+      end
+    end
+  end
+
+  %% Test links
+  T_INV --> T_DATA
+  T_INV --> C_SOLV
+  T_INV --> C_CCS
+  T_MORE --> C_SOLV
+
+  %% QML composition
+  Q_EDIT --> Q_VIEW
+  Q_VIEW --> Q_SPEC
+  Q_SPEC --> Q_DRAW
+  Q_VIEW --> Q_TRAY
+  Q_VIEW --> Q_MB
+  Q_VIEW --> Q_SUM
+  Q_VIEW --> Q_RES
+  Q_VIEW --> Q_LOG
+  Q_VIEW --> Q_DIAG
+  Q_VIEW --> Q_HYSYS
+
+  %% C++ core links
+  C_STATE --> C_APP
+  C_APP --> Q_EDIT
+
+  C_APP --> C_SOLV
+  C_SOLV --> C_CCS
+  C_SOLV --> C_CFG_INIT
+
+  C_APP --> C_M_TRAY
+  C_APP --> C_M_DIAG
+  C_APP --> C_M_LOG
+  C_APP --> C_M_MB
+
+  C_CCS --> C_TYPES
+  C_CCS --> C_PH
+  C_CCS --> C_FL
+  C_CCS --> C_EOSK
+  C_CCS --> C_ENTH
+  C_CCS --> C_EOS_DIR
+  C_CCS --> C_PC_DIR
+  C_CCS --> C_LOGLEVEL

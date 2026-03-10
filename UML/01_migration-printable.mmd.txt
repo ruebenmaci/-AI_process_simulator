@@ -1,0 +1,105 @@
+flowchart LR
+  subgraph CUR["Current Project"]
+    subgraph C_CPP["cpp"]
+      C_MAIN["main.cpp"]
+      C_APP["AppState.h/.cpp"]
+
+      subgraph C_MODELS["models"]
+        C_M_TRAY["TrayModel.h/.cpp"]
+        C_M_DIAG["DiagnosticsModel.h/.cpp"]
+        C_M_MB["MaterialBalanceModel.h/.cpp"]
+        C_M_LOG["RunLogModel.h/.cpp"]
+      end
+
+      subgraph C_LIB["lib"]
+        C_CFG["config/CrudeInitialSettings.*"]
+        C_SIM["sim/ColumnSolver.* + CounterCurrentColumnSimulator.*"]
+        C_TH["thermo/(Enthalpy,EOSK,Flash,PHFlash,ThermoTypes,eos/*,pseudocomponents/*)"]
+        C_UTIL["util/LogLevel.hpp"]
+      end
+    end
+
+    subgraph C_QML["qml"]
+      C_Q_MAIN["Main.qml"]
+      C_Q_COMP["components/* (SpecsPanel, DrawConfigView, ColumnView, etc.)"]
+    end
+
+    subgraph C_TEST["tests"]
+      C_T_ROOT["CMakeLists.txt"]
+      C_T_DATA["TestData.hpp"]
+      C_T_INV["test_invariants.cpp"]
+    end
+
+    C_ASSETS["assets/"]
+  end
+
+  subgraph NEW["Target Project (PFD Host + Unit Modules)"]
+    subgraph N_CPP["cpp"]
+      N_MAIN["main.cpp (gFlowsheetState + registries)"]
+
+      subgraph N_FLOW["flowsheet"]
+        N_FS["FlowsheetState.*"]
+        N_FM["FlowsheetUnitModel.*"]
+        N_FIO["FlowsheetDocumentIO.*"]
+      end
+
+      subgraph N_UOPS["unitops"]
+        subgraph N_COL["column"]
+          N_COL_STATE["ColumnUnitState.*"]
+          N_COL_SIM["sim/(moved solver files)"]
+          N_COL_TH["thermo/(moved/ref thermo files)"]
+          N_COL_CFG["config/CrudeInitialSettings.* (moved/ref)"]
+          N_COL_UTIL["util/LogLevel.hpp (moved/ref)"]
+          N_COL_MODELS["models/(column-scoped models)"]
+        end
+
+        N_SEP["separator/* (future)"]
+        N_HX["heatexchanger/* (future)"]
+        N_PUMP["pump/* (future)"]
+        N_VALVE["valve/* (future)"]
+      end
+    end
+
+    subgraph N_QML["qml"]
+      N_Q_MAIN["Main.qml (PFD-first)"]
+      N_PFD["pfd/(PfdMainView,PfdCanvas,UnitPalette,UnitNodeItem,Menu)"]
+      N_Q_COL["unitops/column/* (moved ADT QML)"]
+    end
+
+    subgraph N_TEST["tests"]
+      N_T_ROOT["CMakeLists.txt (aggregator)"]
+      N_T_CORE["core/*"]
+      N_T_FLOW["flowsheet/*"]
+      N_T_COL["unitops/column/ColumnTests/*"]
+      N_T_SEP["unitops/separator/SeparatorTests/*"]
+      N_T_HX["unitops/heatexchanger/HeatExchangerTests/*"]
+      N_T_PUMP["unitops/pump/PumpTests/*"]
+      N_T_VALVE["unitops/valve/ValveTests/*"]
+    end
+  end
+
+  C_MAIN --> N_MAIN
+  C_APP --> N_COL_STATE
+  C_M_TRAY --> N_COL_MODELS
+  C_M_DIAG --> N_COL_MODELS
+  C_M_MB --> N_COL_MODELS
+  C_M_LOG --> N_COL_MODELS
+
+  C_CFG --> N_COL_CFG
+  C_SIM --> N_COL_SIM
+  C_TH --> N_COL_TH
+  C_UTIL --> N_COL_UTIL
+
+  C_Q_MAIN --> N_Q_MAIN
+  C_Q_COMP --> N_Q_COL
+  C_ASSETS --> N_Q_MAIN
+
+  C_T_ROOT --> N_T_ROOT
+  C_T_DATA --> N_T_COL
+  C_T_INV --> N_T_COL
+
+  N_MAIN --> N_FS
+  N_MAIN --> N_FM
+  N_MAIN --> N_FIO
+  N_Q_MAIN --> N_PFD
+  N_PFD --> N_FS

@@ -1,0 +1,49 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "x64-Debug-Qt",
+      "displayName": "x64-Debug (Qt 6.10.1 MSVC)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-DQT_QML_DEBUG",
+        "Qt6_DIR": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.10.1/msvc2022_64"
+      }
+    },
+    {
+      "name": "Qt-FromEnv",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QTDIR}",
+        "Qt6_DIR": "$env{QTDIR}/lib/cmake/Qt6"
+      }
+    },
+    {
+      "name": "Debug-x64",
+      "displayName": "Debug (x64) via QTDIR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-DQT_QML_DEBUG"
+      },
+      "inherits": "Qt-FromEnv",
+      "environment": {
+        "QML_DEBUG_ARGS": "-qmljsdebugger=file:{bb8b1220-91a0-4f27-b282-8ba6fa91b016},block"
+      }
+    },
+    {
+      "name": "Release-x64",
+      "displayName": "Release (x64) via QTDIR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "inherits": "Qt-FromEnv"
+    }
+  ]
+}

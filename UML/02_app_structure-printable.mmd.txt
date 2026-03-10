@@ -1,0 +1,108 @@
+flowchart TB
+  subgraph APP["Application (PFD-first host)"]
+    subgraph CPPLAYER["cpp/"]
+      MAIN["main.cpp\n(context properties + app bootstrap)"]
+
+      subgraph FLOW["flowsheet/"]
+        FS["FlowsheetState.h/.cpp\n(document state, selection, dirty, save/load)"]
+        FUM["FlowsheetUnitModel.h/.cpp\n(node list model for QML canvas)"]
+        FDOC["FlowsheetDocumentIO.h/.cpp\n(JSON schema versioning, read/write)"]
+      end
+
+      subgraph UREG["unitops/ (registry + per-node state)"]
+        REG["UnitStateRegistry.h/.cpp\n(map unitId -> UnitState*)"]
+
+        subgraph COLWRAP["column/"]
+          CSTATE["ColumnUnitState.h/.cpp\n(owns column AppState instance)"]
+        end
+
+        subgraph SEPWRAP["separator/"]
+          SSTATE["SeparatorUnitState.h/.cpp (future)"]
+        end
+        subgraph HXWRAP["heatexchanger/"]
+          HXSTATE["HeatExchangerUnitState.h/.cpp (future)"]
+        end
+        subgraph PWRAP["pump/"]
+          PSTATE["PumpUnitState.h/.cpp (future)"]
+        end
+        subgraph VWRAP["valve/"]
+          VSTATE["ValveUnitState.h/.cpp (future)"]
+        end
+      end
+    end
+
+    subgraph QMLLAYER["qml/"]
+      QMAIN["Main.qml\n(loads PFD shell)"]
+
+      subgraph PFD["pfd/"]
+        PMAIN["PfdMainView.qml\n(main workspace layout)"]
+        PCAN["PfdCanvas.qml\n(node placement, drag, dbl-click open)"]
+        PNODE["UnitNodeItem.qml\n(icon + name + selection)"]
+        PPAL["UnitPalette.qml\n(unit operation catalog)"]
+        PMENU["MenuBar/Toolbar components\n(new/open/save/add/edit/delete)"]
+        PPROP["PropertyPanel.qml (optional)\n(node metadata editor)"]
+      end
+
+      subgraph UOPQML["unitops/"]
+        COLQ["column/ColumnEditorDialog.qml\n(entry point to column UI)"]
+        SEPQ["separator/* (future)"]
+        HXQ["heatexchanger/* (future)"]
+        PUMPQ["pump/* (future)"]
+        VALVEQ["valve/* (future)"]
+      end
+    end
+
+    subgraph TESTS["tests/"]
+      TROOT["tests/CMakeLists.txt\n(test aggregation)"]
+
+      subgraph TCORE["core/"]
+        THELP["shared fixtures/helpers"]
+      end
+
+      subgraph TFLOW["flowsheet/"]
+        TFLOWT["flowsheet state + serialization tests"]
+      end
+
+      subgraph TUOPS["unitops/"]
+        TCOL["column/ColumnTests/*"]
+        TSEP["separator/SeparatorTests/*"]
+        THX["heatexchanger/HeatExchangerTests/*"]
+        TP["pump/PumpTests/*"]
+        TV["valve/ValveTests/*"]
+      end
+    end
+  end
+
+  MAIN --> FS
+  MAIN --> FUM
+  MAIN --> REG
+
+  FS --> FUM
+  FS --> FDOC
+  REG --> CSTATE
+  REG --> SSTATE
+  REG --> HXSTATE
+  REG --> PSTATE
+  REG --> VSTATE
+
+  QMAIN --> PMAIN
+  PMAIN --> PCAN
+  PMAIN --> PPAL
+  PMAIN --> PMENU
+  PMAIN --> PPROP
+
+  PCAN --> PNODE
+  PCAN --> FS
+  PPAL --> FS
+  PMENU --> FS
+  PCAN --> REG
+
+  REG --> COLQ
+  REG --> SEPQ
+  REG --> HXQ
+  REG --> PUMPQ
+  REG --> VALVEQ
+
+  TROOT --> TCORE
+  TROOT --> TFLOW
+  TROOT --> TUOPS

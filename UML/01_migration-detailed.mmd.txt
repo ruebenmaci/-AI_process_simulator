@@ -1,0 +1,255 @@
+flowchart LR
+  subgraph CUR["Current Project (as shown in Solution Explorer)"]
+    ASSETS["assets/"]
+
+    subgraph CURCPP["cpp/"]
+      CMAIN["main.cpp"]
+      CAPPH["AppState.h"]
+      CAPPC["AppState.cpp"]
+
+      subgraph CURMODELS["models/"]
+        MTRAYH["TrayModel.h"]
+        MTRAYC["TrayModel.cpp"]
+        MDIAGH["DiagnosticsModel.h"]
+        MDIAGC["DiagnosticsModel.cpp"]
+        MMBH["MaterialBalanceModel.h"]
+        MMBC["MaterialBalanceModel.cpp"]
+        MLOGH["RunLogModel.h"]
+        MLOGC["RunLogModel.cpp"]
+      end
+
+      subgraph CURLIB["lib/"]
+        subgraph CURCFG["config/"]
+          CFGH["CrudeInitialSettings.hpp"]
+          CFGC["CrudeInitialSettings.cpp"]
+        end
+
+        subgraph CURSIM["sim/"]
+          SIMCSH["ColumnSolver.hpp"]
+          SIMCSC["ColumnSolver.cpp"]
+          SIMCCH["CounterCurrentColumnSimulator.hpp"]
+          SIMCCC["CounterCurrentColumnSimulator.cpp"]
+        end
+
+        subgraph CURTHERMO["thermo/"]
+          TH_ENH["Enthalpy.hpp"]
+          TH_ENC["Enthalpy.cpp"]
+          TH_EK["EOSK.hpp"]
+          TH_EKC["EOSK.cpp"]
+          TH_FLH["Flash.hpp"]
+          TH_FLC["Flash.cpp"]
+          TH_PHH["PHFlash.hpp"]
+          TH_PHC["PHFlash.cpp"]
+          TH_TYPES["ThermoTypes.hpp"]
+          TH_EOSDIR["eos/*"]
+          TH_PCDIR["pseudocomponents/*"]
+        end
+
+        subgraph CURUTIL["util/"]
+          ULOG["LogLevel.hpp"]
+        end
+      end
+    end
+
+    subgraph CURQML["qml/"]
+      QMAIN["Main.qml"]
+      subgraph CURQMLCOMP["components/"]
+        QCOL["ColumnView.qml"]
+        QDIAG["DiagnosticsPanel.qml"]
+        QDRAW["DrawConfigView.qml"]
+        QHYSYS["HysysColumnMockup.qml"]
+        QMB["MaterialBalanceView.qml"]
+        QLOG["RunLogView.qml"]
+        QRES["RunResultsView.qml"]
+        QSUM["RunSummaryView.qml"]
+        QSPEC["SpecsPanel.qml"]
+        QROW["TrayRow.qml"]
+      end
+    end
+
+    subgraph CURTEST["tests/"]
+      TCMC["CMakeLists.txt"]
+      TDATA["TestData.hpp"]
+      TINV["test_invariants.cpp"]
+    end
+  end
+
+  subgraph NEW["Target Structure (PFD host + unit modules)"]
+    subgraph NCPP["cpp/"]
+      NMAIN["main.cpp (hosts gFlowsheetState + unit registries)"]
+
+      subgraph NFLOW["flowsheet/"]
+        NFS["FlowsheetState.h/.cpp"]
+        NFSM["FlowsheetUnitModel.h/.cpp"]
+        NFSIO["FlowsheetDocumentIO.h/.cpp (JSON save/load)"]
+      end
+
+      subgraph NUNITOPS["unitops/"]
+        subgraph NUNITCOL["column/"]
+          NCUSTATE["ColumnUnitState.h/.cpp (column-scoped AppState wrapper)"]
+
+          subgraph NCOLSIM["sim/"]
+            NCSOLV["ColumnSolver.* (moved)"]
+            NCCSIM["CounterCurrentColumnSimulator.* (moved)"]
+          end
+
+          subgraph NCOLTHERMO["thermo/"]
+            NCTH["Enthalpy/EOSK/Flash/PHFlash/ThermoTypes + eos/* + pseudocomponents/* (moved/ref)"]
+          end
+
+          NCFG["CrudeInitialSettings.* (moved/ref)"]
+          NCLOG["LogLevel.hpp (moved/ref)"]
+
+          subgraph NCOLMODELS["models/"]
+            NCM["Tray/Diagnostics/RunLog/MaterialBalance models (column-scoped)"]
+          end
+        end
+
+        subgraph NUNITSEP["separator/"]
+          NSEPSTATE["SeparatorUnitState.h/.cpp (future)"]
+        end
+
+        subgraph NUNITHX["heatexchanger/"]
+          NHXSTATE["HeatExchangerUnitState.h/.cpp (future)"]
+        end
+
+        subgraph NUNITP["pump/"]
+          NPUMPSTATE["PumpUnitState.h/.cpp (future)"]
+        end
+
+        subgraph NUNITV["valve/"]
+          NVALVESTATE["ValveUnitState.h/.cpp (future)"]
+        end
+      end
+    end
+
+    subgraph NQML["qml/"]
+      NQMAIN["Main.qml (PFD-first)"]
+
+      subgraph NPFD["pfd/"]
+        NPFDMAIN["PfdMainView.qml"]
+        NPFDCAN["PfdCanvas.qml"]
+        NPFDPAL["UnitPalette.qml"]
+        NPFDNODE["UnitNodeItem.qml"]
+        NPFDMENU["Menu/Toolbar + File actions"]
+      end
+
+      subgraph NQUNITOPS["unitops/"]
+        subgraph NQCOL["column/"]
+          NCOLQ["Column editor views (moved from qml/components/*)"]
+        end
+        subgraph NQSEP["separator/"]
+          NSEPQ["Separator editor views (future)"]
+        end
+        subgraph NQHX["heatexchanger/"]
+          NHXQ["Heat Exchanger editor views (future)"]
+        end
+        subgraph NQPUMP["pump/"]
+          NPUMPQ["Pump editor views (future)"]
+        end
+        subgraph NQVALVE["valve/"]
+          NVALVEQ["Valve editor views (future)"]
+        end
+      end
+    end
+
+    subgraph NTEST["tests/"]
+      NTCMAKE["CMakeLists.txt (aggregator)"]
+
+      subgraph NTCORE["core/"]
+        NTCOREH["shared test helpers / fixtures"]
+      end
+
+      subgraph NTFLOW["flowsheet/"]
+        NTFLOWT["PFD document/canvas state tests"]
+      end
+
+      subgraph NTUOPS["unitops/"]
+        subgraph NTCOL["column/ColumnTests/"]
+          NTCOL_DATA["TestData.hpp (moved)"]
+          NTCOL_INV["test_invariants.cpp (moved)"]
+          NTCOL_MORE["additional column tests"]
+        end
+
+        subgraph NTSEP["separator/SeparatorTests/"]
+          NTSEP_T["separator tests (future)"]
+        end
+
+        subgraph NTHX["heatexchanger/HeatExchangerTests/"]
+          NTHX_T["heat exchanger tests (future)"]
+        end
+
+        subgraph NTPUMP["pump/PumpTests/"]
+          NTPUMP_T["pump tests (future)"]
+        end
+
+        subgraph NTVALVE["valve/ValveTests/"]
+          NTVALVE_T["valve tests (future)"]
+        end
+      end
+    end
+  end
+
+  CMAIN --> NMAIN
+  CAPPH --> NCUSTATE
+  CAPPC --> NCUSTATE
+
+  MTRAYH --> NCM
+  MTRAYC --> NCM
+  MDIAGH --> NCM
+  MDIAGC --> NCM
+  MMBH --> NCM
+  MMBC --> NCM
+  MLOGH --> NCM
+  MLOGC --> NCM
+
+  CFGH --> NCFG
+  CFGC --> NCFG
+
+  SIMCSH --> NCSOLV
+  SIMCSC --> NCSOLV
+  SIMCCH --> NCCSIM
+  SIMCCC --> NCCSIM
+
+  TH_ENH --> NCTH
+  TH_ENC --> NCTH
+  TH_EK --> NCTH
+  TH_EKC --> NCTH
+  TH_FLH --> NCTH
+  TH_FLC --> NCTH
+  TH_PHH --> NCTH
+  TH_PHC --> NCTH
+  TH_TYPES --> NCTH
+  TH_EOSDIR --> NCTH
+  TH_PCDIR --> NCTH
+
+  ULOG --> NCLOG
+
+  QMAIN --> NQMAIN
+  QCOL --> NCOLQ
+  QDIAG --> NCOLQ
+  QDRAW --> NCOLQ
+  QHYSYS --> NCOLQ
+  QMB --> NCOLQ
+  QLOG --> NCOLQ
+  QRES --> NCOLQ
+  QSUM --> NCOLQ
+  QSPEC --> NCOLQ
+  QROW --> NCOLQ
+
+  TCMC --> NTCMAKE
+  TDATA --> NTCOL_DATA
+  TINV --> NTCOL_INV
+
+  ASSETS --> NQMAIN
+
+  NMAIN --> NFS
+  NMAIN --> NFSM
+  NMAIN --> NFSIO
+  NQMAIN --> NPFDMAIN
+  NPFDMAIN --> NPFDCAN
+  NPFDMAIN --> NPFDPAL
+  NPFDMAIN --> NPFDMENU
+  NPFDCAN --> NPFDNODE
+  NPFDCAN --> NFS
+  NPFDPAL --> NFS

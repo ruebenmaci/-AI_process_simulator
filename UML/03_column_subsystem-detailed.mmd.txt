@@ -1,0 +1,95 @@
+flowchart LR
+  subgraph COL["Unit Operation Module: Column (ADT)"]
+    subgraph COLCPP["cpp/unitops/column/"]
+      CUS["ColumnUnitState.h/.cpp\n(per-node wrapper + lifecycle + persistence)"]
+      CAS["AppState.h/.cpp\n(column-specific UI+solver state)"]
+
+      subgraph CMODELS["models/"]
+        CMT["TrayModel.h/.cpp"]
+        CMD["DiagnosticsModel.h/.cpp"]
+        CMR["RunLogModel.h/.cpp"]
+        CMM["MaterialBalanceModel.h/.cpp"]
+      end
+
+      subgraph CCONFIG["config/"]
+        CCS["CrudeInitialSettings.hpp/.cpp"]
+      end
+
+      subgraph CSIM["sim/"]
+        CSH["ColumnSolver.hpp"]
+        CSC["ColumnSolver.cpp"]
+        CCCH["CounterCurrentColumnSimulator.hpp"]
+        CCCC["CounterCurrentColumnSimulator.cpp"]
+      end
+
+      subgraph CTHERMO["thermo/"]
+        CHH["Enthalpy.hpp/.cpp"]
+        CEK["EOSK.hpp/.cpp"]
+        CFL["Flash.hpp/.cpp"]
+        CPH["PHFlash.hpp/.cpp"]
+        CTT["ThermoTypes.hpp"]
+        CEOS["eos/*"]
+        CPC["pseudocomponents/*"]
+      end
+
+      subgraph CUTIL["util/"]
+        CLOG["LogLevel.hpp"]
+      end
+    end
+
+    subgraph COLQML["qml/unitops/column/"]
+      CED["ColumnEditorDialog.qml\n(host editor window/dialog)"]
+      CV["ColumnView.qml"]
+      CSP["SpecsPanel.qml"]
+      CDC["DrawConfigView.qml"]
+      CTP["TrayRow.qml"]
+      CDP["DiagnosticsPanel.qml"]
+      CRL["RunLogView.qml"]
+      CRS["RunResultsView.qml"]
+      CRSUM["RunSummaryView.qml"]
+      CMB["MaterialBalanceView.qml"]
+      CHM["HysysColumnMockup.qml (optional legacy/mock)"]
+    end
+
+    subgraph COLTEST["tests/unitops/column/ColumnTests/"]
+      CTDATA["TestData.hpp"]
+      CTINV["test_invariants.cpp"]
+      CTMORE["additional basis/solver/UI mapping tests"]
+    end
+  end
+
+  CUS --> CAS
+  CAS --> CMT
+  CAS --> CMD
+  CAS --> CMR
+  CAS --> CMM
+
+  CAS --> CSC
+  CSC --> CCCC
+
+  CCCC --> CHH
+  CCCC --> CEK
+  CCCC --> CFL
+  CCCC --> CPH
+  CCCC --> CTT
+  CCCC --> CEOS
+  CCCC --> CPC
+  CCCC --> CLOG
+  CSC --> CCS
+
+  CAS --> CED
+  CED --> CV
+  CV --> CSP
+  CV --> CDP
+  CV --> CRL
+  CV --> CRS
+  CV --> CRSUM
+  CV --> CMB
+  CSP --> CDC
+  CV --> CTP
+  CV --> CHM
+
+  CTINV --> CSC
+  CTINV --> CCCC
+  CTINV --> CTDATA
+  CTMORE --> CSC

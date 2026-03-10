@@ -1,0 +1,110 @@
+cmake_minimum_required(VERSION 3.16)
+project(chatgpt5_adt_simulation_qt LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# TEMP: force Qt for Visual Studio (remove after it configures)
+set(Qt6_DIR "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6" CACHE PATH "" FORCE)
+list(PREPEND CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64")
+
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Concurrent)
+qt_standard_project_setup(REQUIRES 6.2)
+
+# ----------------------------
+# Core (solver/thermo) library
+# ----------------------------
+add_library(adt_core
+  cpp/lib/thermo/EOSK.cpp
+  cpp/lib/thermo/Enthalpy.cpp
+  cpp/lib/thermo/Flash.cpp
+  cpp/lib/thermo/PHFlash.cpp
+  cpp/lib/thermo/eos/PR.cpp
+  cpp/lib/thermo/eos/PRSV.cpp
+  cpp/lib/thermo/eos/SRK.cpp
+  cpp/lib/thermo/pseudocomponents/componentData.cpp
+  cpp/lib/thermo/pseudocomponents/loaders.cpp
+  cpp/lib/thermo/pseudocomponents/pseudoComponents.cpp
+  cpp/lib/config/CrudeInitialSettings.cpp
+  cpp/lib/sim/CounterCurrentColumnSimulator.cpp
+  cpp/lib/sim/ColumnSolver.cpp
+)
+
+# Your solver code is already using C++20 in places; make it explicit.
+target_compile_features(adt_core PUBLIC cxx_std_20)
+
+# Export ALL include paths needed by solver headers.
+target_include_directories(adt_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/sim
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/config
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo/eos
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo/pseudocomponents
+)
+
+# ----------------------------
+# Qt App
+# ----------------------------
+qt_add_executable(appChatGPT5_ADT
+    cpp/main.cpp
+    cpp/AppState.h
+    cpp/AppState.cpp
+    cpp/models/TrayModel.h
+    cpp/models/TrayModel.cpp
+    cpp/models/DiagnosticsModel.h
+    cpp/models/DiagnosticsModel.cpp
+    cpp/models/RunLogModel.h
+    cpp/models/RunLogModel.cpp
+    cpp/models/MaterialBalanceModel.h
+    cpp/models/MaterialBalanceModel.cpp
+)
+
+qt_add_qml_module(appChatGPT5_ADT
+    URI ChatGPT5.ADT
+    VERSION 1.0
+    QML_FILES
+        qml/Main.qml
+        qml/components/SpecsPanel.qml
+        qml/components/DiagnosticsPanel.qml
+        qml/components/ColumnView.qml
+        qml/components/MaterialBalanceView.qml
+        qml/components/DrawConfigView.qml
+        qml/components/RunLogView.qml
+        qml/components/TrayRow.qml
+        qml/components/RunSummaryView.qml
+        qml/components/RunResultsView.qml
+        qml/components/HysysColumnMockup.qml
+)
+# Link core into the Qt app (no Qt linkage needed in adt_core unless you use Qt types inside solver sources)
+target_link_libraries(appChatGPT5_ADT
+    PRIVATE
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::Concurrent
+        adt_core
+)
+
+# Keep these if app includes headers by short name; harmless because adt_core exports them too.
+target_include_directories(appChatGPT5_ADT PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib
+)
+
+# Helpful for Visual Studio/Qt VS Tools
+set_target_properties(appChatGPT5_ADT PROPERTIES
+    WIN32_EXECUTABLE TRUE
+)
+
+# ----------------------------
+# Tests
+# ----------------------------
+include(CTest)
+enable_testing()
+
+option(ENABLE_TESTS "Build test harness" ON)
+
+if (ENABLE_TESTS AND BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
