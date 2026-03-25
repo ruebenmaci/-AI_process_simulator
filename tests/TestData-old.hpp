@@ -31,7 +31,6 @@ inline SolverInputs makeBaselineInputs() {
 
    in.fluidName = "Brent";
    in.fluidThermo = getFluidDefinition(in.fluidName).thermo;
-   in.feedComposition = in.fluidThermo.zDefault;
 
    in.eosMode = "auto";
    in.eosManual = "PRSV";

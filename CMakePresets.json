@@ -3,13 +3,26 @@
   "configurePresets": [
     {
       "name": "x64-Debug-Qt",
+      "displayName": "x64-Debug-Qt",
+      "description": "Debug build with Qt 6.10.1 MSVC 2022 64-bit",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "Qt6_DIR": "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6",
         "CMAKE_PREFIX_PATH": "C:/Qt/6.10.1/msvc2022_64"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Windows" ]
+        }
       }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-Debug-Qt",
+      "configurePreset": "x64-Debug-Qt"
     }
   ]
 }

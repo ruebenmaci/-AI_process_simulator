@@ -15,19 +15,20 @@ qt_standard_project_setup(REQUIRES 6.2)
 # Core (solver/thermo) library
 # ----------------------------
 add_library(adt_core
-  cpp/lib/thermo/EOSK.cpp
-  cpp/lib/thermo/Enthalpy.cpp
-  cpp/lib/thermo/Flash.cpp
-  cpp/lib/thermo/PHFlash.cpp
-  cpp/lib/thermo/eos/PR.cpp
-  cpp/lib/thermo/eos/PRSV.cpp
-  cpp/lib/thermo/eos/SRK.cpp
-  cpp/lib/thermo/pseudocomponents/componentData.cpp
-  cpp/lib/thermo/pseudocomponents/loaders.cpp
-  cpp/lib/thermo/pseudocomponents/pseudoComponents.cpp
-  cpp/lib/config/CrudeInitialSettings.cpp
-  cpp/lib/sim/CounterCurrentColumnSimulator.cpp
-  cpp/lib/sim/ColumnSolver.cpp
+  cpp/thermo/Flash.cpp
+  cpp/thermo/EOSK.cpp
+  cpp/thermo/Enthalpy.cpp
+  "cpp/thermo/PH_PT_Flash.cpp"
+  cpp/thermo/eos/PR.cpp
+  cpp/thermo/eos/SRK.cpp
+  cpp/thermo/eos/PRSV.cpp
+  cpp/thermo/pseudocomponents/componentData.cpp
+  cpp/thermo/pseudocomponents/loaders.cpp
+  cpp/thermo/pseudocomponents/FluidDefinition.cpp
+  cpp/thermo/pseudocomponents/pseudoComponents.cpp
+  cpp/unitops/column/config/CrudeInitialSettings.cpp
+  cpp/unitops/column/sim/CounterCurrentColumnSimulator.cpp
+  cpp/unitops/column/sim/ColumnSolver.cpp
 )
 
 # Your solver code is already using C++20 in places; make it explicit.
@@ -35,13 +36,15 @@ target_compile_features(adt_core PUBLIC cxx_std_20)
 
 # Export ALL include paths needed by solver headers.
 target_include_directories(adt_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/sim
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/config
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo/eos
-  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib/thermo/pseudocomponents
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column/sim
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column/config
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column/thermo
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column/thermo/eos
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/column/thermo/pseudocomponents
 )
 
 # ----------------------------
@@ -49,16 +52,29 @@ target_include_directories(adt_core PUBLIC
 # ----------------------------
 qt_add_executable(appChatGPT5_ADT
     cpp/main.cpp
-    cpp/AppState.h
-    cpp/AppState.cpp
-    cpp/models/TrayModel.h
-    cpp/models/TrayModel.cpp
-    cpp/models/DiagnosticsModel.h
-    cpp/models/DiagnosticsModel.cpp
-    cpp/models/RunLogModel.h
-    cpp/models/RunLogModel.cpp
-    cpp/models/MaterialBalanceModel.h
-    cpp/models/MaterialBalanceModel.cpp
+    cpp/flowsheet/UnitNode.h
+    cpp/flowsheet/models/FlowsheetUnitModel.h
+    cpp/flowsheet/models/FlowsheetUnitModel.cpp
+    cpp/flowsheet/state/FlowsheetState.h
+    cpp/flowsheet/state/FlowsheetState.cpp
+    cpp/flowsheet/state/ProcessUnitState.h
+    cpp/flowsheet/state/ProcessUnitState.cpp
+    cpp/streams/state/MaterialStreamState.h
+    cpp/streams/state/MaterialStreamState.cpp
+    cpp/streams/models/StreamCompositionModel.h
+    cpp/streams/models/StreamCompositionModel.cpp
+    cpp/streams/state/StreamUnitState.h
+    cpp/streams/state/StreamUnitState.cpp
+    cpp/unitops/column/state/ColumnUnitState.h
+    cpp/unitops/column/state/ColumnUnitState.cpp
+    cpp/unitops/column/models/TrayModel.h
+    cpp/unitops/column/models/TrayModel.cpp
+    cpp/unitops/column/models/DiagnosticsModel.h
+    cpp/unitops/column/models/DiagnosticsModel.cpp
+    cpp/unitops/column/models/RunLogModel.h
+    cpp/unitops/column/models/RunLogModel.cpp
+    cpp/unitops/column/models/MaterialBalanceModel.h
+    cpp/unitops/column/models/MaterialBalanceModel.cpp
 )
 
 qt_add_qml_module(appChatGPT5_ADT
@@ -66,16 +82,32 @@ qt_add_qml_module(appChatGPT5_ADT
     VERSION 1.0
     QML_FILES
         qml/Main.qml
-        qml/components/SpecsPanel.qml
-        qml/components/DiagnosticsPanel.qml
-        qml/components/ColumnView.qml
-        qml/components/MaterialBalanceView.qml
-        qml/components/DrawConfigView.qml
-        qml/components/RunLogView.qml
-        qml/components/TrayRow.qml
-        qml/components/RunSummaryView.qml
-        qml/components/RunResultsView.qml
-        qml/components/HysysColumnMockup.qml
+        qml/pfd/PfdMainView.qml
+        qml/pfd/PfdCanvas.qml
+        qml/pfd/UnitPalette.qml
+        qml/pfd/UnitNodeItem.qml
+        qml/pfd/FloatingPanel.qml
+        cpp/unitops/column/qml/SpecsPanel.qml
+        cpp/unitops/column/qml/DiagnosticsPanel.qml
+        cpp/unitops/column/qml/ColumnView.qml
+        cpp/unitops/column/qml/ColumnWorkspaceWindow.qml
+        cpp/unitops/column/qml/MaterialBalanceView.qml
+        cpp/unitops/column/qml/DrawConfigView.qml
+        cpp/unitops/column/qml/RunLogView.qml
+        cpp/unitops/column/qml/TrayRow.qml
+        cpp/unitops/column/qml/RunSummaryView.qml
+        cpp/unitops/column/qml/RunResultsView.qml
+        cpp/unitops/column/qml/HysysColumnMockup.qml
+        cpp/streams/qml/StreamView.qml
+        cpp/streams/qml/StreamCompositionPanel.qml
+        cpp/streams/qml/StreamConditionsPanel.qml
+        cpp/streams/qml/StreamPhasesPanel.qml
+        cpp/streams/qml/StreamPropertiesPanel.qml
+        cpp/streams/qml/StreamWorkspaceWindow.qml
+    RESOURCES
+        cpp/unitops/column/qml/Column.png
+        qml/pfd/Column.png
+        qml/pfd/MaterialStream.png
 )
 # Link core into the Qt app (no Qt linkage needed in adt_core unless you use Qt types inside solver sources)
 target_link_libraries(appChatGPT5_ADT
@@ -88,8 +120,9 @@ target_link_libraries(appChatGPT5_ADT
 
 # Keep these if app includes headers by short name; harmless because adt_core exports them too.
 target_include_directories(appChatGPT5_ADT PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops
 )
 
 # Helpful for Visual Studio/Qt VS Tools

@@ -7,7 +7,8 @@
 #include <QDebug>
 #include <windows.h>
 
-#include "AppState.h"
+#include "unitops/column/state/ColumnUnitState.h"
+#include "flowsheet/state/FlowsheetState.h"
 
 # define QT_QML_DEBUG
 
@@ -40,9 +41,12 @@ int main(int argc, char *argv[]) {
 
   QQmlApplicationEngine engine;
 
-  AppState state;
+  ColumnUnitState state;
   engine.rootContext()->setContextProperty("appState", &state);
   engine.rootContext()->setContextProperty("gAppState", &state);
+
+  FlowsheetState flowsheet;
+  engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
 
   const QUrl url(QStringLiteral("qrc:/qt/qml/chatgpt5_qt_adt_simulator/qml/Main.qml"));
   QObject::connect(

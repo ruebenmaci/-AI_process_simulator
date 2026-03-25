@@ -1,0 +1,42 @@
+import QtQuick 2.15
+import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
+
+Item {
+    id: root
+    property var appState
+
+    anchors.fill: parent
+
+    readonly property color bg: "#dfe4ee"
+    readonly property color panel: "#e9edf5"
+    readonly property color panelInset: "#f4f6fa"
+    readonly property color border: "#2a2a2a"
+    readonly property color textDark: "#1f2430"
+    readonly property color mutedText: "#5a6472"
+
+    Rectangle {
+        anchors.fill: parent
+        color: root.bg
+    }
+
+    ScrollView {
+        anchors.fill: parent
+        clip: true
+        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+        ColumnLayout {
+            width: Math.max(root.width - 12, 800)
+            spacing: 0
+
+            StreamView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 611
+                Layout.topMargin: 0
+                streamObject: root.appState ? root.appState.stream : null
+                unitObject: root.appState ? root.appState : null
+            }
+        }
+    }
+}

@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/qt/qml/chatgpt5_qt_adt_simulator">
         <file>qml/Main.qml</file>
+		<file>cpp/unitops/column/qml/Column.png</file>
     </qresource>
 </RCC>
