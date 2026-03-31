@@ -4,13 +4,11 @@ import QtQuick.Layouts 1.15
 
 Item {
     id: root
+    property var streamObject
+    property var unitObject
 
-    property var streamObject: null
-    property var unitObject: null
-
-    readonly property color panelInset: "#f4f6fa"
-    readonly property color border: "#2a2a2a"
-    readonly property color activeBlue: "#2e76db"
+    readonly property color panelInset: "#f3f5f9"
+    readonly property color border: "#5a5a5a"
     readonly property color textDark: "#1f2430"
     readonly property color textBlue: "#1c4ea7"
     readonly property color mutedText: "#5a6472"
@@ -21,6 +19,7 @@ Item {
 
     function fmt0(v) { return Number(v || 0).toFixed(0) }
     function fmt3(v) { return Number(v || 0).toFixed(3) }
+    function fmt4(v) { return Number(v || 0).toFixed(4) }
     function fmt6(v) { return Number(v || 0).toFixed(6) }
     function parseOrFallback(text, fallback) {
         const v = Number(text)
@@ -61,7 +60,7 @@ Item {
         ComboBox {
             id: crudeCombo
             Layout.preferredWidth: 260
-            implicitHeight: 34
+            implicitHeight: 26
             model: root.streamObject ? root.streamObject.fluidNames : []
             enabled: root.canEditCrude
             background: Rectangle {
@@ -120,7 +119,7 @@ Item {
             clip: true
 
             ColumnLayout {
-                width: Math.max(availableWidth, 720)
+                width: Math.max(availableWidth, 860)
                 spacing: 10
 
                 GridLayout {
@@ -209,10 +208,49 @@ Item {
                         onAccepted: commitName()
                     }
 
-                    Label { text: "Flow rate (kg/h)"; color: root.mutedText; font.pixelSize: 11 }
+                    Label { text: "Flow basis"; color: root.mutedText; font.pixelSize: 11 }
+                    ComboBox {
+                        id: flowSpecCombo
+                        enabled: root.canEditStream
+                        Layout.preferredWidth: 140
+                        model: ["Mass flow", "Molar flow", "Std. liquid vol. flow"]
+                        currentIndex: root.streamObject ? root.streamObject.flowSpecMode : 0
+                        onActivated: if (root.streamObject) root.streamObject.flowSpecMode = currentIndex
+                    }
+
+                    Label { text: "Thermo spec"; color: root.mutedText; font.pixelSize: 11 }
+                    ComboBox {
+                        id: thermoSpecCombo
+                        enabled: root.canEditStream
+                        Layout.preferredWidth: 140
+                        model: ["TP", "PH", "PS", "PVF", "TS"]
+                        currentIndex: root.streamObject ? root.streamObject.thermoSpecMode : 0
+                        onActivated: if (root.streamObject) root.streamObject.thermoSpecMode = currentIndex
+                    }
+
+                    Label { text: "Specification status"; color: root.mutedText; font.pixelSize: 11 }
+                    Label {
+                        text: root.streamObject ? root.streamObject.specificationStatus : ""
+                        color: (root.streamObject && root.streamObject.streamSolvable) ? root.textBlue : "#a05a00"
+                        font.pixelSize: 11
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+
+                    Label { text: "Specification note"; color: root.mutedText; font.pixelSize: 11; visible: root.streamObject && !!root.streamObject.specificationError }
+                    Label {
+                        visible: root.streamObject && !!root.streamObject.specificationError
+                        text: root.streamObject ? root.streamObject.specificationError : ""
+                        color: "#b23b3b"
+                        font.pixelSize: 11
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                    }
+
+                    Label { text: "Mass flow (kg/h)"; color: root.mutedText; font.pixelSize: 11 }
                     TextField {
                         text: root.streamObject ? fmt0(root.streamObject.flowRateKgph) : ""
-                        enabled: root.canEditStream
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.massFlowEditable
                         color: root.textDark
                         font.pixelSize: 11
                         selectByMouse: true
@@ -220,10 +258,35 @@ Item {
                         onEditingFinished: if (root.streamObject) root.streamObject.flowRateKgph = parseOrFallback(text, root.streamObject.flowRateKgph)
                     }
 
+                    Label { text: "Molar flow (kmol/h)"; color: root.mutedText; font.pixelSize: 11 }
+                    TextField {
+                        text: root.streamObject ? fmt3(root.streamObject.molarFlowKmolph) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.molarFlowEditable
+                        placeholderText: root.streamObject && !root.streamObject.averageMwValid ? "needs composition/MW" : ""
+                        color: root.textDark
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        horizontalAlignment: Text.AlignRight
+                        onEditingFinished: if (root.streamObject) root.streamObject.molarFlowKmolph = parseOrFallback(text, root.streamObject.molarFlowKmolph)
+                    }
+
+                    Label { text: "Std. liquid vol. flow (m³/h)"; color: root.mutedText; font.pixelSize: 11 }
+                    TextField {
+                        text: root.streamObject ? fmt3(root.streamObject.standardLiquidVolumeFlowM3ph) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.standardLiquidVolumeFlowEditable
+                        placeholderText: root.streamObject && !root.streamObject.referenceDensityValid ? "needs composition/density" : ""
+                        color: root.textDark
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        horizontalAlignment: Text.AlignRight
+                        onEditingFinished: if (root.streamObject) root.streamObject.standardLiquidVolumeFlowM3ph = parseOrFallback(text, root.streamObject.standardLiquidVolumeFlowM3ph)
+                    }
+
                     Label { text: "Temperature (K)"; color: root.mutedText; font.pixelSize: 11 }
                     TextField {
-                        text: root.streamObject ? fmt0(root.streamObject.temperatureK) : ""
-                        enabled: root.canEditStream
+                        text: root.streamObject ? fmt3(root.streamObject.temperatureK) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.temperatureEditable
+                        placeholderText: root.streamObject && root.streamObject.thermoSpecMode === 3 ? "calculated from PVF" : (root.streamObject && root.streamObject.thermoSpecMode === 4 ? "specified in TS" : "")
                         color: root.textDark
                         font.pixelSize: 11
                         selectByMouse: true
@@ -234,7 +297,8 @@ Item {
                     Label { text: "Pressure (bar)"; color: root.mutedText; font.pixelSize: 11 }
                     TextField {
                         text: root.streamObject ? (Number(root.streamObject.pressurePa || 0) / 100000.0).toFixed(3) : ""
-                        enabled: root.canEditStream
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.pressureEditable
+                        placeholderText: root.streamObject && root.streamObject.thermoSpecMode === 4 ? "calculated from TS" : ""
                         color: root.textDark
                         font.pixelSize: 11
                         selectByMouse: true
@@ -242,7 +306,49 @@ Item {
                         onEditingFinished: if (root.streamObject) root.streamObject.pressurePa = parseOrFallback(text, Number(root.streamObject.pressurePa || 0) / 100000.0) * 100000.0
                     }
 
+                    Label { text: "Vapour fraction (-)"; color: root.mutedText; font.pixelSize: 11 }
+                    TextField {
+                        text: root.streamObject ? fmt4(root.streamObject.specifiedVaporFraction) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.vaporFractionEditable
+                        placeholderText: root.streamObject && !root.streamObject.compositionValid ? "needs composition" : ""
+                        color: root.textDark
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        horizontalAlignment: Text.AlignRight
+                        onEditingFinished: if (root.streamObject) root.streamObject.specifiedVaporFraction = parseOrFallback(text, root.streamObject.specifiedVaporFraction)
+                    }
 
+                    Label { text: "Enthalpy (kJ/kg)"; color: root.mutedText; font.pixelSize: 11 }
+                    TextField {
+                        text: root.streamObject && isFinite(root.streamObject.enthalpyKJkg) ? fmt3(root.streamObject.enthalpyKJkg) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.enthalpyEditable
+                        color: root.textDark
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        horizontalAlignment: Text.AlignRight
+                        placeholderText: root.streamObject && !root.streamObject.enthalpyEditable ? "calculated" : ""
+                        onEditingFinished: if (root.streamObject) root.streamObject.enthalpyKJkg = parseOrFallback(text, root.streamObject.enthalpyKJkg)
+                    }
+
+                    Label { text: "Entropy (kJ/kg·K)"; color: root.mutedText; font.pixelSize: 11 }
+                    TextField {
+                        text: root.streamObject && isFinite(root.streamObject.entropyKJkgK) ? fmt6(root.streamObject.entropyKJkgK) : ""
+                        enabled: root.canEditStream && root.streamObject && root.streamObject.entropyEditable && root.streamObject.supportsPS
+                        color: root.textDark
+                        font.pixelSize: 11
+                        selectByMouse: true
+                        horizontalAlignment: Text.AlignRight
+                        placeholderText: root.streamObject && !root.streamObject.supportsPS ? "PS not implemented" : ""
+                        onEditingFinished: if (root.streamObject) root.streamObject.entropyKJkgK = parseOrFallback(text, root.streamObject.entropyKJkgK)
+                    }
+
+                    Label { text: "Phase"; color: root.mutedText; font.pixelSize: 11 }
+                    Label {
+                        text: root.streamObject ? root.streamObject.phaseStatus : ""
+                        color: root.textDark
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
                 }
 
                 Item {
@@ -258,12 +364,9 @@ Item {
             visible: !root.streamObject
 
             Label {
-                horizontalAlignment: Text.AlignHCenter
-                text: "No stream selected."
-                color: root.mutedText
-                font.pixelSize: 12
-                wrapMode: Text.WordWrap
-                width: 360
+                text: "No stream selected"
+                color: root.textDark
+                font.bold: true
             }
         }
     }

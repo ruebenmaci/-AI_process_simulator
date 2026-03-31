@@ -41,12 +41,77 @@ struct FlashPHResult {
   double dH = std::numeric_limits<double>::quiet_NaN();
   double Hcalc = std::numeric_limits<double>::quiet_NaN();
   double Htarget = std::numeric_limits<double>::quiet_NaN();
+  double Scalc = std::numeric_limits<double>::quiet_NaN();
 
   bool singlePhase = false;
   std::string phase; // "L"/"V" when singlePhase
 };
 
 FlashPHResult flashPH(const FlashPHInput& in);
+
+struct FlashPSInput {
+  double Starget = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> z;
+  double P = std::numeric_limits<double>::quiet_NaN();
+  double Tseed = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<Component>* components = nullptr;
+  int trayIndex = -1;
+  int trays = 32;
+  std::string crudeName;
+  std::string eosMode = "auto";
+  std::string eosManual;
+  const std::vector<std::vector<double>>* kij = nullptr;
+  std::function<void(const std::string&)> log;
+  LogLevel logLevel = LogLevel::Summary;
+  double murphreeEtaV = std::numeric_limits<double>::quiet_NaN();
+};
+
+struct FlashPSResult {
+  double T = std::numeric_limits<double>::quiet_NaN();
+  double V = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> x;
+  std::vector<double> y;
+  double Hcalc = std::numeric_limits<double>::quiet_NaN();
+  double Scalc = std::numeric_limits<double>::quiet_NaN();
+  double Starget = std::numeric_limits<double>::quiet_NaN();
+  double dS = std::numeric_limits<double>::quiet_NaN();
+  std::string status;
+};
+
+FlashPSResult flashPS(const FlashPSInput& in);
+
+
+struct FlashTSInput {
+  double Starget = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> z;
+  double T = std::numeric_limits<double>::quiet_NaN();
+  double Pseed = std::numeric_limits<double>::quiet_NaN();
+  const std::vector<Component>* components = nullptr;
+  int trayIndex = -1;
+  int trays = 32;
+  std::string crudeName;
+  std::string eosMode = "auto";
+  std::string eosManual;
+  const std::vector<std::vector<double>>* kij = nullptr;
+  std::function<void(const std::string&)> log;
+  LogLevel logLevel = LogLevel::Summary;
+  double murphreeEtaV = std::numeric_limits<double>::quiet_NaN();
+};
+
+struct FlashTSResult {
+  double P = std::numeric_limits<double>::quiet_NaN();
+  double T = std::numeric_limits<double>::quiet_NaN();
+  double V = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> x;
+  std::vector<double> y;
+  double Hcalc = std::numeric_limits<double>::quiet_NaN();
+  double Scalc = std::numeric_limits<double>::quiet_NaN();
+  double Starget = std::numeric_limits<double>::quiet_NaN();
+  double dS = std::numeric_limits<double>::quiet_NaN();
+  std::string status;
+};
+
+FlashTSResult flashTS(const FlashTSInput& in);
 
 // Saturated helper port (reboiler/condensers)
 struct FlashPHSatInput {
@@ -83,6 +148,7 @@ FlashPHSatResult flashPH_saturated(const FlashPHSatInput& in);
 
 struct FlashPTResult {
 	double H = NAN;
+	double S = NAN;
 	double V = NAN;
 	std::vector<double> x, y, K;
 	bool singlePhase = false;

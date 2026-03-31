@@ -8,8 +8,9 @@
 #include <sstream>
 #include <unordered_map>
 
-#include "PH_PT_Flash.hpp"
+#include "PH_PS_PT_TS_Flash.hpp"
 #include "Enthalpy.hpp"
+#include "Entropy.hpp"
 #include "EOSK.hpp"
 #include "../../thermo/Flash.hpp"
 #include <iostream>
@@ -648,6 +649,13 @@ FlashPHResult flashPH(const FlashPHInput& in) {
       ret.dH = std::numeric_limits<double>::quiet_NaN();
       ret.Hcalc = std::numeric_limits<double>::quiet_NaN();
       ret.Htarget = in.Htarget;
+      {
+         const auto& xret = ret.x.empty() ? in.z : ret.x;
+         const auto& yret = ret.y.empty() ? in.z : ret.y;
+         const double Sv = sVap(yret, ret.T, in.trayIndex, comps, in.P);
+         const double Sl = sLiq(xret, ret.T, in.trayIndex, comps, in.P);
+         ret.Scalc = ret.V * Sv + (1.0 - ret.V) * Sl;
+      }
       return ret;
    }
 
@@ -993,6 +1001,11 @@ FlashPHResult flashPH(const FlashPHInput& in) {
       ret.dH = best.r.dH;
       ret.Hcalc = isFinite(in.Htarget) ? (in.Htarget + best.r.dH) : std::numeric_limits<double>::quiet_NaN();
       ret.Htarget = in.Htarget;
+      {
+         const double Sv = sVap(ret.y.empty() ? in.z : ret.y, ret.T, in.trayIndex, comps, in.P);
+         const double Sl = sLiq(ret.x.empty() ? in.z : ret.x, ret.T, in.trayIndex, comps, in.P);
+         ret.Scalc = ret.V * Sv + (1.0 - ret.V) * Sl;
+      }
       ret.singlePhase = best.r.singlePhase;
       ret.phase = best.r.phase;
       return ret;
@@ -1082,6 +1095,11 @@ FlashPHResult flashPH(const FlashPHInput& in) {
    ret.dH = rmid.dH;
    ret.Hcalc = isFinite(in.Htarget) ? (in.Htarget + rmid.dH) : std::numeric_limits<double>::quiet_NaN();
    ret.Htarget = in.Htarget;
+   {
+      const double Sv = sVap(ret.y.empty() ? in.z : ret.y, ret.T, in.trayIndex, comps, in.P);
+      const double Sl = sLiq(ret.x.empty() ? in.z : ret.x, ret.T, in.trayIndex, comps, in.P);
+      ret.Scalc = ret.V * Sv + (1.0 - ret.V) * Sl;
+   }
    ret.singlePhase = rmid.singlePhase;
    ret.phase = rmid.phase;
    return ret;
@@ -1383,6 +1401,159 @@ FlashPTResult flashPT(
    const double Hv = hVap(out.y, T, trayIndex, *components, P);
    const double Hl = hLiq(out.x, T, trayIndex, *components, P);
    out.H = out.V * Hv + (1.0 - out.V) * Hl;
+   const double Sv = sVap(out.y.empty() ? z : out.y, T, trayIndex, *components, P);
+   const double Sl = sLiq(out.x.empty() ? z : out.x, T, trayIndex, *components, P);
+   out.S = out.V * Sv + (1.0 - out.V) * Sl;
 
    return out;
+}
+
+FlashPSResult flashPS(const FlashPSInput& in) {
+   FlashPSResult ret;
+   ret.Starget = in.Starget;
+   if (!in.components) {
+      ret.status = "no-components";
+      return ret;
+   }
+   const auto& comps = *in.components;
+   auto solveAtT = [&](double T) {
+      return flashPT(in.P, T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, in.eosManual, in.log);
+   };
+   auto sResid = [&](double T) -> double {
+      const auto pt = solveAtT(T);
+      if (!std::isfinite(pt.S)) return std::numeric_limits<double>::quiet_NaN();
+      return pt.S - in.Starget;
+   };
+   double lo = 200.0, hi = 1200.0;
+   double fLo = sResid(lo), fHi = sResid(hi);
+   bool bracketed = std::isfinite(fLo) && std::isfinite(fHi) && fLo * fHi <= 0.0;
+   if (!bracketed) {
+      double prevT = lo, prevF = fLo;
+      for (double T = lo + 25.0; T <= hi; T += 25.0) {
+         double f = sResid(T);
+         if (std::isfinite(prevF) && std::isfinite(f) && prevF * f <= 0.0) {
+            lo = prevT; hi = T; fLo = prevF; fHi = f; bracketed = true; break;
+         }
+         prevT = T; prevF = f;
+      }
+   }
+   double Tsol = std::numeric_limits<double>::quiet_NaN();
+   if (bracketed) {
+      for (int i = 0; i < 80; ++i) {
+         double mid = 0.5 * (lo + hi);
+         double fMid = sResid(mid);
+         if (!std::isfinite(fMid)) break;
+         Tsol = mid;
+         if (std::fabs(fMid) < 1e-6 || (hi - lo) < 1e-6) break;
+         if (fLo * fMid <= 0.0) { hi = mid; fHi = fMid; } else { lo = mid; fLo = fMid; }
+      }
+   }
+   if (!std::isfinite(Tsol)) {
+      Tsol = std::isfinite(in.Tseed) ? std::clamp(in.Tseed, 200.0, 1200.0) : 500.0;
+      ret.status = "no-bracket";
+   } else {
+      ret.status = "ok";
+   }
+   const auto pt = solveAtT(Tsol);
+   ret.T = Tsol;
+   ret.V = pt.V;
+   ret.x = pt.x;
+   ret.y = pt.y;
+   ret.Hcalc = pt.H;
+   ret.Scalc = pt.S;
+   ret.dS = std::isfinite(pt.S) ? (pt.S - in.Starget) : std::numeric_limits<double>::quiet_NaN();
+   return ret;
+}
+
+
+FlashTSResult flashTS(const FlashTSInput& in) {
+   FlashTSResult ret;
+   ret.Starget = in.Starget;
+   ret.T = in.T;
+   if (!in.components) {
+      ret.status = "no-components";
+      return ret;
+   }
+   if (!std::isfinite(in.T) || in.T <= 1.0) {
+      ret.status = "bad-temperature";
+      return ret;
+   }
+   const auto& comps = *in.components;
+   auto solveAtP = [&](double P) {
+      return flashPT(P, in.T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, in.eosManual, in.log);
+   };
+   auto sResid = [&](double P) -> double {
+      const auto pt = solveAtP(P);
+      if (!std::isfinite(pt.S)) return std::numeric_limits<double>::quiet_NaN();
+      return pt.S - in.Starget;
+   };
+
+   const double Pmin = 1.0e3;
+   const double Pmax = 5.0e7;
+   std::vector<double> grid;
+   grid.reserve(17);
+   for (int i = 0; i <= 16; ++i) {
+      const double f = static_cast<double>(i) / 16.0;
+      grid.push_back(std::exp(std::log(Pmin) + f * (std::log(Pmax) - std::log(Pmin))));
+   }
+   if (std::isfinite(in.Pseed) && in.Pseed >= Pmin && in.Pseed <= Pmax) {
+      grid.push_back(in.Pseed);
+      grid.push_back(std::clamp(in.Pseed * 0.5, Pmin, Pmax));
+      grid.push_back(std::clamp(in.Pseed * 2.0, Pmin, Pmax));
+   }
+   std::sort(grid.begin(), grid.end());
+   grid.erase(std::unique(grid.begin(), grid.end(), [](double a, double b){ return std::fabs(a-b) <= std::max(1.0, 1e-9*std::max(std::fabs(a), std::fabs(b))); }), grid.end());
+
+   double bestP = std::numeric_limits<double>::quiet_NaN();
+   double bestAbs = std::numeric_limits<double>::infinity();
+   double lo = std::numeric_limits<double>::quiet_NaN();
+   double hi = std::numeric_limits<double>::quiet_NaN();
+   double fLo = std::numeric_limits<double>::quiet_NaN();
+   double fHi = std::numeric_limits<double>::quiet_NaN();
+
+   double prevP = std::numeric_limits<double>::quiet_NaN();
+   double prevF = std::numeric_limits<double>::quiet_NaN();
+   bool bracketed = false;
+   for (double P : grid) {
+      const double f = sResid(P);
+      if (!std::isfinite(f))
+         continue;
+      const double af = std::fabs(f);
+      if (af < bestAbs) { bestAbs = af; bestP = P; }
+      if (std::isfinite(prevF) && prevF * f <= 0.0) {
+         lo = prevP; hi = P; fLo = prevF; fHi = f; bracketed = true; break;
+      }
+      prevP = P; prevF = f;
+   }
+
+   double Psol = std::numeric_limits<double>::quiet_NaN();
+   if (bracketed) {
+      double logLo = std::log(lo), logHi = std::log(hi);
+      for (int i = 0; i < 80; ++i) {
+         const double logMid = 0.5 * (logLo + logHi);
+         const double mid = std::exp(logMid);
+         const double fMid = sResid(mid);
+         if (!std::isfinite(fMid)) break;
+         Psol = mid;
+         if (std::fabs(fMid) < 1e-6 || std::fabs(logHi - logLo) < 1e-8) break;
+         if (fLo * fMid <= 0.0) { hi = mid; fHi = fMid; logHi = logMid; }
+         else { lo = mid; fLo = fMid; logLo = logMid; }
+      }
+      ret.status = "ok";
+   }
+
+   if (!std::isfinite(Psol)) {
+      Psol = std::isfinite(bestP) ? bestP : (std::isfinite(in.Pseed) ? std::clamp(in.Pseed, Pmin, Pmax) : 101325.0);
+      ret.status = std::isfinite(bestP) ? "no-bracket" : "failed";
+   }
+
+   const auto pt = solveAtP(Psol);
+   ret.P = Psol;
+   ret.V = pt.V;
+   ret.x = pt.x;
+   ret.y = pt.y;
+   ret.Hcalc = pt.H;
+   ret.Scalc = pt.S;
+   ret.dS = std::isfinite(pt.S) ? (pt.S - in.Starget) : std::numeric_limits<double>::quiet_NaN();
+   return ret;
 }

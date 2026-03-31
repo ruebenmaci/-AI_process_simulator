@@ -9,6 +9,7 @@
 
 #include "unitops/column/state/ColumnUnitState.h"
 #include "flowsheet/state/FlowsheetState.h"
+#include "components/ComponentManager.h"
 
 # define QT_QML_DEBUG
 
@@ -40,6 +41,9 @@ int main(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
 
   QQmlApplicationEngine engine;
+
+  ComponentManager componentManager;
+  engine.rootContext()->setContextProperty("gComponentManager", &componentManager);
 
   ColumnUnitState state;
   engine.rootContext()->setContextProperty("appState", &state);

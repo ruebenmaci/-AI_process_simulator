@@ -531,6 +531,43 @@ bool FlowsheetState::deleteSelectedUnit()
     return deleteUnit(selectedUnitId_);
 }
 
+bool FlowsheetState::unitHasConnections(const QString& unitId) const
+{
+    return isUnitConnected_(unitId, nullptr);
+}
+
+bool FlowsheetState::disconnectUnitConnections(const QString& unitId)
+{
+    if (unitId.isEmpty()) {
+        setLastOperationMessage_(QStringLiteral("Nothing is selected to disconnect."));
+        return false;
+    }
+
+    QStringList streamIds;
+    QSet<QString> seen;
+    for (const auto& connection : materialConnections_) {
+        if (connection.streamUnitId.isEmpty())
+            continue;
+        if (connection.streamUnitId == unitId || connection.targetUnitId == unitId || connection.sourceUnitId == unitId) {
+            if (!seen.contains(connection.streamUnitId)) {
+                streamIds.push_back(connection.streamUnitId);
+                seen.insert(connection.streamUnitId);
+            }
+        }
+    }
+
+    bool changed = false;
+    for (const QString& streamId : streamIds)
+        changed = disconnectMaterialStream(streamId) || changed;
+
+    if (changed)
+        setLastOperationMessage_(QString{});
+    else
+        setLastOperationMessage_(QStringLiteral("Selected unit has no connected streams to disconnect."));
+
+    return changed;
+}
+
 MaterialStreamState* FlowsheetState::findMaterialStreamByUnitId(const QString& unitId) const
 {
     if (auto* streamUnit = findStreamUnitById(unitId))

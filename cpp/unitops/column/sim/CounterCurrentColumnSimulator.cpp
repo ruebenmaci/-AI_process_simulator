@@ -11,7 +11,7 @@
 
 #include "CounterCurrentColumnSimulator.hpp"
 
-#include "../thermo/PH_PT_Flash.hpp"
+#include "../thermo/PH_PS_PT_TS_Flash.hpp"
 #include "../thermo/Enthalpy.hpp"
 #include "../thermo/pseudocomponents/componentData.hpp"
 

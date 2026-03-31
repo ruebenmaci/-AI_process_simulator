@@ -48,23 +48,44 @@ Item {
     readonly property real bpK:       has() ? root.streamObject.bubblePointEstimateK  : 0
     readonly property real dpK:       has() ? root.streamObject.dewPointEstimateK     : 0
 
-    // Comparison table rows (static - values are all "—" until flash is implemented)
-    readonly property var compRows: [
-        { label: "Density",              liq: "—", vap: "—", unit: "kg/m³"   },
-        { label: "Viscosity",            liq: "—", vap: "—", unit: "cP"       },
-        { label: "Thermal conductivity", liq: "—", vap: "—", unit: "W/m·K"   },
-        { label: "Heat capacity Cp",     liq: "—", vap: "—", unit: "kJ/kg·K" },
-        { label: "Enthalpy",             liq: "—", vap: "—", unit: "kJ/kg"   },
-        { label: "Entropy",              liq: "—", vap: "—", unit: "kJ/kg·K" },
-        { label: "Surface tension",      liq: "—", vap: "—", unit: "N/m"     },
-    ]
+    // Comparison table rows — computed from streamObject so they react to flash results.
+    // Returns an array of { label, liq, vap, unit } objects.
+    function buildCompRows() {
+        if (!root.has()) {
+            return [
+                { label: "Density",              liq: "—", vap: "—", unit: "kg/m³"   },
+                { label: "Viscosity",            liq: "—", vap: "—", unit: "cP"       },
+                { label: "Thermal conductivity", liq: "—", vap: "—", unit: "W/m·K"   },
+                { label: "Heat capacity Cp",     liq: "—", vap: "—", unit: "kJ/kg·K" },
+                { label: "Enthalpy",             liq: "—", vap: "—", unit: "kJ/kg"   },
+                { label: "Entropy",              liq: "—", vap: "—", unit: "kJ/kg·K" },
+                { label: "Surface tension",      liq: "—", vap: "—", unit: "N/m"     },
+            ]
+        }
+        const s = root.streamObject
+        return [
+            { label: "Density",              liq: fmt(s.liquidDensityKgM3,    2), vap: fmt(s.vapourDensityKgM3,    2), unit: "kg/m³"   },
+            { label: "Viscosity",            liq: fmt(s.liquidViscosityCp,    4), vap: fmt(s.vapourViscosityCp,    4), unit: "cP"       },
+            { label: "Thermal conductivity", liq: fmt(s.liquidThermalCondWmK, 4), vap: fmt(s.vapourThermalCondWmK, 4), unit: "W/m·K"   },
+            { label: "Heat capacity Cp",     liq: fmt(s.liquidCpKJkgK,        3), vap: fmt(s.vapourCpKJkgK,        3), unit: "kJ/kg·K" },
+            { label: "Enthalpy",             liq: fmt(s.liquidEnthalpyKJkg,   2), vap: fmt(s.vapourEnthalpyKJkg,   2), unit: "kJ/kg"   },
+            { label: "Entropy",              liq: fmt(s.liquidEntropyKJkgK,   4), vap: fmt(s.vapourEntropyKJkgK,   4), unit: "kJ/kg·K" },
+            { label: "Surface tension",      liq: fmt(s.surfaceTensionNm,     5), vap: "—",                            unit: "N/m"     },
+        ]
+    }
 
-    readonly property var envelopeRows: [
-        { label: "Bubble point",          value: "" },
-        { label: "Dew point",             value: "" },
-        { label: "Critical temperature",  value: "—" },
-        { label: "Critical pressure",     value: "—" },
-    ]
+    // Reactive array — rebuilt whenever the stream's derived conditions change.
+    property var compRows: []
+
+    function refreshCompRows() { compRows = buildCompRows() }
+
+    onStreamObjectChanged: Qt.callLater(refreshCompRows)
+    Component.onCompleted:  Qt.callLater(refreshCompRows)
+    Connections {
+        target: root.streamObject
+        function onDerivedConditionsChanged() { Qt.callLater(refreshCompRows) }
+        ignoreUnknownSignals: true
+    }
 
     // ── UI ──────────────────────────────────────────────────────
     Rectangle {
@@ -157,9 +178,9 @@ Item {
                                 ["Mass flow",  fmt(root.massFlow  * root.lf, 1) + " kg/h"],
                                 ["Molar flow", fmt(root.molarFlow * root.lf, 3) + " kmol/h"],
                                 ["Vol. flow",  fmt(root.volFlow   * root.lf, 3) + " m³/h"],
-                                ["Density",    "—"],
-                                ["Viscosity",  "—"],
-                                ["Enthalpy",   "—"],
+                                ["Density",    has() ? fmt(root.streamObject.liquidDensityKgM3,  2) + " kg/m³" : "—"],
+                                ["Viscosity",  has() ? fmt(root.streamObject.liquidViscosityCp,  4) + " cP"    : "—"],
+                                ["Enthalpy",   has() ? fmt(root.streamObject.liquidEnthalpyKJkg, 2) + " kJ/kg" : "—"],
                             ]
                             Rectangle {
                                 x: 1; y: 28 + index * root.rh
@@ -214,9 +235,9 @@ Item {
                                 ["Mass flow",  fmt(root.massFlow  * root.vf, 1) + " kg/h"],
                                 ["Molar flow", fmt(root.molarFlow * root.vf, 3) + " kmol/h"],
                                 ["Vol. flow",  fmt(root.volFlow   * root.vf, 3) + " m³/h"],
-                                ["Density",    "—"],
-                                ["Viscosity",  "—"],
-                                ["Enthalpy",   "—"],
+                                ["Density",    has() ? fmt(root.streamObject.vapourDensityKgM3,  2) + " kg/m³" : "—"],
+                                ["Viscosity",  has() ? fmt(root.streamObject.vapourViscosityCp,  4) + " cP"    : "—"],
+                                ["Enthalpy",   has() ? fmt(root.streamObject.vapourEnthalpyKJkg, 2) + " kJ/kg" : "—"],
                             ]
                             Rectangle {
                                 x: 1; y: 28 + index * root.rh
@@ -276,8 +297,8 @@ Item {
                             color: index % 2 === 0 ? root.rowEven : root.rowOdd
                             border.color: root.borderCol; border.width: 1
                             Label { x: root.lpad;                                                        width: root.lw;                              height: parent.height; text: modelData.label; color: root.mutedText;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-                            Label { x: root.lw + root.lpad;                                              width: (parent.width-root.lw-root.lpad)/3;   height: parent.height; text: modelData.liq;   color: root.dashColor;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                            Label { x: root.lw + root.lpad +     (parent.width-root.lw-root.lpad)/3;     width: (parent.width-root.lw-root.lpad)/3;   height: parent.height; text: modelData.vap;   color: root.dashColor;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                            Label { x: root.lw + root.lpad;                                              width: (parent.width-root.lw-root.lpad)/3;   height: parent.height; text: modelData.liq;   color: modelData.liq === "—" ? root.dashColor : root.calcColor;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                            Label { x: root.lw + root.lpad +     (parent.width-root.lw-root.lpad)/3;     width: (parent.width-root.lw-root.lpad)/3;   height: parent.height; text: modelData.vap;   color: modelData.vap === "—" ? root.dashColor : root.calcColor;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
                             Label { x: root.lw + root.lpad + 2 * (parent.width-root.lw-root.lpad)/3;     width: (parent.width-root.lw-root.lpad)/3-4; height: parent.height; text: modelData.unit;  color: root.mutedText;  font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
                         }
                     }
@@ -301,8 +322,8 @@ Item {
                         model: [
                             { label: "Bubble point",         val: (root.bpK > 0 && isFinite(root.bpK)) ? fmtTK(root.bpK) : "—" },
                             { label: "Dew point",            val: (root.dpK > 0 && isFinite(root.dpK)) ? fmtTK(root.dpK) : "—" },
-                            { label: "Critical temperature", val: "—" },
-                            { label: "Critical pressure",    val: "—" },
+                            { label: "Critical temperature", val: has() ? fmtTK(root.streamObject.criticalTemperatureK) : "—" },
+                            { label: "Critical pressure",    val: has() ? (fmt(root.streamObject.criticalPressureKPa / 100, 4) + " bar   (" + fmt(root.streamObject.criticalPressureKPa, 1) + " kPa)") : "—" },
                         ]
                         Rectangle {
                             width: parent.width; height: root.rh
@@ -314,11 +335,12 @@ Item {
                     }
                 }
 
-                // ── K-values note ────────────────────────────────
+                // ── K-values table ───────────────────────────────
                 Column {
                     width: parent.width
                     spacing: 0
 
+                    // Section header
                     Rectangle {
                         width: parent.width; height: root.rh + 2
                         color: root.chrome; border.color: root.borderCol; border.width: 1; radius: 3
@@ -329,17 +351,52 @@ Item {
                         }
                     }
 
+                    // Column headers
                     Rectangle {
-                        width: parent.width; height: 44
+                        width: parent.width; height: root.rh
+                        color: root.chrome; border.color: root.borderCol; border.width: 1
+                        readonly property real colW: (parent.width - root.lw - root.lpad) / 3
+                        Label { x: root.lpad;                    width: root.lw;  height: parent.height; text: "Component"; color: root.textDark; font.pixelSize: 11; font.bold: true; verticalAlignment: Text.AlignVCenter }
+                        Label { x: root.lw + root.lpad;          width: parent.colW; height: parent.height; text: "x  (liquid)"; color: root.textDark; font.pixelSize: 11; font.bold: true; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                        Label { x: root.lw + root.lpad + parent.colW;     width: parent.colW; height: parent.height; text: "y  (vapour)"; color: root.textDark; font.pixelSize: 11; font.bold: true; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                        Label { x: root.lw + root.lpad + 2 * parent.colW; width: parent.colW - 4; height: parent.height; text: "K  =  y / x"; color: root.textDark; font.pixelSize: 11; font.bold: true; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
+                    }
+
+                    // Single-phase notice — shown instead of rows when not two-phase
+                    Rectangle {
+                        visible: root.vf <= 0.0001 || root.vf >= 0.9999
+                        width: parent.width; height: 36
                         radius: 4; color: root.warnBg
                         border.color: "#d19a1c"; border.width: 1
                         Label {
                             x: 8; width: parent.width - 16; height: parent.height
-                            text: (root.vf <= 0.0001 || root.vf >= 0.9999)
-                                  ? "K-values are only meaningful in the two-phase region.  Current phase: " + root.phase
-                                  : "K-values available after full flash calculation is implemented."
+                            text: "K-values are only meaningful in the two-phase region.  Current phase: " + root.phase
                             color: root.warnText; font.pixelSize: 11
                             wrapMode: Text.WordWrap; verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+
+                    // Per-component rows — only visible in two-phase region
+                    Repeater {
+                        model: (root.vf > 0.0001 && root.vf < 0.9999 && root.has())
+                               ? root.streamObject.kValuesData : []
+
+                        Rectangle {
+                            width: parent.width; height: root.rh
+                            color: index % 2 === 0 ? root.rowEven : root.rowOdd
+                            border.color: root.borderCol; border.width: 1
+
+                            readonly property real colW: (parent.width - root.lw - root.lpad) / 3
+                            readonly property string kStr: {
+                                var k = modelData["K"]
+                                return (k !== undefined && isFinite(k) && k >= 0)
+                                    ? k.toFixed(4) : "—"
+                            }
+
+                            Label { x: root.lpad;                      width: root.lw;         height: parent.height; text: modelData["name"] || ""; color: root.mutedText; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+                            Label { x: root.lw + root.lpad;            width: parent.colW;     height: parent.height; text: (modelData["x"] !== undefined) ? Number(modelData["x"]).toFixed(5) : "—"; color: root.calcColor; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                            Label { x: root.lw + root.lpad + parent.colW;     width: parent.colW;     height: parent.height; text: (modelData["y"] !== undefined) ? Number(modelData["y"]).toFixed(5) : "—"; color: root.calcColor; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
+                            Label { x: root.lw + root.lpad + 2 * parent.colW; width: parent.colW - 4; height: parent.height; text: parent.kStr; color: parent.kStr === "—" ? root.dashColor : root.calcColor; font.pixelSize: 11; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
                         }
                     }
                 }

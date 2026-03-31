@@ -60,6 +60,8 @@ public:
     Q_INVOKABLE bool deleteUnit(const QString& unitId);
     Q_INVOKABLE bool deleteSelectedUnit();
     Q_INVOKABLE QString unitType(const QString& unitId) const;
+    Q_INVOKABLE QString sanitizeUnitName(const QString& proposedName) const;
+    Q_INVOKABLE bool setUnitName(const QString& unitId, const QString& proposedName);
 
     QString lastOperationMessage() const { return lastOperationMessage_; }
 
@@ -81,6 +83,7 @@ private:
     QString addColumnInternal(double x, double y);
     QString addStreamInternal(double x, double y);
     QString nextAvailableUnitId_(const QString& prefix) const;
+    QString makeUniqueUnitName_(const QString& proposedName, const QString& type, const QString& excludeUnitId = QString()) const;
     bool isUnitConnected_(const QString& unitId, QString* detailMessage = nullptr) const;
     void setLastOperationMessage_(const QString& message);
     int findNodeIndexById(const QString& unitId) const;

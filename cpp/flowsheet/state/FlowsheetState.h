@@ -59,6 +59,8 @@ public:
     Q_INVOKABLE bool disconnectMaterialStream(const QString& streamUnitId);
     Q_INVOKABLE bool deleteUnit(const QString& unitId);
     Q_INVOKABLE bool deleteSelectedUnit();
+    Q_INVOKABLE bool unitHasConnections(const QString& unitId) const;
+    Q_INVOKABLE bool disconnectUnitConnections(const QString& unitId);
     Q_INVOKABLE QString unitType(const QString& unitId) const;
     Q_INVOKABLE QString sanitizeUnitName(const QString& proposedName) const;
     Q_INVOKABLE bool setUnitName(const QString& unitId, const QString& proposedName);

@@ -46,6 +46,56 @@ QString FlowsheetState::nextAvailableUnitId_(const QString& prefix) const
     }
 }
 
+QString FlowsheetState::makeUniqueUnitName_(const QString& proposedName, const QString& type, const QString& excludeUnitId) const
+{
+    QString base = sanitizeUnitName(proposedName);
+    if (base.isEmpty())
+        base = type == QStringLiteral("column") ? QStringLiteral("column") : QStringLiteral("stream");
+
+    auto exists = [&](const QString& candidate) {
+        for (const auto& unit : units_) {
+            if (!unit || unit->id() == excludeUnitId)
+                continue;
+            if (unit->type() == type && unit->name().compare(candidate, Qt::CaseInsensitive) == 0)
+                return true;
+        }
+        return false;
+    };
+
+    if (!exists(base))
+        return base;
+
+    int suffix = 2;
+    while (true) {
+        QString candidate = QStringLiteral("%1_%2").arg(base).arg(suffix);
+        if (candidate.size() > 100)
+            candidate = candidate.left(100);
+        if (!exists(candidate))
+            return candidate;
+        ++suffix;
+    }
+}
+
+QString FlowsheetState::sanitizeUnitName(const QString& proposedName) const
+{
+    QString normalized = proposedName.trimmed();
+    normalized.replace(QRegularExpression(QStringLiteral("\\s+")), QStringLiteral("_"));
+    normalized.remove(QRegularExpression(QStringLiteral("[^A-Za-z0-9_\\-.]")));
+    if (normalized.size() > 100)
+        normalized = normalized.left(100);
+    return normalized;
+}
+
+bool FlowsheetState::setUnitName(const QString& unitId, const QString& proposedName)
+{
+    if (auto* unit = findUnitById(unitId)) {
+        const QString unique = makeUniqueUnitName_(proposedName, unit->type(), unitId);
+        unit->setName(unique);
+        return true;
+    }
+    return false;
+}
+
 void FlowsheetState::setLastOperationMessage_(const QString& message)
 {
     if (lastOperationMessage_ == message)
@@ -183,7 +233,7 @@ QString FlowsheetState::addColumnInternal(double x, double y)
     UnitNode node;
     node.unitId = id;
     node.type = "column";
-    node.displayName = "Column";
+    node.displayName = makeUniqueUnitName_(id, QStringLiteral("column"));
     node.x = clampCoord(x, 42.0, 980.0);
     node.y = clampCoord(y, 90.0, 620.0);
 
@@ -191,14 +241,19 @@ QString FlowsheetState::addColumnInternal(double x, double y)
 
     auto column = std::make_unique<ColumnUnitState>();
     column->setFlowsheetState(this);
-    column->setDisplayName(node.displayName);
-    connect(column.get(), &ProcessUnitState::displayNameChanged, this, [this, id, columnPtr = column.get()]() {
+    column->setId(id);
+    column->setName(node.displayName);
+    connect(column.get(), &ProcessUnitState::nameChanged, this, [this, id, columnPtr = column.get()]() {
+        const QString unique = makeUniqueUnitName_(columnPtr->name(), columnPtr->type(), id);
+        if (unique != columnPtr->name()) {
+            columnPtr->setName(unique);
+            return;
+        }
         if (const int idx = findNodeIndexById(id); idx >= 0) {
-            nodes_[idx].displayName = columnPtr->displayName();
-            unitModel_.updateDisplayName(id, columnPtr->displayName());
+            nodes_[idx].displayName = unique;
+            unitModel_.updateName(id, unique);
         }
     });
-    column->setId(id);
     column->setType("column");
     column->setIconKey("column");
     units_.push_back(std::move(column));
@@ -240,17 +295,22 @@ QString FlowsheetState::addStreamInternal(double x, double y)
     nodes_.push_back(node);
 
     auto stream = std::make_unique<StreamUnitState>();
-    stream->setDisplayName(node.displayName);
     stream->setId(id);
+    stream->setName(node.displayName);
     stream->setType("stream");
     stream->setIconKey("stream");
     if (auto* streamState = stream->streamState()) {
         streamState->setStreamName(QStringLiteral("Standalone material stream"));
     }
-    connect(stream.get(), &ProcessUnitState::displayNameChanged, this, [this, id, streamPtr = stream.get()]() {
+    connect(stream.get(), &ProcessUnitState::nameChanged, this, [this, id, streamPtr = stream.get()]() {
+        const QString unique = makeUniqueUnitName_(streamPtr->name(), streamPtr->type(), id);
+        if (unique != streamPtr->name()) {
+            streamPtr->setName(unique);
+            return;
+        }
         if (const int idx = findNodeIndexById(id); idx >= 0) {
-            nodes_[idx].displayName = streamPtr->displayName();
-            unitModel_.updateDisplayName(id, streamPtr->displayName());
+            nodes_[idx].displayName = unique;
+            unitModel_.updateName(id, unique);
         }
     });
     units_.push_back(std::move(stream));
@@ -329,7 +389,7 @@ void FlowsheetState::moveUnit(const QString& unitId, double x, double y)
 
     node.x = clampedX;
     node.y = clampedY;
-    refreshUnitModel_();
+    unitModel_.updatePosition(unitId, clampedX, clampedY);
 }
 
 void FlowsheetState::setStreamConnectionDirection(const QString& unitId, const QString& direction)
