@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-3.000 -3.000 76.000 101.000"
+     width="96" height="96">
+  <path d="M 0.0000 30.0000 L 0.0000 95.0000 L 70.0000 95.0000 L 70.0000 30.0000" fill="white" stroke="#141414" stroke-width="2.00"/>
+  <path d="M 5.0000 55.0000 L 5.0000 15.0000 A 30.0000 15.0000 0.0 1 1 65.0000 15.0000 L 65.0000 55.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+</svg>

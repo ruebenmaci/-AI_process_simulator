@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import ChatGPT5.ADT 1.0
 
 Item {
     id: root
@@ -14,12 +15,14 @@ Item {
     property bool active: true
     property bool showHysysMockup: false
     property bool showViewSwitcher: true
+    property real panelZ: 0
 
     signal closeRequested()
+    signal activated()
 
     width: 1220
     height: 824
-    z: active ? 50 : 40
+    z: panelZ + (active ? 1 : 0)
 
     readonly property int titleBarH: 32
     readonly property int cornerR: 8
@@ -79,7 +82,7 @@ Item {
                 drag.minimumY: 0
                 drag.maximumX: root.boundsItem ? Math.max(0, root.boundsItem.width - root.width) : 100000
                 drag.maximumY: root.boundsItem ? Math.max(0, root.boundsItem.height - root.height) : 100000
-                onPressed:  function(mouse) { root.active = true; mouse.accepted = true }
+                onPressed:  function(mouse) { root.activated(); mouse.accepted = true }
                 onReleased: { root.x = root.clampX(root.x); root.y = root.clampY(root.y) }
             }
 
@@ -120,7 +123,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
-                Button {
+                ClassicButton {
                     text: "Workspace"
                     checkable: true
                     checked: !root.showHysysMockup
@@ -128,7 +131,7 @@ Item {
                     font.pixelSize: 11
                     onClicked: root.showHysysMockup = false
                 }
-                Button {
+                ClassicButton {
                     text: "HYSYS Mockup"
                     checkable: true
                     checked: root.showHysysMockup
@@ -192,6 +195,13 @@ Item {
             anchors.margins: 4
             anchors.topMargin: 1
         }
+    }
+
+
+    TapHandler {
+        acceptedButtons: Qt.LeftButton
+        gesturePolicy: TapHandler.ReleaseWithinBounds
+        onTapped: root.activated()
     }
 
     // ── Layer 2: border drawn ON TOP of the clip container so it's never clipped ──

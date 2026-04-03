@@ -1,30 +1,21 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
-import QtQuick.Layouts 1.15
+import ChatGPT5.ADT 1.0
 
 Item {
     id: root
-
     property var streamObject: null
-    property var unitObject: null
+    property var unitObject:   null
 
-    // ── colours ──────────────────────────────────────────────────
-    readonly property color bg:        "#f4f6fa"
-    readonly property color chrome:    "#d2d9e6"
-    readonly property color rowEven:   "#eef2f8"
-    readonly property color rowOdd:    "#f4f6fa"
-    readonly property color borderCol: "#b0b8c8"
-    readonly property color textDark:  "#1f2430"
-    readonly property color mutedText: "#5a6472"
-    readonly property color calcColor: "#1c4ea7"
-    readonly property color dashColor: "#aaaaaa"
+    readonly property color bg:       "#e8ebef"
+    readonly property color hdrBg:    "#c8d0d8"
+    readonly property color hdrBdr:   "#97a2ad"
+    readonly property color textMain: "#1f2a34"
+    readonly property color textMuted:"#526571"
 
-    // ── sizing ───────────────────────────────────────────────────
-    readonly property int lw:   220   // label column fixed width
-    readonly property int rh:   26    // row height
-    readonly property int lpad: 10    // left padding
+    property int headH: 20
+    property int secGap: 6
 
-    // ── helpers ──────────────────────────────────────────────────
     function fmt(v, dec) {
         if (v === undefined || v === null) return "—"
         const n = Number(v)
@@ -39,196 +30,260 @@ Item {
         if (!Pa || !isFinite(Pa)) return "—"
         return fmt(Pa / 1e5, 4) + " bar   (" + fmt(Pa / 1000, 1) + " kPa)"
     }
-    function has() { return !!root.streamObject }
+    function has() { return !!streamObject }
 
-    // ── derived values (all in root scope) ───────────────────────
-    readonly property real massFlow:  has() ? root.streamObject.flowRateKgph        : 0
-    readonly property real molarFlow: has() ? root.streamObject.molarFlowKmolph      : 0
-    readonly property real volFlow:   has() ? root.streamObject.volumetricFlowM3ph   : 0
-    readonly property real tempK:     has() ? root.streamObject.temperatureK         : 0
-    readonly property real pressPa:   has() ? root.streamObject.pressurePa           : 0
-    readonly property real vf:        has() ? root.streamObject.vaporFraction         : 0
-    readonly property real avgMw:     (molarFlow > 0 && massFlow > 0) ? massFlow / molarFlow : 0
-    readonly property real density:   (volFlow > 0 && massFlow > 0)   ? massFlow / volFlow   : 0
-    readonly property real sg:        density > 0 ? density / 999.0 : 0
-    readonly property real apiGrav:   sg      > 0 ? (141.5 / sg - 131.5) : 0
-    readonly property real bpK:       has() ? root.streamObject.bubblePointEstimateK : 0
-    readonly property real dpK:       has() ? root.streamObject.dewPointEstimateK    : 0
-
-    // ── all section data as a flat list ──────────────────────────
-    // Each entry: { hdr: bool, label: string, value: string, calc: bool }
-    // We build this as a property so it reacts to changes
-    property var allRows: []
-
-    function buildRows() {
-        if (!root.has()) { allRows = []; return }
-        var r = []
-        function hdr(t)              { r.push({ hdr: true,  label: t,   value: "",   calc: false }) }
-        function row(l, v, c)        { r.push({ hdr: false, label: l,   value: v,    calc: !!c   }) }
-
-        hdr("Stream summary")
-        row("Phase",                root.streamObject.phaseStatus,                              false)
-        row("Vapour fraction",      fmt(root.vf, 4),                                            true)
-        row("Thermo region",        root.streamObject.thermoRegionLabel,                        true)
-        row("Flash method",         root.streamObject.flashMethod,                              true)
-        row("Molar flow",           fmt(root.molarFlow, 3) + " kmol/h",                        true)
-        row("Volumetric flow",      fmt(root.volFlow,   3) + " m³/h",                          true)
-        row("Std. vol. flow",       fmt(has() ? root.streamObject.calcStdVolFlowM3ph : NaN, 3) + " m³/h", true)
-
-        hdr("Molecular & bulk properties")
-        row("Avg. molecular weight", root.avgMw   > 0 ? fmt(root.avgMw,   2) + " kg/kmol" : "—", true)
-        row("Bulk liquid density",   root.density > 0 ? fmt(root.density, 2) + " kg/m³"   : "—", true)
-        row("Vapour density",        fmt(has() ? root.streamObject.vapourDensityKgM3 : NaN, 2) + " kg/m³", true)
-        row("Specific gravity",      root.sg      > 0 ? fmt(root.sg,      4)               : "—", true)
-        row("API gravity",           root.sg      > 0 ? fmt(root.apiGrav, 1) + " °API"     : "—", true)
-        row("Watson K factor",       fmt(has() ? root.streamObject.watsonKFactor : NaN, 3),         true)
-
-        hdr("Thermodynamic properties  (available after flash)")
-        row("Enthalpy — liquid",    fmt(has() ? root.streamObject.liquidEnthalpyKJkg  : NaN, 2) + " kJ/kg",   true)
-        row("Enthalpy — vapour",    fmt(has() ? root.streamObject.vapourEnthalpyKJkg  : NaN, 2) + " kJ/kg",   true)
-        row("Enthalpy — mixture",   fmt(has() ? root.streamObject.enthalpyKJkg        : NaN, 2) + " kJ/kg",   true)
-        row("Entropy — liquid",     fmt(has() ? root.streamObject.liquidEntropyKJkgK  : NaN, 4) + " kJ/kg·K", true)
-        row("Entropy — vapour",     fmt(has() ? root.streamObject.vapourEntropyKJkgK  : NaN, 4) + " kJ/kg·K", true)
-        row("Heat capacity Cp (liq.)", fmt(has() ? root.streamObject.liquidCpKJkgK    : NaN, 3) + " kJ/kg·K", true)
-        row("Heat capacity Cp (vap.)", fmt(has() ? root.streamObject.vapourCpKJkgK    : NaN, 3) + " kJ/kg·K", true)
-        row("Cp/Cv ratio (vap.)",   fmt(has() ? root.streamObject.vapourCpCvRatio     : NaN, 4),               true)
-
-        hdr("Transport properties  (available after flash)")
-        row("Viscosity — liquid",          fmt(has() ? root.streamObject.liquidViscosityCp    : NaN, 4) + " cP",     true)
-        row("Viscosity — vapour",          fmt(has() ? root.streamObject.vapourViscosityCp    : NaN, 4) + " cP",     true)
-        row("Thermal conductivity (liq.)", fmt(has() ? root.streamObject.liquidThermalCondWmK : NaN, 4) + " W/m·K",  true)
-        row("Thermal conductivity (vap.)", fmt(has() ? root.streamObject.vapourThermalCondWmK : NaN, 4) + " W/m·K",  true)
-        row("Surface tension",             fmt(has() ? root.streamObject.surfaceTensionNm     : NaN, 5) + " N/m",    true)
-
-        hdr("Phase envelope estimates")
-        row("Bubble point",         (root.bpK > 0 && isFinite(root.bpK)) ? fmtTK(root.bpK) : "—", true)
-        row("Dew point",            (root.dpK > 0 && isFinite(root.dpK)) ? fmtTK(root.dpK) : "—", true)
-        row("Critical temperature", has() ? fmtTK(root.streamObject.criticalTemperatureK) : "—",   true)
-        row("Critical pressure",    has() ? fmtP(root.streamObject.criticalPressureKPa * 1000) : "—", true)
-
-        allRows = r
+    component SecHdr : Rectangle {
+        property alias text: lbl.text
+        width: parent.width; height: root.headH
+        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
+        Text {
+            id: lbl
+            anchors.left: parent.left; anchors.leftMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            font.pixelSize: 10; font.bold: true; color: root.textMain
+        }
     }
 
-    // Rebuild whenever stream data changes
-    onStreamObjectChanged:  Qt.callLater(buildRows)
-    Component.onCompleted:  Qt.callLater(buildRows)
+    // ── Each sheet self-populates via its own Connections ──────────────
+    // This avoids the root-id-before-instantiation timing problem entirely.
 
-    Connections {
-        target: root.streamObject
-        function onDerivosConditionsChanged() { Qt.callLater(buildRows) }
-        function onDerivedConditionsChanged()  { Qt.callLater(buildRows) }
-        function onFlowRateKgphChanged()       { Qt.callLater(buildRows) }
-        function onTemperatureKChanged()       { Qt.callLater(buildRows) }
-        function onPressurePaChanged()         { Qt.callLater(buildRows) }
-        ignoreUnknownSignals: true
-    }
-
-    // ── UI ───────────────────────────────────────────────────────
     Rectangle {
         anchors.fill: parent
-        color: root.bg
-        radius: 8
-        border.color: "#2a2a2a"
-        border.width: 1
+        color: root.bg; border.color: root.hdrBdr; border.width: 1
 
-        Label {
+        Rectangle {
+            id: panelHdr
+            x: 0; y: 0; width: parent.width; height: root.headH
+            color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
+            Text {
+                anchors.left: parent.left; anchors.leftMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Properties"; font.pixelSize: 10; font.bold: true; color: root.textMain
+            }
+        }
+
+        Text {
             anchors.centerIn: parent
             visible: !root.has()
-            text: "No stream selected."
-            color: root.mutedText
-            font.pixelSize: 12
+            text: "No stream selected"; font.pixelSize: 11; color: root.textMuted
         }
 
         ScrollView {
-            anchors.fill: parent
-            anchors.margins: 6
-            visible: root.has()
-            clip: true
+            x: 0; y: panelHdr.height
+            width: parent.width; height: parent.height - panelHdr.height
+            visible: root.has(); clip: true
             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
             ScrollBar.vertical.policy:   ScrollBar.AsNeeded
 
-            // A single Column containing all rows - no nested layouts
             Column {
-                width: Math.max(parent.width, 500)
-                spacing: 0
+                width: parent.width
+                spacing: root.secGap
 
-                Repeater {
-                    model: root.allRows
+                // ── Stream Summary ────────────────────────────────────
+                SecHdr { text: "Stream Summary" }
+                SimpleSpreadsheet {
+                    id: sheetSummary
+                    readOnly: true
+                    x: 4; width: parent.width - 8; numRows: 7; numCols: 1
+                    defaultColW: Math.max(180, width - hdrColW - 4)
+                    colLabels: ["Value"]
+                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
 
-                    // Each item is either a section header or a data row
-                    // We use a single delegate that switches appearance
-                    Item {
-                        width: parent.width
-                        height: modelData.hdr ? root.rh + 4 : root.rh
+                    function refresh() {
+                        clearAll()
+                        if (!root.has()) return
+                        const s = root.streamObject
+                        const mf = s.flowRateKgph; const mol = s.molarFlowKmolph; const vf = s.volumetricFlowM3ph
+                        rowLabels = ["Phase", "Vapour fraction", "Thermo region", "Flash method",
+                                     "Molar flow", "Volumetric flow", "Std. vol. flow"]
+                        colLabels = ["Value"]
+                        const vals = [s.phaseStatus || "—", root.fmt(s.vaporFraction, 4),
+                                      s.thermoRegionLabel || "—", s.flashMethod || "—",
+                                      root.fmt(mol, 3) + " kmol/h",
+                                      root.fmt(vf,  3) + " m³/h",
+                                      root.fmt(s.calcStdVolFlowM3ph, 3) + " m³/h"]
+                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
+                    }
 
-                        // ── Section header ──
-                        Rectangle {
-                            visible: modelData.hdr
-                            x: 0; y: modelData.hdr ? 4 : 0
-                            width: parent.width
-                            height: root.rh
-                            color: root.chrome
-                            border.color: root.borderCol
-                            border.width: 1
-                            radius: 3
-                            Label {
-                                x: root.lpad
-                                width: parent.width - root.lpad * 2
-                                height: parent.height
-                                text: modelData.label
-                                color: root.textDark
-                                font.pixelSize: 11
-                                font.bold: true
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                        }
-
-                        // ── Data row ──
-                        Rectangle {
-                            visible: !modelData.hdr
-                            x: 0; y: 0
-                            width: parent.width
-                            height: root.rh
-                            color: {
-                                // Count non-header rows to alternate colours
-                                var c = 0
-                                for (var i = 0; i < index; i++) {
-                                    if (!root.allRows[i].hdr) c++
-                                }
-                                return c % 2 === 0 ? root.rowEven : root.rowOdd
-                            }
-                            border.color: root.borderCol
-                            border.width: 1
-
-                            // Label column
-                            Label {
-                                x: root.lpad
-                                width: root.lw
-                                height: parent.height
-                                text: modelData.label
-                                color: root.mutedText
-                                font.pixelSize: 11
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-
-                            // Value column
-                            Label {
-                                x: root.lw + root.lpad
-                                width: parent.width - root.lw - root.lpad - 6
-                                height: parent.height
-                                text: modelData.value
-                                color: modelData.value === "—" ? root.dashColor
-                                       : modelData.calc        ? root.calcColor
-                                       : root.textDark
-                                font.pixelSize: 11
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                            }
-                        }
+                    Component.onCompleted: Qt.callLater(refresh)
+                    Connections {
+                        target: root
+                        function onStreamObjectChanged() { Qt.callLater(sheetSummary.refresh) }
+                    }
+                    Connections {
+                        target: root.streamObject
+                        function onDerivedConditionsChanged() { Qt.callLater(sheetSummary.refresh) }
+                        function onFlowRateKgphChanged()      { Qt.callLater(sheetSummary.refresh) }
+                        function onTemperatureKChanged()       { Qt.callLater(sheetSummary.refresh) }
+                        function onPressurePaChanged()         { Qt.callLater(sheetSummary.refresh) }
+                        ignoreUnknownSignals: true
                     }
                 }
+
+                // ── Molecular & Bulk ──────────────────────────────────
+                SecHdr { text: "Molecular & Bulk" }
+                SimpleSpreadsheet {
+                    id: sheetMolecular
+                    readOnly: true
+                    x: 4; width: parent.width - 8; numRows: 6; numCols: 1
+                    defaultColW: Math.max(180, width - hdrColW - 4)
+                    colLabels: ["Value"]
+                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+
+                    function refresh() {
+                        clearAll()
+                        if (!root.has()) return
+                        const s = root.streamObject
+                        const mf = s.flowRateKgph; const mol = s.molarFlowKmolph; const vf = s.volumetricFlowM3ph
+                        const avgMw   = (mol > 0 && mf > 0) ? mf / mol : 0
+                        const density = (vf  > 0 && mf > 0) ? mf / vf  : 0
+                        const sg      = density > 0 ? density / 999.0 : 0
+                        const api     = sg > 0 ? (141.5 / sg - 131.5) : 0
+                        rowLabels = ["Avg. molecular weight", "Bulk liquid density", "Vapour density",
+                                     "Specific gravity", "API gravity", "Watson K factor"]
+                        colLabels = ["Value"]
+                        const vals = [avgMw   > 0 ? root.fmt(avgMw,   2) + " kg/kmol" : "—",
+                                      density > 0 ? root.fmt(density, 2) + " kg/m³"   : "—",
+                                      root.fmt(s.vapourDensityKgM3, 2) + " kg/m³",
+                                      sg      > 0 ? root.fmt(sg,      4)               : "—",
+                                      sg      > 0 ? root.fmt(api,     1) + " °API"     : "—",
+                                      root.fmt(s.watsonKFactor, 3)]
+                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
+                    }
+
+                    Component.onCompleted: Qt.callLater(refresh)
+                    Connections {
+                        target: root
+                        function onStreamObjectChanged() { Qt.callLater(sheetMolecular.refresh) }
+                    }
+                    Connections {
+                        target: root.streamObject
+                        function onDerivedConditionsChanged() { Qt.callLater(sheetMolecular.refresh) }
+                        function onFlowRateKgphChanged()      { Qt.callLater(sheetMolecular.refresh) }
+                        ignoreUnknownSignals: true
+                    }
+                }
+
+                // ── Thermodynamic Properties ──────────────────────────
+                SecHdr { text: "Thermodynamic Properties" }
+                SimpleSpreadsheet {
+                    id: sheetThermo
+                    readOnly: true
+                    x: 4; width: parent.width - 8; numRows: 8; numCols: 1
+                    defaultColW: Math.max(180, width - hdrColW - 4)
+                    colLabels: ["Value"]
+                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+
+                    function refresh() {
+                        clearAll()
+                        if (!root.has()) return
+                        const s = root.streamObject
+                        rowLabels = ["Enthalpy — liquid", "Enthalpy — vapour", "Enthalpy — mixture",
+                                     "Entropy — liquid",  "Entropy — vapour",
+                                     "Cp liquid", "Cp vapour", "Cp/Cv vapour"]
+                        colLabels = ["Value"]
+                        const vals = [root.fmt(s.liquidEnthalpyKJkg,  2) + " kJ/kg",
+                                      root.fmt(s.vapourEnthalpyKJkg,  2) + " kJ/kg",
+                                      root.fmt(s.enthalpyKJkg,        2) + " kJ/kg",
+                                      root.fmt(s.liquidEntropyKJkgK,  4) + " kJ/kg·K",
+                                      root.fmt(s.vapourEntropyKJkgK,  4) + " kJ/kg·K",
+                                      root.fmt(s.liquidCpKJkgK,       3) + " kJ/kg·K",
+                                      root.fmt(s.vapourCpKJkgK,       3) + " kJ/kg·K",
+                                      root.fmt(s.vapourCpCvRatio,     4)]
+                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
+                    }
+
+                    Component.onCompleted: Qt.callLater(refresh)
+                    Connections {
+                        target: root
+                        function onStreamObjectChanged() { Qt.callLater(sheetThermo.refresh) }
+                    }
+                    Connections {
+                        target: root.streamObject
+                        function onDerivedConditionsChanged() { Qt.callLater(sheetThermo.refresh) }
+                        ignoreUnknownSignals: true
+                    }
+                }
+
+                // ── Transport Properties ──────────────────────────────
+                SecHdr { text: "Transport Properties" }
+                SimpleSpreadsheet {
+                    id: sheetTransport
+                    readOnly: true
+                    x: 4; width: parent.width - 8; numRows: 5; numCols: 1
+                    defaultColW: Math.max(180, width - hdrColW - 4)
+                    colLabels: ["Value"]
+                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+
+                    function refresh() {
+                        clearAll()
+                        if (!root.has()) return
+                        const s = root.streamObject
+                        rowLabels = ["Viscosity — liquid", "Viscosity — vapour",
+                                     "Thermal cond. liquid", "Thermal cond. vapour",
+                                     "Surface tension"]
+                        colLabels = ["Value"]
+                        const vals = [root.fmt(s.liquidViscosityCp,    4) + " cP",
+                                      root.fmt(s.vapourViscosityCp,    4) + " cP",
+                                      root.fmt(s.liquidThermalCondWmK, 4) + " W/m·K",
+                                      root.fmt(s.vapourThermalCondWmK, 4) + " W/m·K",
+                                      root.fmt(s.surfaceTensionNm,     5) + " N/m"]
+                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
+                    }
+
+                    Component.onCompleted: Qt.callLater(refresh)
+                    Connections {
+                        target: root
+                        function onStreamObjectChanged() { Qt.callLater(sheetTransport.refresh) }
+                    }
+                    Connections {
+                        target: root.streamObject
+                        function onDerivedConditionsChanged() { Qt.callLater(sheetTransport.refresh) }
+                        ignoreUnknownSignals: true
+                    }
+                }
+
+                // ── Phase Envelope ────────────────────────────────────
+                SecHdr { text: "Phase Envelope" }
+                SimpleSpreadsheet {
+                    id: sheetEnvelope
+                    readOnly: true
+                    x: 4; width: parent.width - 8; numRows: 4; numCols: 1
+                    defaultColW: Math.max(180, width - hdrColW - 4)
+                    colLabels: ["Value"]
+                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+
+                    function refresh() {
+                        clearAll()
+                        if (!root.has()) return
+                        const s = root.streamObject
+                        rowLabels = ["Bubble point", "Dew point",
+                                     "Critical temperature", "Critical pressure"]
+                        colLabels = ["Value"]
+                        const vals = [
+                            (s.bubblePointEstimateK > 0 && isFinite(s.bubblePointEstimateK))
+                                ? root.fmtTK(s.bubblePointEstimateK) : "—",
+                            (s.dewPointEstimateK > 0 && isFinite(s.dewPointEstimateK))
+                                ? root.fmtTK(s.dewPointEstimateK) : "—",
+                            root.fmtTK(s.criticalTemperatureK),
+                            root.fmtP(s.criticalPressureKPa * 1000)
+                        ]
+                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
+                    }
+
+                    Component.onCompleted: Qt.callLater(refresh)
+                    Connections {
+                        target: root
+                        function onStreamObjectChanged() { Qt.callLater(sheetEnvelope.refresh) }
+                    }
+                    Connections {
+                        target: root.streamObject
+                        function onDerivedConditionsChanged() { Qt.callLater(sheetEnvelope.refresh) }
+                        ignoreUnknownSignals: true
+                    }
+                }
+
+                Item { height: root.secGap }
             }
         }
     }

@@ -6,6 +6,7 @@ import QtQuick.Window 2.15
 import ChatGPT5.ADT 1.0
 import "../../cpp/unitops/column/qml"
 import "."
+import "../spreadsheet"
 
 Item {
     id: root
@@ -14,7 +15,21 @@ Item {
     property var activeUnit: root.flowsheet ? root.flowsheet.selectedUnit : null
     property bool floatingWorkspaceVisible: false
     property point floatingWorkspacePos: Qt.point(40, 40)
-    property string connectionMode: "none"
+    property bool componentManagerVisible: false
+    property point componentManagerPos: Qt.point(80, 80)
+    property bool fluidManagerVisible: false
+    property point fluidManagerPos: Qt.point(120, 120)
+    property int topPanelZ: 100
+    property bool spreadsheetVisible: false
+    property point spreadsheetPos: Qt.point(160, 160)
+    property var activePanel: null
+
+    function raisePanel(panel) {
+        if (!panel) return
+        topPanelZ += 1
+        panel.panelZ = topPanelZ
+        activePanel = panel
+    }
 
     implicitWidth: 1200
     implicitHeight: 900
@@ -27,8 +42,6 @@ Item {
         if (!ok && root.flowsheet.lastOperationMessage !== "") {
             deleteWarningDialog.text = root.flowsheet.lastOperationMessage
             deleteWarningDialog.open()
-        } else if (ok) {
-            root.connectionMode = "none"
         }
     }
 
@@ -73,130 +86,105 @@ Item {
 
                 Item { Layout.fillWidth: true }
 
-                Button { text: "New"; enabled: false }
-                Button { text: "Open"; enabled: false }
-                Button { text: "Save"; enabled: false }
+                ClassicButton { text: "New"; enabled: false }
+                ClassicButton { text: "Open"; enabled: false }
+                ClassicButton { text: "Save"; enabled: false }
 
-                Frame {
-                    background: Rectangle {
-                        color: "#15202a"
-                        border.color: "#31404d"
-                        radius: 8
+                ClassicButton {
+                    text: "Components"
+                    checkable: true
+                    checked: root.componentManagerVisible
+                    onClicked: {
+                        root.componentManagerVisible = !root.componentManagerVisible
+                        if (root.componentManagerVisible) root.raisePanel(componentManagerPanel)
                     }
+                }
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 6
-                        spacing: 6
+                ClassicButton {
+                    text: "Fluid Packages"
+                    checkable: true
+                    checked: root.fluidManagerVisible
+                    onClicked: {
+                        root.fluidManagerVisible = !root.fluidManagerVisible
+                        if (root.fluidManagerVisible) root.raisePanel(fluidManagerPanel)
+                    }
+                }
 
-                        Label {
-                            text: "Connect"
-                            color: "#dce8f1"
-                            font.bold: true
-                        }
-
-                        Button {
-                            text: "Feed"
-                            checkable: true
-                            checked: root.connectionMode === "feed"
-                            onClicked: root.connectionMode = checked ? "feed" : "none"
-                        }
-                        Button {
-                            text: "Distillate"
-                            checkable: true
-                            checked: root.connectionMode === "distillate"
-                            onClicked: root.connectionMode = checked ? "distillate" : "none"
-                        }
-                        Button {
-                            text: "Bottoms"
-                            checkable: true
-                            checked: root.connectionMode === "bottoms"
-                            onClicked: root.connectionMode = checked ? "bottoms" : "none"
-                        }
-                        Button {
-                            text: "Disconnect Stream"
-                            checkable: true
-                            checked: root.connectionMode === "disconnect"
-                            onClicked: root.connectionMode = checked ? "disconnect" : "none"
-                        }
-                        Button {
-                            text: "Cancel"
-                            enabled: root.connectionMode !== "none"
-                            onClicked: root.connectionMode = "none"
+                ClassicButton {
+                    text: "Equipment Palette"
+                    checkable: true
+                    checked: equipmentPalette.visible
+                    onClicked: {
+                        if (equipmentPalette.visible) {
+                            equipmentPalette.visible = false
+                        } else {
+                            // Default position: near top-left of PFD canvas area
+                            equipmentPalette.x = 16
+                            equipmentPalette.y = 16
+                            equipmentPalette.visible = true
                         }
                     }
                 }
 
-                Button {
-                    text: "Delete Selected"
-                    enabled: !!root.activeUnit
-                    onClicked: root.tryDeleteSelectedUnit()
+                ClassicButton {
+                    text: "Spreadsheet"
+                    checkable: true
+                    checked: root.spreadsheetVisible
+                    onClicked: {
+                        root.spreadsheetVisible = !root.spreadsheetVisible
+                        if (root.spreadsheetVisible) root.raisePanel(spreadsheetPanel)
+                    }
                 }
 
-                Button {
+                ClassicButton {
                     text: "Clear Worksheet"
                     enabled: root.flowsheet && root.flowsheet.unitCount > 0
                     onClicked: if (root.flowsheet) root.flowsheet.clear()
                 }
 
-                Button {
-                    text: root.activeUnit && root.activeUnit.type === "stream" ? "Open Stream Workspace" : "Open Workspace"
-                    enabled: !!root.activeUnit
-                    onClicked: root.floatingWorkspaceVisible = true
+                ClassicButton {
+                    id: displayBtn
+                    text: "Display"
+                    checkable: true
+                    checked: displaySettingsPopup.visible
+                    onClicked: displaySettingsPopup.visible = !displaySettingsPopup.visible
                 }
             }
         }
 
-        RowLayout {
+        // PFD area — full width now that the left sidebar is removed
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 10
-
-            UnitPalette {
-                Layout.preferredWidth: 260
-                Layout.fillHeight: true
-                flowsheet: root.flowsheet
-                onOpenWorkspaceRequested: root.floatingWorkspaceVisible = true
-            }
 
             ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
+                anchors.fill: parent
                 spacing: 6
-
-                Label {
-                    Layout.fillWidth: true
-                    visible: root.connectionMode !== "none"
-                    text: root.connectionMode === "disconnect"
-                          ? "Disconnect mode: click a stream on the PFD."
-                          : ("Connection mode: click one stream and one column to bind the " + root.connectionMode + " port.")
-                    color: "#44535f"
-                    wrapMode: Text.WordWrap
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    visible: pfdCanvas.connectionStatusText !== ""
-                    text: pfdCanvas.connectionStatusText
-                    color: "#6a4a00"
-                    wrapMode: Text.WordWrap
-                }
 
                 PfdCanvas {
                     id: pfdCanvas
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     flowsheet: root.flowsheet
-                    connectionMode: root.connectionMode
-
-                    onConnectionModeChanged: resetConnectionSelection()
-
                     onUnitDoubleClicked: function(unitId) {
                     if (root.flowsheet)
                         root.flowsheet.selectUnit(unitId)
                     root.floatingWorkspaceVisible = true
-                    floatingWorkspace.active = true
+                    root.raisePanel(floatingWorkspace)
                     }
+                }
+            }
+
+            // ── Floating Equipment Palette ─────────────────────────────────
+            // Overlays the PFD area; draggable via its title bar.
+            EquipmentPalette {
+                id: equipmentPalette
+                boundsItem: parent
+                visible: false
+                z: 100
+
+                onPlacementRequested: function(unitType) {
+                    pfdCanvas.beginPlacement(unitType)
                 }
             }
         }
@@ -254,7 +242,7 @@ Item {
                     color: "#17212b"
                 }
 
-                Button {
+                ClassicButton {
                     id: deleteWarningOkButton
                     anchors.right: parent.right
                     anchors.rightMargin: 8
@@ -294,9 +282,75 @@ Item {
         }
     }
 
+
+    FloatingPanel {
+        id: componentManagerPanel
+        visible: root.componentManagerVisible
+        onVisibleChanged: if (visible) root.raisePanel(componentManagerPanel)
+        panelTitle: "Component Manager"
+        boundsItem: root
+        showViewSwitcher: false
+        minPanelWidth: 860
+        minPanelHeight: 560
+        width: Math.min(980, Math.max(860, root.width - 260))
+        height: Math.min(640, Math.max(560, root.height - 220))
+        x: Math.min(root.componentManagerPos.x, Math.max(0, root.width - width))
+        y: Math.min(root.componentManagerPos.y, Math.max(0, root.height - height))
+        active: visible && root.activePanel === componentManagerPanel
+
+        onXChanged: root.componentManagerPos = Qt.point(x, y)
+        onYChanged: root.componentManagerPos = Qt.point(x, y)
+        onActivated: root.raisePanel(componentManagerPanel)
+        onCloseRequested: {
+            root.componentManagerVisible = false
+            if (root.activePanel === componentManagerPanel) root.activePanel = null
+        }
+
+        contentItem: [
+            ComponentManagerView {
+                anchors.fill: parent
+                manager: gComponentManager
+            }
+        ]
+    }
+
+
+    FloatingPanel {
+        id: fluidManagerPanel
+        visible: root.fluidManagerVisible
+        onVisibleChanged: if (visible) root.raisePanel(fluidManagerPanel)
+        panelTitle: "Fluid Package Manager"
+        boundsItem: root
+        showViewSwitcher: false
+        minPanelWidth: 1040
+        minPanelHeight: 720
+        width: Math.min(1240, Math.max(1040, root.width - 100))
+        height: Math.min(820, Math.max(720, root.height - 100))
+        x: Math.min(root.fluidManagerPos.x, Math.max(0, root.width - width))
+        y: Math.min(root.fluidManagerPos.y, Math.max(0, root.height - height))
+        active: visible && root.activePanel === fluidManagerPanel
+
+        onXChanged: root.fluidManagerPos = Qt.point(x, y)
+        onYChanged: root.fluidManagerPos = Qt.point(x, y)
+        onActivated: root.raisePanel(fluidManagerPanel)
+        onCloseRequested: {
+            root.fluidManagerVisible = false
+            if (root.activePanel === fluidManagerPanel) root.activePanel = null
+        }
+
+        contentItem: [
+            FluidManagerView {
+                anchors.fill: parent
+                fluidManager: gFluidPackageManager
+                componentManager: gComponentManager
+            }
+        ]
+    }
+
     FloatingPanel {
         id: floatingWorkspace
         visible: root.floatingWorkspaceVisible && !!root.activeUnit
+        onVisibleChanged: if (visible) root.raisePanel(floatingWorkspace)
         panelTitle: root.workspaceTitle()
         boundsItem: root
         x: Math.min(root.floatingWorkspacePos.x, Math.max(0, root.width - width))
@@ -331,14 +385,18 @@ Item {
         width: streamMode ? streamWidth : (showHysysMockup ? columnMockupWidth : columnNormalWidth)
         height: streamMode ? streamHeight : (showHysysMockup ? columnMockupHeight : columnNormalHeight)
 
-        active: visible
+        active: visible && root.activePanel === floatingWorkspace
         showViewSwitcher: !streamMode
         showHysysMockup: streamMode ? false : showHysysMockup
 
         onXChanged: root.floatingWorkspacePos = Qt.point(x, y)
         onYChanged: root.floatingWorkspacePos = Qt.point(x, y)
+        onActivated: root.raisePanel(floatingWorkspace)
 
-        onCloseRequested: root.floatingWorkspaceVisible = false
+        onCloseRequested: {
+            root.floatingWorkspaceVisible = false
+            if (root.activePanel === floatingWorkspace) root.activePanel = null
+        }
 
         contentItem: [
             Loader {
@@ -364,4 +422,122 @@ Item {
             }
         }
     }
+
+    FloatingPanel {
+        id: spreadsheetPanel
+        visible: root.spreadsheetVisible
+        onVisibleChanged: if (visible) root.raisePanel(spreadsheetPanel)
+        panelTitle: "Spreadsheet"
+        boundsItem: root
+        showViewSwitcher: false
+        minPanelWidth: 800
+        minPanelHeight: 500
+        width: Math.min(1200, Math.max(800, root.width - 120))
+        height: Math.min(700, Math.max(500, root.height - 160))
+        x: Math.min(root.spreadsheetPos.x, Math.max(0, root.width - width))
+        y: Math.min(root.spreadsheetPos.y, Math.max(0, root.height - height))
+        active: visible && root.activePanel === spreadsheetPanel
+
+        onXChanged: root.spreadsheetPos = Qt.point(x, y)
+        onYChanged: root.spreadsheetPos = Qt.point(x, y)
+        onActivated: root.raisePanel(spreadsheetPanel)
+        onCloseRequested: {
+            root.spreadsheetVisible = false
+            if (root.activePanel === spreadsheetPanel) root.activePanel = null
+        }
+
+        contentItem: [
+            SpreadsheetWorkspaceWindow {
+                anchors.fill: parent
+            }
+        ]
+    }
+
+    // ── Display Settings popup ─────────────────────────────────────
+    Rectangle {
+        id: displaySettingsPopup
+        visible: false
+        z: 500
+        // Position below the toolbar in the top-right corner
+        x: root.width - width - 12
+        y: 60
+        width: 300
+        height: popupCol.implicitHeight + 1
+        color: "#e8ebef"
+        border.color: "#97a2ad"
+        border.width: 1
+
+        Column {
+            id: popupCol
+            width: parent.width
+
+            // Header
+            Rectangle {
+                width: parent.width; height: 20
+                color: "#c8d0d8"; border.color: "#97a2ad"; border.width: 1
+                Text {
+                    anchors.left: parent.left; anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Display Settings"; font.pixelSize: 10; font.bold: true; color: "#1f2a34"
+                }
+                Text {
+                    anchors.right: parent.right; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "✕"; font.pixelSize: 10; color: "#526571"
+                    MouseArea { anchors.fill: parent; onClicked: displaySettingsPopup.visible = false }
+                }
+            }
+
+            // Scale preset
+            Item {
+                width: parent.width; height: 22
+                Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: 100
+                       text: "UI Scale"; font.pixelSize: 10; color: "#526571" }
+                ComboBox {
+                    id: scaleCombo
+                    anchors { left: parent.left; leftMargin: 108; right: parent.right
+                              rightMargin: 6; verticalCenter: parent.verticalCenter }
+                    implicitHeight: 18; font.pixelSize: 10
+                    model: ["100%  (native)", "110%", "125%", "150%", "175%", "200%"]
+                    background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                    contentItem: Text { leftPadding: 4; text: parent.displayText
+                                        color: "#1c4ea7"; font.pixelSize: 10
+                                        verticalAlignment: Text.AlignVCenter }
+                    Component.onCompleted: {
+                        if (!gDisplaySettings) return
+                        var idx = gDisplaySettings.currentPresetIndex()
+                        currentIndex = (idx >= 0) ? idx : 0
+                    }
+                    onActivated: {
+                        if (gDisplaySettings)
+                            gDisplaySettings.scaleFactor = gDisplaySettings.presetValue(index)
+                    }
+                }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#97a2ad" }
+            }
+
+            // Current saved value
+            Item {
+                width: parent.width; height: 22
+                Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: 100
+                       text: "Saved scale"; font.pixelSize: 10; color: "#526571" }
+                Text { anchors { left: parent.left; leftMargin: 108; verticalCenter: parent.verticalCenter }
+                       text: gDisplaySettings ? (Math.round(gDisplaySettings.scaleFactor * 100) + "%") : "—"
+                       font.pixelSize: 10; color: "#1c4ea7" }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#97a2ad" }
+            }
+
+            // Restart note
+            Item {
+                width: parent.width; height: restartNote.implicitHeight + 10
+                Text {
+                    id: restartNote
+                    x: 6; y: 5; width: parent.width - 12
+                    text: "Scale change takes effect after restarting the app."
+                    font.pixelSize: 9; color: "#526571"; wrapMode: Text.WordWrap
+                }
+            }
+        }
+    }
+
 }

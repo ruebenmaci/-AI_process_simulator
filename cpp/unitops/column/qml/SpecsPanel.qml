@@ -958,6 +958,7 @@ Item {
                     text: (root.hasAppState() && root.appState.solving) ? "Solving..." : "Solve column"
                     enabled: !root.hasAppState() ? true : !root.appState.solving
                     flat: true
+                    font.pixelSize: 12
                     implicitHeight: 26
                     implicitWidth: 90
                     padding: 10
@@ -972,6 +973,7 @@ Item {
                     contentItem: Text {
                         text: solveBtn.text
                         color: "black"
+                        font.pixelSize: 12
                         font.bold: true
                         verticalAlignment: Text.AlignVCenter
                         horizontalAlignment: Text.AlignHCenter

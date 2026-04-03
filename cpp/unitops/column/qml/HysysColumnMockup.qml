@@ -1,2017 +1,1141 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-
-// ============================================================
-//  HysysColumnMockup.qml
-//  A HYSYS-style tabbed column view wired to ColumnUnitState.
-//
-//  appState  →  ColumnUnitState*  (exposed from C++ as QObject*)
-//
-//  Worksheet tab is split into two sub-tabs:
-//    • "Setup"  – General, Thermodynamics, Efficiencies
-//    • "Draws/Solver"  – Draw Specifications, Solve/Status
-// ============================================================
+import ChatGPT5.ADT 1.0
+import "../../../../qml/common" as Common
 
 Rectangle {
     id: root
     width:  1340
     height: 920
-    color: appBg
 
-    // ── State binding ──────────────────────────────────────────
     property var appState: null
 
-    // ── Palette  (mirrors StreamView chrome colours) ───────────
-    readonly property color appBg:        "#d7dbe3"
-    readonly property color panelBg:      "#e3e7ee"
-    readonly property color cardBg:       "#dfe4ec"
-    readonly property color cardHeaderBg: "#cfd7e3"
-    readonly property color tabIdleBg:    "#cfd5de"
-    readonly property color tabActiveBg:  "#2e76db"   // matches StreamView activeBlue
-    readonly property color gridLine:     "#9ba8bf"
-    readonly property color outerBorder:  "#2a2a2a"   // matches StreamView border
-    readonly property color textDark:     "#1f2430"   // matches StreamView textDark
-    readonly property color textMuted:    "#5a6472"   // matches StreamView mutedText
-    readonly property color valueBlue:    "#1c4ea7"   // matches StreamView textBlue
-    readonly property color softBlue:     "#e8eef8"
-    readonly property color softYellow:   "#efe6ad"
-    readonly property color buttonBg:     "#f0f2f4"
-    readonly property color white:        "#ffffff"
-    readonly property color warnAmber:    "#d6b74a"
-    readonly property color errorRed:     "#b23b3b"
+    // ── Palette — matches ComponentManagerView exactly ─────────
+    readonly property color bgOuter:    "#d8dde2"
+    readonly property color cmdBar:     "#c8d0d8"
+    readonly property color frameInner: "#e8ebef"
+    readonly property color hdrBg:      "#c8d0d8"
+    readonly property color borderOut:  "#6d7883"
+    readonly property color borderIn:   "#97a2ad"
+    readonly property color textMain:   "#1f2a34"
+    readonly property color textMuted:  "#526571"
+    readonly property color valueBlue:  "#1c4ea7"
+    readonly property color activeBlue: "#2e73b8"
+    readonly property color inputBg:    "#ffffff"
+    readonly property color rowEven:    "#f4f6f8"
+    readonly property color rowOdd:     "#ffffff"
+    readonly property color warnAmber:  "#d6b74a"
+    readonly property color errorRed:   "#b23b3b"
+    readonly property color white:      "#ffffff"
 
-    // ── Font sizes – match StreamConditionsPanel (11–13 px) ───
-    readonly property int fsSectionHeader: 13   // card title
-    readonly property int fsLabel:         11   // row labels
-    readonly property int fsValue:         11   // row values
-    readonly property int fsTabBtn:        12   // tab button text
-    readonly property int fsSmall:         10   // unit suffix / sub-labels
+    readonly property int   headH:  20
+    readonly property int   rowH:   22
+    readonly property int   fsLbl:  10
+    readonly property int   fsVal:  10
+    readonly property int   fsSm:   9
 
-    // ── Active-tab state ──────────────────────────────────────
-    property string activeTab:         "Worksheet/Solver"
-    property string worksheetSubTab:   "Setup"       // "Setup" | "Draws/Solver"
-    property string profilesSubTab:    "Tray Table"  // "Tray Table" | "Visual Profiles"
+    color: bgOuter
 
-    // ── Helpers ───────────────────────────────────────────────
-    function isNumericLike(v) {
-        if (v === undefined || v === null) return false
-        return /[0-9]/.test(String(v))
-    }
+    // ── Helpers ────────────────────────────────────────────────
     function fmt2(x)  { const n = Number(x); return isFinite(n) ? n.toFixed(2)  : "—" }
     function fmt3(x)  { const n = Number(x); return isFinite(n) ? n.toFixed(3)  : "—" }
     function fmtMs(ms) {
         const s = Math.floor((ms || 0) / 1000)
         return String(Math.floor(s / 60)).padStart(2,"0") + ":" + String(s % 60).padStart(2,"0")
     }
-    function eosLabel() {
-        if (!appState) return "—"
-        return (appState.eosMode === "manual") ? appState.eosManual : "Auto"
-    }
-    function condenserSpecLabel() {
-        if (!appState) return "—"
-        const s = (appState.condenserSpec || "").toLowerCase()
-        if (s === "refluxratio" || s === "reflux") return "Reflux Ratio"
-        if (s === "duty")        return "Fixed Duty"
-        if (s === "temperature") return "Temperature Setpoint"
-        return appState.condenserSpec || "—"
-    }
-    function reboilerSpecLabel() {
-        if (!appState) return "—"
-        const s = (appState.reboilerSpec || "").toLowerCase()
-        if (s === "boilup" || s === "boilupratio") return "Boilup Ratio"
-        if (s === "duty")        return "Fixed Duty"
-        if (s === "temperature") return "Temperature Setpoint"
-        return appState.reboilerSpec || "—"
-    }
     function solveStatus() {
         if (!appState) return "—"
-        if (appState.solving) return "Solving…"
-        if (appState.solved)  return "Converged"
+        if (appState.solving)    return "Solving…"
+        if (appState.solved)     return "Converged"
         if (appState.specsDirty) return "Specs changed – re-run"
         return "Not solved"
     }
     function solveStatusColor() {
-        if (!appState) return textMuted
+        if (!appState)           return textMuted
         if (appState.solving)    return warnAmber
         if (appState.solved)     return "#1a7a3c"
         if (appState.specsDirty) return warnAmber
         return errorRed
     }
 
-    // ── Outer chrome ──────────────────────────────────────────
+    // ── Tab state ──────────────────────────────────────────────
+    property string activeTab:       "Worksheet/Solver"
+    property string worksheetSubTab: "Setup"
+    property string profilesSubTab:  "Tray Table"
+
+    // ──────────────────────────────────────────────────────────
+    //  Shared primitives
+    // ──────────────────────────────────────────────────────────
+    component SectionHeader : Rectangle {
+        property alias text: lbl.text
+        height: headH; color: hdrBg; border.color: borderIn; border.width: 1
+        Text { id: lbl; anchors.left: parent.left; anchors.leftMargin: 6
+               anchors.verticalCenter: parent.verticalCenter
+               font.pixelSize: fsLbl; font.bold: true; color: textMain }
+    }
+
+    component CompactFrame : Rectangle {
+        color: frameInner; border.color: borderIn; border.width: 1
+    }
+
+    // A standard label|control row — label on left, control fills remaining width
+    component FormRow : Item {
+        id: frow
+        property string label: ""
+        property string unit:  ""
+        property alias  control: controlSlot.data
+        height: rowH
+        // Alternating background
+        Rectangle { anchors.fill: parent; color: parent.ListView ? (parent.ListView.index % 2 === 0 ? rowEven : rowOdd) : "transparent" }
+        Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: 160
+               text: frow.label; font.pixelSize: fsLbl; color: textMuted }
+        Item { id: controlSlot
+               anchors { left: parent.left; leftMargin: 168; right: unitTxt.visible ? unitTxt.left : parent.right; rightMargin: 4
+                         verticalCenter: parent.verticalCenter }
+               height: rowH - 4 }
+        Text { id: unitTxt; visible: frow.unit !== ""; text: frow.unit
+               anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+               font.pixelSize: fsSm; color: textMuted; width: 32; horizontalAlignment: Text.AlignRight }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
+    }
+
+    // Compact read-only value row
+    component ValueRow : Item {
+        property string label: ""
+        property string value: ""
+        property string unit:  ""
+        property color  vColor: valueBlue
+        height: rowH
+        Text { x: 6; anchors.verticalCenter: parent.verticalCenter; width: 160
+               text: parent.label; font.pixelSize: fsLbl; color: textMuted }
+        Text { anchors { right: unitItem.visible ? unitItem.left : parent.right
+                         rightMargin: unitItem.visible ? 4 : 8; verticalCenter: parent.verticalCenter }
+               text: parent.value; font.pixelSize: fsVal; color: parent.vColor }
+        Item { id: unitItem; visible: parent.unit !== ""; width: 38
+               anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
+               Text { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                      text: parent.parent.unit; font.pixelSize: fsSm; color: textMuted } }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
+    }
+
+    // Styled TextField
+    component CField : TextField {
+        implicitHeight: rowH - 4
+        font.pixelSize: fsVal; selectByMouse: true
+        padding: 2; leftPadding: 4; rightPadding: 4; topPadding: 1; bottomPadding: 1
+        horizontalAlignment: Text.AlignRight; color: valueBlue
+        background: Rectangle { color: inputBg; border.color: borderIn; border.width: 1 }
+    }
+
+    // Styled ComboBox
+    component CCombo : ComboBox {
+        implicitHeight: rowH - 4
+        font.pixelSize: fsVal
+        background: Rectangle { color: inputBg; border.color: borderIn; border.width: 1 }
+        contentItem: Text { leftPadding: 4; rightPadding: 18; text: parent.displayText
+                            color: valueBlue; font.pixelSize: fsVal; verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight }
+    }
+
+    // Styled SpinBox
+    component CSpin : SpinBox {
+        implicitHeight: rowH - 4; implicitWidth: 90
+        font.pixelSize: fsVal
+        background: Rectangle { color: inputBg; border.color: borderIn; border.width: 1 }
+    }
+
+    // Tab button (top-level)
+    component TabBtn : Rectangle {
+        id: tbr; property string label: ""; property bool active: false; signal clicked
+        height: active ? 26 : 24
+        radius: 0
+        color: active ? activeBlue : (tma.containsMouse ? "#e4e8ed" : "#d8dde3")
+        border.color: active ? "#1a5a90" : borderIn; border.width: 1
+        transform: Translate { y: tbr.active ? -2 : 0 }
+        z: active ? 2 : 1
+        Rectangle { anchors.left:tbr.left; anchors.top:tbr.top; width:tbr.width-1; height:1; color:"#f8fafc"; visible:!active }
+        Rectangle { anchors.left:tbr.left; anchors.top:tbr.top; width:1; height:tbr.height-1; color:"#f8fafc"; visible:!active }
+        Rectangle { anchors.left: tbr.left; anchors.right: tbr.right; anchors.bottom: tbr.bottom; height: active ? 2 : 1; color: active ? cmdBar : borderIn }
+        Text { anchors.centerIn: parent; text: tbr.label; font.pixelSize: fsLbl; font.bold: true
+               color: active ? white : textMain }
+        MouseArea { id: tma; anchors.fill: parent; hoverEnabled: true; onClicked: tbr.clicked() }
+    }
+
+    component SubTabBtn : Rectangle {
+        id: stbr; property string label: ""; property bool active: false; signal clicked
+        height: active ? 26 : 24
+        radius: 0
+        color: active ? activeBlue : (stma.containsMouse ? "#e4e8ed" : "#d8dde3")
+        border.color: active ? "#1a5a90" : borderIn; border.width: 1
+        transform: Translate { y: stbr.active ? -2 : 0 }
+        z: active ? 2 : 1
+        Rectangle { anchors.left: stbr.left; anchors.right: stbr.right; anchors.bottom: stbr.bottom; height: active ? 2 : 1; color: active ? cmdBar : borderIn }
+        Text { anchors.centerIn: parent; text: stbr.label; font.pixelSize: fsLbl; font.bold: true
+               color: active ? white : textMain }
+        MouseArea { id: stma; anchors.fill: parent; hoverEnabled: true; onClicked: stbr.clicked() }
+    }
+
+    component HDivider : Rectangle { height: 1; color: borderIn }
+
+    // ──────────────────────────────────────────────────────────
+    //  Root layout
+    // ──────────────────────────────────────────────────────────
     Rectangle {
-        anchors.fill: parent
-        radius: 10
-        color: "transparent"
-        border.color: outerBorder
-        border.width: 1
-    }
+        anchors.fill: parent; anchors.margins: 4
+        color: bgOuter; border.color: borderOut; border.width: 1
 
-    // ── Top tab bar ───────────────────────────────────────
-    Row {
-        id: topTabs
-        x: 18; y: 8
-        spacing: 8
-
-        Repeater {
-            model: ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"]
-            delegate: Rectangle {
-                width:  modelData === "Worksheet/Solver" ? 130 : modelData === "Diagnostics" ? 108 : 100
-                height: 30
-                radius: 10
-                color:  root.activeTab === modelData ? tabActiveBg : tabIdleBg
-                border.color: outerBorder; border.width: 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData
-                    font.pixelSize: fsTabBtn; font.bold: true
-                    color: root.activeTab === modelData ? white : textDark
-                }
-                MouseArea { anchors.fill: parent; onClicked: root.activeTab = modelData }
-            }
-        }
-    }
-
-    // ── Workspace frame ───────────────────────────────────────
-    Rectangle {
-        id: workspaceFrame
-        x: 18; y: 50
-        width: parent.width - 36
-        height: parent.height - 60
-        radius: 12
-        color: panelBg
-        border.color: outerBorder; border.width: 1
-    }
-
-    // ==========================================================
-    //  INLINE COMPONENTS
-    // ==========================================================
-
-    // Card frame (header bar + divider + title)
-    component CardFrame: Rectangle {
-        id: cf
-        property string title: ""
-        radius: 6; color: cardBg
-        border.color: gridLine; border.width: 1
-
+        // Top tab bar
         Rectangle {
-            anchors { left:parent.left; right:parent.right; top:parent.top }
-            height: 30; radius: 6; color: cardHeaderBg
-            // square off bottom corners
-            Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:6; color:cardHeaderBg }
-        }
-        Rectangle {
-            anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:29 }
-            height: 1; color: gridLine
-        }
-        Text {
-            x: 10; y: 8
-            text: cf.title
-            font.pixelSize: fsSectionHeader; font.bold: true
-            color: textDark
-        }
-    }
+            id: topTabBar
+            x: 0; y: 0; width: parent.width; height: 40
+            color: cmdBar; border.color: borderIn; border.width: 1
 
-    // A labelled row with a value box on the right (+ optional unit)
-    component FieldRow: Item {
-        id: fr
-        property string label:  ""
-        property string value:  ""
-        property string unit:   ""
-        property bool   editable: false
-        signal committed(string newVal)
-
-        height: 28
-
-        Text {
-            x: 10; anchors.verticalCenter: parent.verticalCenter
-            text: fr.label; color: textMuted
-            font.pixelSize: fsLabel
-        }
-
-        // unit label (right-most)
-        Text {
-            visible: fr.unit !== ""
-            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-            text: fr.unit; color: textMuted; font.pixelSize: fsSmall
-        }
-
-        // value box
-        Rectangle {
-            id: valueBox
-            width:  120; height: parent.height - 8
-            anchors {
-                right:  fr.unit !== "" ? unitLbl.left : parent.right
-                rightMargin: fr.unit !== "" ? 6 : 8
-                verticalCenter: parent.verticalCenter
-            }
-            radius: 3
-            color:  fr.editable ? buttonBg : "transparent"
-            border.color: fr.editable ? gridLine : "transparent"
-            border.width: fr.editable ? 1 : 0
-
-            Text {
-                anchors { right:parent.right; rightMargin:6; verticalCenter:parent.verticalCenter }
-                text: fr.value; color: valueBlue; font.pixelSize: fsValue
-            }
-        }
-
-        // invisible unit anchor item so we can reference it above
-        Item { id: unitLbl; width:36; anchors { right:parent.right; rightMargin:0; verticalCenter:parent.verticalCenter } }
-    }
-
-    // Divider line inside a card
-    component HDivider: Rectangle {
-        height: 1; color: gridLine
-    }
-
-    // Simple column of FieldRows, drawn from a model array
-    // model element: { label, value, unit? }
-    component FieldTable: Column {
-        id: ft
-        property var rows: []
-        spacing: 0
-        anchors.left:  parent ? parent.left  : undefined
-        anchors.right: parent ? parent.right : undefined
-
-        Repeater {
-            model: ft.rows
-            delegate: Column {
-                width: ft.width
-                FieldRow {
-                    width: parent.width
-                    label: modelData.label || ""
-                    value: modelData.value !== undefined ? String(modelData.value) : "—"
-                    unit:  modelData.unit  || ""
-                }
-                HDivider { width: parent.width; visible: index < ft.rows.length - 1 }
-            }
-        }
-    }
-
-    // ── Tab button for sub-tabs ───────────────────────────────
-    component SubTabBtn: Rectangle {
-        id: stb
-        property string label:    ""
-        property bool   isActive: false
-        signal clicked()
-        width: 120; height: 26; radius: 8
-        color: stb.isActive ? tabActiveBg : tabIdleBg
-        border.color: outerBorder; border.width: 1
-        Text {
-            anchors.centerIn: parent; text: stb.label
-            font.pixelSize: fsTabBtn; font.bold: true
-            color: stb.isActive ? white : textDark
-        }
-        MouseArea { anchors.fill: parent; onClicked: stb.clicked() }
-    }
-
-    // ── Data table (header + scrollable rows) ─────────────────
-    component DataGrid: Rectangle {
-        id: dg
-        property var  columns:      []
-        property var  rows:         []
-        property var  colRatios:    []   // relative widths; equal if empty
-        radius: 6; color: cardBg
-        border.color: outerBorder; border.width: 1
-
-        function colW(i) {
-            var tot = 0
-            for (var t = 0; t < colRatios.length; ++t) tot += colRatios[t]
-            if (tot <= 0) return width / Math.max(1, columns.length)
-            return width * colRatios[i] / tot
-        }
-
-        // Header
-        Rectangle {
-            id: dgHeader
-            anchors { left:parent.left; right:parent.right; top:parent.top }
-            height: 32; color: cardHeaderBg
-            Rectangle { anchors.bottom:parent.bottom; width:parent.width; height:5; color:cardHeaderBg }
-
-            Repeater {
-                model: dg.columns.length
-                delegate: Item {
-                    x: { var s=0; for(var i=0;i<index;i++) s+=dg.colW(i); return s }
-                    width: dg.colW(index); height: 32
-                    Text {
-                        x:8; anchors.verticalCenter:parent.verticalCenter
-                        text: dg.columns[index]
-                        font.pixelSize: fsLabel; font.bold: true; color: textDark
-                    }
-                    Rectangle { anchors.right:parent.right; width:1; height:parent.height; color:gridLine;
-                                visible: index < dg.columns.length-1 }
+            Common.ClassicTabs {
+                id: mainTabs
+                x: 8; y: 6
+                tabs: [
+                    { text: "Worksheet/Solver", width: 130 },
+                    { text: "Performance",      width: 92 },
+                    { text: "Profiles",         width: 76 },
+                    { text: "Products",         width: 76 },
+                    { text: "Run Log",          width: 74 },
+                    { text: "Diagnostics",      width: 90 }
+                ]
+                currentIndex: ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"].indexOf(root.activeTab)
+                onTabClicked: function(index) {
+                    const names = ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"]
+                    root.activeTab = names[index]
                 }
             }
         }
-        Rectangle {
-            anchors { left:parent.left; right:parent.right; top:dgHeader.bottom }
-            height: 1; color: gridLine
-        }
 
-        ListView {
-            anchors { left:parent.left; right:parent.right; top:dgHeader.bottom; topMargin:1; bottom:parent.bottom }
-            clip: true
-            model: dg.rows
-            delegate: Item {
-                width: dg.width
-                height: Math.max(30, (dg.height - 33) / Math.max(1, dg.rows.length))
-
-                Rectangle { anchors { left:parent.left; right:parent.right; bottom:parent.bottom }
-                            height:1; color:gridLine; visible: index < dg.rows.length-1 }
-
-                Repeater {
-                    model: dg.columns.length
-                    delegate: Item {
-                        x: { var s=0; for(var i=0;i<index;i++) s+=dg.colW(i); return s }
-                        width: dg.colW(index); height: parent.height
-                        Rectangle { anchors.right:parent.right; width:1; height:parent.height; color:gridLine;
-                                    visible: index < dg.columns.length-1 }
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: {
-                                var row = dg.rows[parent.parent.parent.parent.index]  // ListView row data
-                                if (!row) return ""
-                                if (Array.isArray(row)) return row[index] !== undefined ? String(row[index]) : ""
-                                return ""
-                            }
-                            color: index > 0 ? valueBlue : textDark
-                            font.pixelSize: fsValue
-                            x: (index > 0) ? parent.width - implicitWidth - 8 : 8
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ==========================================================
-    //  WORKSHEET TAB
-    // ==========================================================
-    Item {
-        id: worksheetTab
-        visible: root.activeTab === "Worksheet/Solver"
-        anchors { fill: workspaceFrame; margins: 10 }
-
-        Row {
-            id: wsSubTabs
-            spacing: 8
-            SubTabBtn { label:"Setup"; isActive: root.worksheetSubTab === "Setup"; onClicked: root.worksheetSubTab = "Setup" }
-            SubTabBtn { label:"Draws/Solver"; isActive: root.worksheetSubTab === "Draws/Solver"; onClicked: root.worksheetSubTab = "Draws/Solver" }
-        }
-
-        // ── Setup sub-tab ──────────────────────────────────────
-        // Left:  General Setup (editable) + Thermodynamics (editable)
-        // Right: Condenser (editable) + Reboiler (editable) + Murphree Efficiencies (editable)
+        // Content area
         Item {
-            id: wsSetup
-            visible: root.worksheetSubTab === "Setup"
-            anchors { left:parent.left; right:parent.right; top:wsSubTabs.bottom; topMargin:10; bottom:parent.bottom }
+            id: content
+            x: 6; y: topTabBar.height + 6
+            width: parent.width - 12
+            height: parent.height - topTabBar.height - 12
 
-            property real colW:    (width - 12) / 2
-            property int  rowH:    26
-            property int  inputW:  120
-            property int  unitW:   34
-            readonly property color inputBg: "#f7f8fa"
+            // ==================================================
+            //  WORKSHEET / SOLVER TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Worksheet/Solver"
 
-            // ── LEFT COLUMN ────────────────────────────────────
-
-            // General Setup
-            CardFrame {
-                id: generalCard
-                title: "General Setup"
-                x: 0; y: 0; width: wsSetup.colW
-                height: generalCol.implicitHeight + 42
-
-                Column {
-                    id: generalCol
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                    spacing: 0
-
-                    // Column Name
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Column Name"; color:textMuted; font.pixelSize:fsLabel }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:Math.round(wsSetup.inputW * 2.5)
-                            text: appState ? (appState.name || appState.id || "") : ""
-                            font.pixelSize:fsValue; color:valueBlue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.name = text }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Feed Stream (read-only)
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Feed Stream"; color:textMuted; font.pixelSize:fsLabel }
-                        Text { anchors { right:parent.right; rightMargin:10; verticalCenter:parent.verticalCenter }
-                               text: appState && appState.feedStream ? (appState.feedStream.streamName || "—") : "—"
-                               color:valueBlue; font.pixelSize:fsValue }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Fluid / Crude – stretches to fill available width so long crude names are fully visible
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { id:crudeLbl; x:10; anchors.verticalCenter:parent.verticalCenter; text:"Fluid / Crude"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            id: crudeCombo
-                            anchors { left:crudeLbl.right; leftMargin:12; right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            implicitHeight: wsSetup.rowH
-                            model: appState && appState.feedStream ? appState.feedStream.fluidNames : []
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; rightPadding:20; text:crudeCombo.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            Component.onCompleted: {
-                                if (!appState || !appState.feedStream) return
-                                var i = appState.feedStream.fluidNames.indexOf(appState.feedStream.selectedFluid)
-                                if (i >= 0) currentIndex = i
-                            }
-                            onActivated: { if (appState && appState.feedStream) appState.feedStream.selectedFluid = model[index] }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Total Trays
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Total Trays"; color:textMuted; font.pixelSize:fsLabel }
-                        SpinBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            from: appState ? appState.minTrays : 1
-                            to:   appState ? appState.maxTrays : 200
-                            value: appState ? appState.trays : 32
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onValueModified: { if (appState) appState.trays = value }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Feed Tray
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Feed Tray"; color:textMuted; font.pixelSize:fsLabel }
-                        SpinBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            from:1; to: appState ? Math.max(1, appState.trays) : 32
-                            value: appState ? appState.feedTray : 4
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onValueModified: { if (appState) appState.feedTray = value }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Feed Rate
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Feed Rate"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "kg/h"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState && appState.feedStream ? String(Math.round(appState.feedStream.flowRateKgph)) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState && appState.feedStream) appState.feedStream.flowRateKgph = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Feed Temperature
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Feed Temperature"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "K"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState && appState.feedStream ? fmt3(appState.feedStream.temperatureK) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState && appState.feedStream) appState.feedStream.temperatureK = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Top Pressure
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Top Pressure"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Pa"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? String(Math.round(appState.topPressurePa)) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.topPressurePa = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Pressure Drop/Tray
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Pressure Drop/Tray"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Pa"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? String(Math.round(appState.dpPerTrayPa)) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.dpPerTrayPa = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // T Overhead spec (editable)
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"T Overhead (spec)"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "K"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.topTsetK) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.topTsetK = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // T Bottoms spec (editable)
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"T Bottoms (spec)"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "K"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.bottomTsetK) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.bottomTsetK = Number(text) }
-                        }
+                // Sub-tab bar
+                Rectangle {
+                    id: wsSubBar
+                    x: 0; y: 0; width: parent.width; height: 32
+                    color: cmdBar; border.color: borderIn; border.width: 1
+                    Common.ClassicTabs {
+                        id: wsTabs
+                        x: 6; y: 3
+                        tabs: [
+                            { text: "Setup", width: 80 },
+                            { text: "Draws/Solver", width: 102 }
+                        ]
+                        currentIndex: root.worksheetSubTab === "Draws/Solver" ? 1 : 0
+                        onTabClicked: function(index) { root.worksheetSubTab = index === 1 ? "Draws/Solver" : "Setup" }
                     }
                 }
-            }
 
-            // Murphree Efficiencies
-            CardFrame {
-                id: effCard
-                title: "Murphree Efficiencies"
-                x: 0
-                y: generalCard.y + generalCard.height + 10
-                width: wsSetup.colW
-                height: wsSetup.height - y
-
-                // Enable liquid efficiency toggle
+                // ── SETUP sub-tab ──────────────────────────────
                 Item {
-                    id: etaEnableRow
-                    x:0; y:36; width:parent.width; height:wsSetup.rowH
-                    Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Enable Liquid η"; color:textMuted; font.pixelSize:fsLabel }
-                    CheckBox {
-                        anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                        checked: appState ? appState.enableEtaL : false
-                        onToggled: { if (appState) appState.enableEtaL = checked }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
+                    visible: root.worksheetSubTab === "Setup"
+                    anchors { left: parent.left; right: parent.right; top: wsSubBar.bottom; topMargin: 4; bottom: parent.bottom }
 
-                // Column headers
-                Item {
-                    id: etaHdrRow
-                    anchors { left:parent.left; right:parent.right; top:etaEnableRow.bottom }
-                    height: 26
-                    property real secW: width * 0.22
-                    property real etaW: width * 0.25
-                    Text { x:10; anchors.verticalCenter:parent.verticalCenter; width:etaHdrRow.secW; text:"Section"; font.bold:true; font.pixelSize:fsSmall; color:textDark }
-                    Text { x:10+etaHdrRow.secW; anchors.verticalCenter:parent.verticalCenter; width:etaHdrRow.etaW; text:"Vapour η"; font.bold:true; font.pixelSize:fsSmall; color:textDark; horizontalAlignment:Text.AlignRight }
-                    Text { x:10+etaHdrRow.secW+etaHdrRow.etaW; anchors.verticalCenter:parent.verticalCenter; width:etaHdrRow.etaW; text:"Liquid η"; font.bold:true; font.pixelSize:fsSmall; color:textDark; horizontalAlignment:Text.AlignRight }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
+                    property real halfW: (width - 6) / 2
+                    property int  inputW: 110
+                    property int  unitW:  36
 
-                // Top
-                Item {
-                    id: etaTopRow
-                    anchors { left:parent.left; right:parent.right; top:etaHdrRow.bottom }
-                    height: wsSetup.rowH
-                    property real secW: width * 0.22
-                    property real etaW: width * 0.25
-                    Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Top"; color:textMuted; font.pixelSize:fsLabel }
-                    TextField {
-                        x: 10+etaTopRow.secW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaTopRow.etaW-6
-                        text: appState ? fmt3(appState.etaVTop) : ""
-                        font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaVTop = Number(text) }
-                    }
-                    TextField {
-                        x: 10+etaTopRow.secW+etaTopRow.etaW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaTopRow.etaW-6
-                        enabled: appState ? appState.enableEtaL : false
-                        text: appState ? fmt3(appState.etaLTop) : ""
-                        font.pixelSize:fsValue; color:enabled ? valueBlue : textMuted; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:enabled ? wsSetup.inputBg : cardBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaLTop = Number(text) }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
+                    // LEFT COLUMN
+                    // General Setup
+                    CompactFrame {
+                        id: generalCard
+                        x: 0; y: 0; width: parent.halfW
+                        height: generalSectionHdr.height + generalCol.implicitHeight + 1
 
-                // Middle
-                Item {
-                    id: etaMidRow
-                    anchors { left:parent.left; right:parent.right; top:etaTopRow.bottom }
-                    height: wsSetup.rowH
-                    property real secW: width * 0.22
-                    property real etaW: width * 0.25
-                    Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Middle"; color:textMuted; font.pixelSize:fsLabel }
-                    TextField {
-                        x: 10+etaMidRow.secW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaMidRow.etaW-6
-                        text: appState ? fmt3(appState.etaVMid) : ""
-                        font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaVMid = Number(text) }
-                    }
-                    TextField {
-                        x: 10+etaMidRow.secW+etaMidRow.etaW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaMidRow.etaW-6
-                        enabled: appState ? appState.enableEtaL : false
-                        text: appState ? fmt3(appState.etaLMid) : ""
-                        font.pixelSize:fsValue; color:enabled ? valueBlue : textMuted; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:enabled ? wsSetup.inputBg : cardBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaLMid = Number(text) }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
+                        SectionHeader { id: generalSectionHdr; width: parent.width; text: "General Setup" }
 
-                // Bottom
-                Item {
-                    id: etaBotRow
-                    anchors { left:parent.left; right:parent.right; top:etaMidRow.bottom }
-                    height: wsSetup.rowH
-                    property real secW: width * 0.22
-                    property real etaW: width * 0.25
-                    Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Bottom"; color:textMuted; font.pixelSize:fsLabel }
-                    TextField {
-                        x: 10+etaBotRow.secW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaBotRow.etaW-6
-                        text: appState ? fmt3(appState.etaVBot) : ""
-                        font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaVBot = Number(text) }
-                    }
-                    TextField {
-                        x: 10+etaBotRow.secW+etaBotRow.etaW; anchors.verticalCenter:parent.verticalCenter
-                        width:etaBotRow.etaW-6
-                        enabled: appState ? appState.enableEtaL : false
-                        text: appState ? fmt3(appState.etaLBot) : ""
-                        font.pixelSize:fsValue; color:enabled ? valueBlue : textMuted; horizontalAlignment:Text.AlignRight
-                        background: Rectangle { radius:3; color:enabled ? wsSetup.inputBg : cardBg; border.color:gridLine; border.width:1 }
-                        onEditingFinished: { if (appState) appState.etaLBot = Number(text) }
-                    }
-                }
-            }
-            // ── RIGHT COLUMN ───────────────────────────────────
+                        Column {
+                            id: generalCol
+                            anchors { left: parent.left; right: parent.right; top: generalSectionHdr.bottom }
 
-            // Condenser
-            CardFrame {
-                id: condCard
-                title: "Condenser"
-                x: wsSetup.colW + 12; y: 0
-                width: wsSetup.colW
-                height: condCol.implicitHeight + 42
-
-                Column {
-                    id: condCol
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                    spacing: 0
-
-                    // Condenser Type
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Condenser Type"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["total","partial"]
-                            currentIndex: appState ? (appState.condenserType === "partial" ? 1 : 0) : 0
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.condenserType = model[index] }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Condenser Spec
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Spec Type"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["reflux","duty","temperature"]
-                            currentIndex: {
-                                if (!appState) return 0
-                                var s = (appState.condenserSpec || "").toLowerCase()
-                                if (s === "refluxratio" || s === "reflux") return 0
-                                if (s === "duty") return 1
-                                if (s === "temperature") return 2
-                                return 0
-                            }
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.condenserSpec = model[index] }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Reflux Ratio
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Reflux Ratio"; color:textMuted; font.pixelSize:fsLabel }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.refluxRatio) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.refluxRatio = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Fixed Duty Qc
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Fixed Duty"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "kW"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? String(Math.round(appState.qcKW)) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.qcKW = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // T Setpoint condenser
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"T Setpoint"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "K"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.topTsetK) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.topTsetK = Number(text) }
-                        }
-                    }
-
-                }
-            }
-
-            // Reboiler
-            CardFrame {
-                id: rebCard
-                title: "Reboiler"
-                x: wsSetup.colW + 12
-                y: condCard.y + condCard.height + 10
-                width: wsSetup.colW
-                height: rebCol.implicitHeight + 42
-
-                Column {
-                    id: rebCol
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                    spacing: 0
-
-                    // Reboiler Type
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Reboiler Type"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["partial","total"]
-                            currentIndex: appState ? (appState.reboilerType === "total" ? 1 : 0) : 0
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.reboilerType = model[index] }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Reboiler Spec
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Spec Type"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["boilup","duty","temperature"]
-                            currentIndex: {
-                                if (!appState) return 0
-                                var s = (appState.reboilerSpec || "").toLowerCase()
-                                if (s === "boilup" || s === "boilupratio") return 0
-                                if (s === "duty") return 1
-                                if (s === "temperature") return 2
-                                return 0
-                            }
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.reboilerSpec = model[index] }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Boilup Ratio
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Boilup Ratio"; color:textMuted; font.pixelSize:fsLabel }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.boilupRatio) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.boilupRatio = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Fixed Duty Qr
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Fixed Duty"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "kW"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? String(Math.round(appState.qrKW)) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.qrKW = Number(text) }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // T Setpoint reboiler
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"T Setpoint"; color:textMuted; font.pixelSize:fsLabel }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 6
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "K"
-                            color: textMuted
-                            font.pixelSize: fsSmall
-                        }
-                        TextField {
-                            anchors { right:parent.right; rightMargin:wsSetup.unitW; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            text: appState ? fmt3(appState.bottomTsetK) : ""
-                            font.pixelSize:fsValue; color:valueBlue; horizontalAlignment:Text.AlignRight
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            onEditingFinished: { if (appState) appState.bottomTsetK = Number(text) }
-                        }
-                    }
-
-                }
-            }
-
-            // Thermodynamics
-            CardFrame {
-                id: thermoCard
-                title: "Thermodynamics"
-                x: wsSetup.colW + 12
-                y: rebCard.y + rebCard.height + 10
-                width: wsSetup.colW
-                height: thermoCol.implicitHeight + 42
-
-                Column {
-                    id: thermoCol
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                    spacing: 0
-
-                    // EOS Mode
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"EOS Mode"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["Auto","Manual"]
-                            currentIndex: appState ? (appState.eosMode === "manual" ? 1 : 0) : 0
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:valueBlue; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.eosMode = (index === 1 ? "manual" : "auto") }
-                        }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
-
-                    // Manual EOS
-                    Item { width:parent.width; height:wsSetup.rowH
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Manual EOS"; color:textMuted; font.pixelSize:fsLabel }
-                        ComboBox {
-                            anchors { right:parent.right; rightMargin:8; verticalCenter:parent.verticalCenter }
-                            width:wsSetup.inputW
-                            implicitHeight: wsSetup.rowH
-                            model: ["PR","PRSV","SRK"]
-                            currentIndex: {
-                                if (!appState) return 1
-                                var m = ["PR","PRSV","SRK"].indexOf(appState.eosManual)
-                                return m >= 0 ? m : 1
-                            }
-                            enabled: appState ? appState.eosMode === "manual" : false
-                            font.pixelSize:fsValue
-                            background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                            contentItem: Text { leftPadding:6; text:parent.displayText; color:parent.enabled ? valueBlue : textMuted; font.pixelSize:fsValue; verticalAlignment:Text.AlignVCenter }
-                            onActivated: { if (appState) appState.eosManual = model[index] }
-                        }
-                    }
-                }
-            }
-
-        } // wsSetup
-
-        // ── Draws/Solver sub-tab ──────────────────────────────────────
-        // Left:  Draw Specifications (full height)
-        // Right: Solve / Status  +  Material Balance
-        Item {
-            id: wsDrawsSolver
-            visible: root.worksheetSubTab === "Draws/Solver"
-            anchors { left:parent.left; right:parent.right; top:wsSubTabs.bottom; topMargin:10; bottom:parent.bottom }
-
-            property real drawColW:  (width - 12) * 2 / 3
-            property real solveColW: (width - 12) * 1 / 3
-
-            // ── LEFT COLUMN (2/3): Draw Specs full height ──
-
-            // Draw Specifications – full height, 2/3 width
-            CardFrame {
-                id: drawCard
-                title: "Draw Specifications"
-                x: 0; y: 0
-                width: wsDrawsSolver.drawColW
-                height: wsDrawsSolver.height
-
-                // ── helpers ──────────────────────────────────
-                function feedKgph() {
-                    return (appState && appState.feedStream) ? Number(appState.feedStream.flowRateKgph) : 0
-                }
-                function totalTargetPct() {
-                    if (!appState || !appState.drawSpecs) return 0
-                    var tot = 0
-                    var specs = appState.drawSpecs
-                    for (var i = 0; i < specs.length; i++) {
-                        var s = specs[i]
-                        var v = Number(s.value)
-                        if (s.basis === "feedPct" && isFinite(v)) tot += v
-                    }
-                    return tot
-                }
-                function commitSpecs(newSpecs) {
-                    if (appState) appState.drawSpecs = newSpecs
-                }
-
-                // ── column headers ────────────────────────────
-                Item {
-                    id: drawHdr
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                    height: 26
-                    Row {
-                        anchors { left:parent.left; right:parent.right; leftMargin:10; rightMargin:8 }
-                        height: parent.height; spacing: 4
-                        Text { width:parent.width - 300; text:"Name";  font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height }
-                        Text { width:60;  text:"Tray";  font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height; horizontalAlignment:Text.AlignHCenter }
-                        Text { width:52; text:"Phase"; font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height; horizontalAlignment:Text.AlignHCenter }
-                        Text { width:78; text:"Basis"; font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height; horizontalAlignment:Text.AlignHCenter }
-                        Text { width:68; text:"Value"; font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height; horizontalAlignment:Text.AlignRight }
-                        Text { width:26;   text:"";      font.bold:true; font.pixelSize:fsSmall; color:textDark; verticalAlignment:Text.AlignVCenter; height:parent.height }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
-
-                // ── scrollable editable rows ──────────────────
-                ScrollView {
-                    id: drawScrollView
-                    anchors { left:parent.left; right:parent.right; top:drawHdr.bottom; bottom:drawFooter.top }
-                    clip: true
-                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-                    Column {
-                        width: drawScrollView.width
-                        spacing: 0
-
-                        Repeater {
-                            id: drawRepeater
-                            model: appState ? appState.drawSpecs : []
-
-                            delegate: Item {
-                                width: drawScrollView.width
-                                height: 26
-                                property var spec: modelData
-                                property int rowIdx: index
-
-                                Row {
-                                    anchors { left:parent.left; right:parent.right; leftMargin:10; rightMargin:8 }
-                                    height: parent.height; spacing: 4
-
-                                    // Name – fills all remaining width
-                                    TextField {
-                                        width: parent.width - 300; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: spec.name || ""
-                                        font.pixelSize: fsSmall; color: valueBlue
-                                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                                        onEditingFinished: {
-                                            var s = appState.drawSpecs; var copy = []
-                                            for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                            copy[rowIdx].name = text; drawCard.commitSpecs(copy)
-                                        }
-                                    }
-
-                                    // Tray
-                                    SpinBox {
-                                        width: 60; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        from: 2; to: appState ? Math.max(2, appState.trays - 1) : 30
-                                        value: spec.tray || 1
-                                        font.pixelSize: fsSmall
-                                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                                        onValueModified: {
-                                            var s = appState.drawSpecs; var copy = []
-                                            for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                            copy[rowIdx].tray = value; drawCard.commitSpecs(copy)
-                                        }
-                                    }
-
-                                    // Phase
-                                    ComboBox {
-                                        width: 52; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        model: ["L","V"]
-                                        currentIndex: (spec.phase === "V") ? 1 : 0
-                                        font.pixelSize: fsSmall; implicitHeight: 26
-                                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                                        contentItem: Text { leftPadding:4; text:parent.displayText; color:valueBlue; font.pixelSize:fsSmall; verticalAlignment:Text.AlignVCenter }
-                                        onActivated: {
-                                            var s = appState.drawSpecs; var copy = []
-                                            for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                            copy[rowIdx].phase = model[index]; drawCard.commitSpecs(copy)
-                                        }
-                                    }
-
-                                    // Basis
-                                    ComboBox {
-                                        width: 78; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        model: ["feedPct","kg/h"]
-                                        currentIndex: (spec.basis === "kg/h") ? 1 : 0
-                                        font.pixelSize: fsSmall; implicitHeight: 26
-                                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                                        contentItem: Text { leftPadding:4; text:parent.displayText; color:valueBlue; font.pixelSize:fsSmall; verticalAlignment:Text.AlignVCenter }
-                                        onActivated: {
-                                            var s = appState.drawSpecs; var copy = []
-                                            for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                            copy[rowIdx].basis = model[index]; drawCard.commitSpecs(copy)
-                                        }
-                                    }
-
-                                    // Value
-                                    TextField {
-                                        width: 68; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: spec.value !== undefined ? fmt2(Number(spec.value)) : "0.00"
-                                        font.pixelSize: fsSmall; color: valueBlue; horizontalAlignment: Text.AlignRight
-                                        background: Rectangle { radius:3; color:wsSetup.inputBg; border.color:gridLine; border.width:1 }
-                                        onEditingFinished: {
-                                            var s = appState.drawSpecs; var copy = []
-                                            for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                            copy[rowIdx].value = Number(text); drawCard.commitSpecs(copy)
-                                        }
-                                    }
-
-                                    // Delete ×
-                                    Rectangle {
-                                        width: 26; height: parent.height - 2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        color: "transparent"
-                                        Text { anchors.centerIn:parent; text:"×"; font.pixelSize:12; color:errorRed; font.bold:true }
-                                        MouseArea {
-                                            anchors.fill: parent
-                                            onClicked: {
-                                                var s = appState.drawSpecs; var copy = []
-                                                for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                                copy.splice(rowIdx, 1); drawCard.commitSpecs(copy)
-                                            }
-                                        }
-                                    }
+                            // Column Name
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Column Name"; font.pixelSize:fsLbl; color:textMuted }
+                                CField {
+                                    anchors { left:parent.left; leftMargin:168; right:parent.right; rightMargin:6; verticalCenter:parent.verticalCenter }
+                                    text: appState ? (appState.name || appState.id || "") : ""
+                                    onEditingFinished: { if (appState) appState.name = text }
                                 }
                                 HDivider { anchors.bottom:parent.bottom; width:parent.width }
                             }
-                        }
-                    }
-                }
-
-                // ── footer ────────────────────────────────────
-                Item {
-                    id: drawFooter
-                    anchors { left:parent.left; right:parent.right; bottom:parent.bottom }
-                    height: 36
-                    HDivider { anchors.top:parent.top; width:parent.width }
-                    Row {
-                        anchors { left:parent.left; right:parent.right; leftMargin:10; rightMargin:10; verticalCenter:parent.verticalCenter }
-                        spacing: 8
-
-                        Rectangle {
-                            width: 80; height: 24; radius: 5
-                            color: tabActiveBg; border.color: outerBorder; border.width: 1
-                            Text { anchors.centerIn:parent; text:"+ Add Draw"; color:white; font.pixelSize:fsSmall; font.bold:true }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    if (!appState) return
-                                    var s = appState.drawSpecs; var copy = []
-                                    for (var k=0;k<s.length;k++) copy.push(Object.assign({},s[k]))
-                                    copy.push({ name:"New Draw", tray: appState.feedTray || 16, basis:"feedPct", phase:"L", value:0 })
-                                    drawCard.commitSpecs(copy)
+                            // Feed Stream
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Stream"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter}
+                                       text: appState&&appState.feedStream?(appState.feedStream.streamName||"—"):"—"
+                                       font.pixelSize:fsVal; color:valueBlue }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Fluid / Crude
+                            Item { width: parent.width; height: rowH
+                                Text { id:crudeLbl2; x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Fluid / Crude"; font.pixelSize:fsLbl; color:textMuted }
+                                CCombo {
+                                    anchors{left:parent.left;leftMargin:168;right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter}
+                                    model: appState&&appState.feedStream?appState.feedStream.fluidNames:[]
+                                    Component.onCompleted: {
+                                        if (!appState||!appState.feedStream) return
+                                        var i=appState.feedStream.fluidNames.indexOf(appState.feedStream.selectedFluid)
+                                        if (i>=0) currentIndex=i
+                                    }
+                                    onActivated: { if (appState&&appState.feedStream) appState.feedStream.selectedFluid=model[index] }
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Total Trays
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Total Trays"; font.pixelSize:fsLbl; color:textMuted }
+                                CSpin {
+                                    anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter}
+                                    from:appState?appState.minTrays:1; to:appState?appState.maxTrays:200
+                                    value:appState?appState.trays:32
+                                    onValueModified: { if (appState) appState.trays=value }
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Feed Tray
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Tray"; font.pixelSize:fsLbl; color:textMuted }
+                                CSpin {
+                                    anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter}
+                                    from:1; to:appState?Math.max(1,appState.trays):32
+                                    value:appState?appState.feedTray:4
+                                    onValueModified: { if (appState) appState.feedTray=value }
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Feed Rate
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Rate"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"kg/h"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState&&appState.feedStream?String(Math.round(appState.feedStream.flowRateKgph)):""
+                                    onEditingFinished:{if(appState&&appState.feedStream)appState.feedStream.flowRateKgph=Number(text)}
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Feed Temperature
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Temperature"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState&&appState.feedStream?fmt3(appState.feedStream.temperatureK):""
+                                    onEditingFinished:{if(appState&&appState.feedStream)appState.feedStream.temperatureK=Number(text)}
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Top Pressure
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Top Pressure"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"Pa"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState?String(Math.round(appState.topPressurePa)):""
+                                    onEditingFinished:{if(appState)appState.topPressurePa=Number(text)}
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // Pressure Drop/Tray
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Pressure Drop/Tray"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"Pa"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState?String(Math.round(appState.dpPerTrayPa)):""
+                                    onEditingFinished:{if(appState)appState.dpPerTrayPa=Number(text)}
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // T Overhead
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"T Overhead (spec)"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState?fmt3(appState.topTsetK):""
+                                    onEditingFinished:{if(appState)appState.topTsetK=Number(text)}
+                                }
+                                HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                            }
+                            // T Bottoms
+                            Item { width: parent.width; height: rowH
+                                Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"T Bottoms (spec)"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
+                                CField {
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
+                                    text:appState?fmt3(appState.bottomTsetK):""
+                                    onEditingFinished:{if(appState)appState.bottomTsetK=Number(text)}
                                 }
                             }
                         }
+                    }
 
-                        Rectangle {
-                            width: 52; height: 24; radius: 5
-                            color: buttonBg; border.color: gridLine; border.width: 1
-                            Text { anchors.centerIn:parent; text:"Reset"; color:textDark; font.pixelSize:fsSmall }
-                            MouseArea { anchors.fill:parent; onClicked: { if (appState) appState.resetDrawSpecsToDefaults() } }
+                    // Murphree Efficiencies
+                    CompactFrame {
+                        id: effCard2
+                        x: 0; y: generalCard.height + 4; width: parent.halfW
+                        height: effHdr.height + effEnableRow.height + effColHdr.height + etaTopRow2.height + etaMidRow2.height + etaBotRow2.height + 1
+
+                        SectionHeader { id: effHdr; width: parent.width; text: "Murphree Efficiencies" }
+
+                        // Enable toggle
+                        Item { id: effEnableRow; anchors{left:parent.left;right:parent.right;top:effHdr.bottom} height:rowH
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Enable Liquid η";font.pixelSize:fsLbl;color:textMuted}
+                            CheckBox{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter}
+                                     checked:appState?appState.enableEtaL:false
+                                     onToggled:{if(appState)appState.enableEtaL=checked}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
                         }
+                        // Column headers
+                        Item { id: effColHdr; anchors{left:parent.left;right:parent.right;top:effEnableRow.bottom} height:rowH
+                            property real secW: 160; property real etaW: (width-secW-12)/2
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:secW;text:"Section";font.pixelSize:fsSm;font.bold:true;color:textMain}
+                            Text{x:6+secW;anchors.verticalCenter:parent.verticalCenter;width:effColHdr.etaW;text:"Vapour η";font.pixelSize:fsSm;font.bold:true;color:textMain;horizontalAlignment:Text.AlignRight}
+                            Text{x:6+secW+effColHdr.etaW;anchors.verticalCenter:parent.verticalCenter;width:effColHdr.etaW;text:"Liquid η";font.pixelSize:fsSm;font.bold:true;color:textMain;horizontalAlignment:Text.AlignRight}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
+                        // Top
+                        Item { id: etaTopRow2; anchors{left:parent.left;right:parent.right;top:effColHdr.bottom} height:rowH
+                            property real secW:160; property real etaW:(width-secW-12)/2
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;text:"Top";font.pixelSize:fsLbl;color:textMuted}
+                            CField{x:6+secW;anchors.verticalCenter:parent.verticalCenter;width:etaTopRow2.etaW-6
+                                   text:appState?fmt3(appState.etaVTop):"";onEditingFinished:{if(appState)appState.etaVTop=Number(text)}}
+                            CField{x:6+secW+etaTopRow2.etaW;anchors.verticalCenter:parent.verticalCenter;width:etaTopRow2.etaW-6
+                                   enabled:appState?appState.enableEtaL:false
+                                   text:appState?fmt3(appState.etaLTop):"";onEditingFinished:{if(appState)appState.etaLTop=Number(text)}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
+                        // Middle
+                        Item { id: etaMidRow2; anchors{left:parent.left;right:parent.right;top:etaTopRow2.bottom} height:rowH
+                            property real secW:160; property real etaW:(width-secW-12)/2
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;text:"Middle";font.pixelSize:fsLbl;color:textMuted}
+                            CField{x:6+secW;anchors.verticalCenter:parent.verticalCenter;width:etaMidRow2.etaW-6
+                                   text:appState?fmt3(appState.etaVMid):"";onEditingFinished:{if(appState)appState.etaVMid=Number(text)}}
+                            CField{x:6+secW+etaMidRow2.etaW;anchors.verticalCenter:parent.verticalCenter;width:etaMidRow2.etaW-6
+                                   enabled:appState?appState.enableEtaL:false
+                                   text:appState?fmt3(appState.etaLMid):"";onEditingFinished:{if(appState)appState.etaLMid=Number(text)}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
+                        // Bottom
+                        Item { id: etaBotRow2; anchors{left:parent.left;right:parent.right;top:etaMidRow2.bottom} height:rowH
+                            property real secW:160; property real etaW:(width-secW-12)/2
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;text:"Bottom";font.pixelSize:fsLbl;color:textMuted}
+                            CField{x:6+secW;anchors.verticalCenter:parent.verticalCenter;width:etaBotRow2.etaW-6
+                                   text:appState?fmt3(appState.etaVBot):"";onEditingFinished:{if(appState)appState.etaVBot=Number(text)}}
+                            CField{x:6+secW+etaBotRow2.etaW;anchors.verticalCenter:parent.verticalCenter;width:etaBotRow2.etaW-6
+                                   enabled:appState?appState.enableEtaL:false
+                                   text:appState?fmt3(appState.etaLBot):"";onEditingFinished:{if(appState)appState.etaLBot=Number(text)}}
+                        }
+                    }
 
-                        Item { width: 1; height: 1 }
+                    // RIGHT COLUMN — Condenser
+                    CompactFrame {
+                        id: condCard2
+                        x: parent.halfW + 6; y: 0; width: parent.halfW
+                        height: condHdr.height + condCol2.implicitHeight + 1
 
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: {
-                                var tot = drawCard.totalTargetPct()
-                                var kgph = tot * drawCard.feedKgph() / 100.0
-                                return "Total: " + tot.toFixed(1) + "%  (" + Math.round(kgph) + " kg/h)"
+                        SectionHeader { id: condHdr; width: parent.width; text: "Condenser" }
+                        Column {
+                            id: condCol2
+                            anchors { left:parent.left; right:parent.right; top:condHdr.bottom }
+                            // Condenser Type
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Condenser Type";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["total","partial"];currentIndex:appState?(appState.condenserType==="partial"?1:0):0
+                                    onActivated:{if(appState)appState.condenserType=model[index]}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
                             }
-                            font.pixelSize: fsSmall; color: textMuted
-                        }
-                    }
-                }
-            }
-
-
-            // ── RIGHT COLUMN: Solve / Status (full height) ────
-
-            CardFrame {
-                id: solveCard
-                title: "Solve / Status"
-                x: wsDrawsSolver.drawColW + 12; y: 0
-                width: wsDrawsSolver.solveColW; height: wsDrawsSolver.height
-
-                Row {
-                    x:12; y:40; spacing:8
-                    Rectangle {
-                        width:130; height:28; radius:6
-                        color: appState && !appState.solving ? "#2e76db" : "#9ba8bf"
-                        border.color:outerBorder; border.width:1
-                        Text { anchors.centerIn:parent; text:"Solve Column"; color:white; font.pixelSize:fsLabel; font.bold:true }
-                        MouseArea { anchors.fill:parent; onClicked: { if (appState && !appState.solving) appState.solve() } }
-                    }
-                    Rectangle {
-                        width:120; height:28; radius:6
-                        color:buttonBg; border.color:gridLine; border.width:1
-                        Text { anchors.centerIn:parent; text:"Clear / Reset"; color:textDark; font.pixelSize:fsLabel }
-                        MouseArea { anchors.fill:parent; onClicked: { if (appState) appState.reset() } }
-                    }
-                }
-
-                Column {
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:86 }
-                    spacing:0
-
-                    Item {
-                        width:parent.width; height:26
-                        Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:"Solve Status"; color:textMuted; font.pixelSize:fsLabel }
-                        Text { anchors { right:parent.right; rightMargin:10; verticalCenter:parent.verticalCenter }
-                               text:solveStatus(); color:solveStatusColor(); font.pixelSize:fsValue; font.bold:true }
-                    }
-                    HDivider { width:parent.width }
-
-                    Repeater {
-                        model: [
-                            { label:"Elapsed Time",    value: appState ? fmtMs(appState.solveElapsedMs) : "—" },
-                            { label:"Condenser Qc",    value: appState ? (String(Math.round(appState.qcCalcKW)) + " kW") : "—" },
-                            { label:"Reboiler Qr",     value: appState ? (String(Math.round(appState.qrCalcKW)) + " kW") : "—" },
-                            { label:"Reflux Fraction", value: appState ? (fmt3(appState.refluxFraction * 100) + "%") : "—" },
-                            { label:"Boilup Fraction", value: appState ? (fmt3(appState.boilupFraction * 100) + "%") : "—" },
-                            { label:"T Overhead",      value: appState ? (fmt3(appState.tColdK) + " K") : "—" },
-                            { label:"T Bottoms",       value: appState ? (fmt3(appState.tHotK)  + " K") : "—" }
-                        ]
-                        delegate: Column {
-                            width:parent.width
-                            Item {
-                                width:parent.width; height:26
-                                Text { x:10; anchors.verticalCenter:parent.verticalCenter; text:modelData.label; color:textMuted; font.pixelSize:fsLabel }
-                                Text { anchors { right:parent.right; rightMargin:10; verticalCenter:parent.verticalCenter }
-                                       text:modelData.value; color:valueBlue; font.pixelSize:fsValue }
+                            // Spec Type
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Spec Type";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["reflux","duty","temperature"]
+                                    currentIndex:{if(!appState)return 0;var s=(appState.condenserSpec||"").toLowerCase();if(s==="refluxratio"||s==="reflux")return 0;if(s==="duty")return 1;if(s==="temperature")return 2;return 0}
+                                    onActivated:{if(appState)appState.condenserSpec=model[index]}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
                             }
-                            HDivider { width:parent.width; visible: index < 6 }
+                            // Reflux Ratio
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Reflux Ratio";font.pixelSize:fsLbl;color:textMuted}
+                                CField{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?fmt3(appState.refluxRatio):"";onEditingFinished:{if(appState)appState.refluxRatio=Number(text)}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // Fixed Duty
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Fixed Duty";font.pixelSize:fsLbl;color:textMuted}
+                                Text{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"kW";font.pixelSize:fsSm;color:textMuted;width:32;horizontalAlignment:Text.AlignRight}
+                                CField{anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?String(Math.round(appState.qcKW)):"";onEditingFinished:{if(appState)appState.qcKW=Number(text)}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // T Setpoint
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"T Setpoint";font.pixelSize:fsLbl;color:textMuted}
+                                Text{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K";font.pixelSize:fsSm;color:textMuted;width:32;horizontalAlignment:Text.AlignRight}
+                                CField{anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?fmt3(appState.topTsetK):"";onEditingFinished:{if(appState)appState.topTsetK=Number(text)}}
+                            }
                         }
                     }
-                }
-            }
-        } // wsDrawsSolver
-    } // worksheetTab
 
-    // ==========================================================
-    //  PERFORMANCE TAB
-    // ==========================================================
-    Item {
-        id: performanceTab
-        visible: root.activeTab === "Performance"
-        anchors { fill: workspaceFrame; margins: 10 }
-        property real colW: (width - 12) / 2
+                    // Reboiler
+                    CompactFrame {
+                        id: rebCard2
+                        x: parent.halfW + 6; y: condCard2.height + 4; width: parent.halfW
+                        height: rebHdr.height + rebCol2.implicitHeight + 1
 
-        // Solve summary
-        CardFrame {
-            id: perfSolveCard
-            title: "Solve Summary"
-            x:0; y:0; width:performanceTab.colW; height:170
-
-            Column {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38; margins:0 }
-                spacing:0
-                Repeater {
-                    model: [
-                        { label:"Solve Status",   value: solveStatus() },
-                        { label:"Elapsed Time",   value: appState ? fmtMs(appState.solveElapsedMs) : "—" },
-                        { label:"Specs Dirty",    value: appState ? (appState.specsDirty ? "Yes" : "No") : "—" }
-                    ]
-                    delegate: Column {
-                        width: parent.width
-                        FieldRow { width:parent.width; height:26; label:modelData.label; value:modelData.value }
-                        HDivider { width:parent.width; visible: index < 2 }
+                        SectionHeader { id: rebHdr; width: parent.width; text: "Reboiler" }
+                        Column {
+                            id: rebCol2
+                            anchors { left:parent.left; right:parent.right; top:rebHdr.bottom }
+                            // Reboiler Type
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Reboiler Type";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["partial","total"];currentIndex:appState?(appState.reboilerType==="total"?1:0):0
+                                    onActivated:{if(appState)appState.reboilerType=model[index]}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // Spec Type
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Spec Type";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["boilup","duty","temperature"]
+                                    currentIndex:{if(!appState)return 0;var s=(appState.reboilerSpec||"").toLowerCase();if(s==="boilup"||s==="boilupratio")return 0;if(s==="duty")return 1;if(s==="temperature")return 2;return 0}
+                                    onActivated:{if(appState)appState.reboilerSpec=model[index]}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // Boilup Ratio
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Boilup Ratio";font.pixelSize:fsLbl;color:textMuted}
+                                CField{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?fmt3(appState.boilupRatio):"";onEditingFinished:{if(appState)appState.boilupRatio=Number(text)}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // Fixed Duty
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Fixed Duty";font.pixelSize:fsLbl;color:textMuted}
+                                Text{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"kW";font.pixelSize:fsSm;color:textMuted;width:32;horizontalAlignment:Text.AlignRight}
+                                CField{anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?String(Math.round(appState.qrKW)):"";onEditingFinished:{if(appState)appState.qrKW=Number(text)}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            // T Setpoint
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"T Setpoint";font.pixelSize:fsLbl;color:textMuted}
+                                Text{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K";font.pixelSize:fsSm;color:textMuted;width:32;horizontalAlignment:Text.AlignRight}
+                                CField{anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:110
+                                    text:appState?fmt3(appState.bottomTsetK):"";onEditingFinished:{if(appState)appState.bottomTsetK=Number(text)}}
+                            }
+                        }
                     }
-                }
-            }
-        }
 
-        // Energy summary
-        CardFrame {
-            title: "Energy Summary"
-            x:0; y:perfSolveCard.height + 10; width:performanceTab.colW; height:170
+                    // Thermodynamics
+                    CompactFrame {
+                        x: parent.halfW + 6; y: condCard2.height + rebCard2.height + 8; width: parent.halfW
+                        height: thermoHdr.height + thermoCol2.implicitHeight + 1
 
-            Column {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38; margins:0 }
-                spacing:0
-                Repeater {
-                    model: [
-                        { label:"Condenser Duty", value: appState ? (Math.round(appState.qcCalcKW)+" kW") : "—" },
-                        { label:"Reboiler Duty",  value: appState ? (Math.round(appState.qrCalcKW)+" kW") : "—" },
-                        { label:"Net Duty",       value: appState ? (Math.round(appState.qrCalcKW - Math.abs(appState.qcCalcKW))+" kW") : "—" }
-                    ]
-                    delegate: Column {
-                        width: parent.width
-                        FieldRow { width:parent.width; height:26; label:modelData.label; value:modelData.value }
-                        HDivider { width:parent.width; visible: index < 2 }
+                        SectionHeader { id: thermoHdr; width: parent.width; text: "Thermodynamics" }
+                        Column {
+                            id: thermoCol2
+                            anchors { left:parent.left; right:parent.right; top:thermoHdr.bottom }
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"EOS Mode";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["Auto","Manual"];currentIndex:appState?(appState.eosMode==="manual"?1:0):0
+                                    onActivated:{if(appState)appState.eosMode=(index===1?"manual":"auto")}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:"Manual EOS";font.pixelSize:fsLbl;color:textMuted}
+                                CCombo{anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} width:110
+                                    model:["PR","PRSV","SRK"]
+                                    currentIndex:{if(!appState)return 1;var m=["PR","PRSV","SRK"].indexOf(appState.eosManual);return m>=0?m:1}
+                                    enabled:appState?appState.eosMode==="manual":false
+                                    onActivated:{if(appState)appState.eosManual=model[index]}}
+                            }
+                        }
                     }
-                }
-            }
-        }
+                } // Setup sub-tab
 
-        // Top / Bottom conditions
-        CardFrame {
-            title: "Top / Bottom Conditions"
-            x: performanceTab.colW + 12; y:0; width: performanceTab.colW; height:170
-
-            Column {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38; margins:0 }
-                spacing:0
-                Repeater {
-                    model: [
-                        { label:"Overhead Temperature", value: appState ? (fmt3(appState.tColdK)+" K") : "—" },
-                        { label:"Bottoms Temperature",  value: appState ? (fmt3(appState.tHotK) +" K") : "—" },
-                        { label:"Reflux Fraction",      value: appState ? (fmt3(appState.refluxFraction*100)+"%") : "—" },
-                        { label:"Boilup Fraction",      value: appState ? (fmt3(appState.boilupFraction*100)+"%") : "—" }
-                    ]
-                    delegate: Column {
-                        width: parent.width
-                        FieldRow { width:parent.width; height:26; label:modelData.label; value:modelData.value }
-                        HDivider { width:parent.width; visible: index < 3 }
-                    }
-                }
-            }
-        }
-
-        // Diagnostics warnings panel
-        CardFrame {
-            title: "Solver Warnings"
-            x: performanceTab.colW + 12
-            y: 180
-            width: performanceTab.colW
-            height: performanceTab.height - 180
-
-            ListView {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38; bottom:parent.bottom; margins:0; leftMargin:10; rightMargin:10 }
-                clip:true
-                model: appState ? appState.diagnosticsModel : null
-                delegate: Item {
-                    width: parent ? parent.width : 0; height: 32
-                    Row {
-                        anchors { left:parent.left; right:parent.right; verticalCenter:parent.verticalCenter }
-                        spacing: 8
-                        Rectangle { width:10; height:10; radius:2; color:warnAmber; anchors.verticalCenter:parent.verticalCenter }
-                        Text { text: model.message || ""; color: textDark; font.pixelSize:fsLabel; wrapMode:Text.Wrap; width:parent.width-30 }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
-                Text {
-                    anchors.centerIn:parent
-                    visible: !appState || !appState.diagnosticsModel || appState.diagnosticsModel.rowCount() === 0
-                    text:"No warnings"; color:textMuted; font.pixelSize:fsLabel; font.italic:true
-                }
-            }
-        }
-    }
-
-    // ==========================================================
-    //  PROFILES TAB  (tray table + simple visual)
-    // ==========================================================
-    Item {
-        id: profilesTab
-        visible: root.activeTab === "Profiles"
-        anchors { fill: workspaceFrame; margins: 10 }
-
-        Row {
-            id: profilesSubTabs; spacing:8
-            SubTabBtn { label:"Tray Table";     isActive: root.profilesSubTab==="Tray Table";     onClicked: root.profilesSubTab="Tray Table" }
-            SubTabBtn { label:"Visual Profiles"; isActive: root.profilesSubTab==="Visual Profiles"; onClicked: root.profilesSubTab="Visual Profiles" }
-        }
-
-        // ── Tray Table ──────────────────────────────────────
-        Item {
-            visible: root.profilesSubTab === "Tray Table"
-            anchors { left:parent.left; right:parent.right; top:profilesSubTabs.bottom; topMargin:10; bottom:parent.bottom }
-
-            CardFrame {
-                anchors.fill: parent
-                title: "Tray Profiles"
-
-                // ── Legend ───────────────────────────────────────────────
-                Row {
-                    anchors { right:parent.right; rightMargin:12; top:parent.top; topMargin:8 }
-                    spacing: 10
-
-                    Rectangle { width:18; height:10; radius:3; color:"#67b0ff"; anchors.verticalCenter:parent.verticalCenter }
-                    Text { text:"Vapor (V*)"; font.pixelSize:fsSmall; color:textMuted; anchors.verticalCenter:parent.verticalCenter }
-                    Rectangle { width:18; height:10; radius:3; color:"#294f8f"; anchors.verticalCenter:parent.verticalCenter }
-                    Text { text:"Liquid (1−V*)"; font.pixelSize:fsSmall; color:textMuted; anchors.verticalCenter:parent.verticalCenter }
-                }
-
-                // ── Header row ────────────────────────────────────────────
+                // ── DRAWS/SOLVER sub-tab ───────────────────────
                 Item {
-                    id: trayHdr
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38 }
-                    height: 28
-                    // colWs: Tray, Temp, Pressure, VapFrac, LiqFlow, VapFlow, Draw (no bar col – bar is right-anchored outside Row)
-                    property var hdrs:  ["Tray","Temp (K)","Pressure (Pa)","Vap.Frac","Liq. Flow","Vap. Flow","Draw","V* / L*"]
-                    property var colWs: [50,    100,       110,            80,        100,        100,        120,   150]
-                    Row {
-                        anchors { left:parent.left; right:parent.right; leftMargin:10 }
-                        Repeater {
-                            model: trayHdr.hdrs.length
-                            delegate: Text {
-                                width: trayHdr.colWs[index]
-                                text: trayHdr.hdrs[index]
-                                font.pixelSize:fsLabel; font.bold:true; color:textDark
-                                horizontalAlignment: index > 0 ? Text.AlignRight : Text.AlignLeft
-                                height:28; verticalAlignment:Text.AlignVCenter
-                            }
+                    visible: root.worksheetSubTab === "Draws/Solver"
+                    anchors { left:parent.left; right:parent.right; top:wsSubBar.bottom; topMargin:4; bottom:parent.bottom }
+
+                    property real drawW:  (width - 6) * 2 / 3
+                    property real solveW: (width - 6) / 3
+
+                    // Draw Specifications
+                    CompactFrame {
+                        id: drawCard2
+                        x: 0; y: 0; width: parent.drawW; height: parent.height
+
+                        SectionHeader { id: drawHdr2; width: parent.width; text: "Draw Specifications" }
+
+                        function feedKgph() { return (appState&&appState.feedStream)?Number(appState.feedStream.flowRateKgph):0 }
+                        function totalTargetPct() {
+                            if (!appState||!appState.drawSpecs) return 0
+                            var tot=0; var specs=appState.drawSpecs
+                            for (var i=0;i<specs.length;i++){var v=Number(specs[i].value);if(specs[i].basis==="feedPct"&&isFinite(v))tot+=v}
+                            return tot
                         }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
+                        function commitSpecs(s){if(appState)appState.drawSpecs=s}
 
-                // ── Tray rows ─────────────────────────────────────────────
-                ListView {
-                    anchors { left:parent.left; right:parent.right; top:trayHdr.bottom; bottom:parent.bottom }
-                    clip: true
-                    verticalLayoutDirection: ListView.BottomToTop
-                    model: appState ? appState.trayModel : null
-
-                    delegate: Item {
-                        width: parent ? parent.width : 0
-                        height: 28
-                        property var colWs: [50,100,110,80,100,100,120]
-                        property real vf: Math.max(0, Math.min(1, model.vaporFrac || 0))
-
-                        // Text columns in a Row; bar is separately right-anchored
-                        Row {
-                            id: trayRowContent
-                            anchors { left:parent.left; right:trayBar.left; rightMargin:8; leftMargin:10 }
-                            height: parent.height
-
-                            // Tray number
-                            Text { width:colWs[0]; text:model.trayNumber||"—"; font.pixelSize:fsValue; color:textDark; height:parent.height; verticalAlignment:Text.AlignVCenter }
-
-                            // Temperature
-                            Text { width:colWs[1]; text:fmt3(model.tempK); font.pixelSize:fsValue; color:valueBlue; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-
-                            // Pressure (computed)
-                            Text {
-                                width: colWs[2]
-                                text: {
-                                    if (!appState) return "—"
-                                    var tN = model.trayNumber
-                                    var p0 = appState.topPressurePa
-                                    var dp = appState.dpPerTrayPa
-                                    var nT = appState.trays
-                                    return String(Math.round(p0 + dp*(nT - tN)))
-                                }
-                                font.pixelSize:fsValue; color:valueBlue; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight
-                            }
-
-                            // Vapour fraction
-                            Text { width:colWs[3]; text:fmt3(model.vaporFrac); font.pixelSize:fsValue; color:valueBlue; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-
-                            // Liquid flow
-                            Text { width:colWs[4]; text:Math.round(model.liquidFlow)+""; font.pixelSize:fsValue; color:valueBlue; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-
-                            // Vapour flow
-                            Text { width:colWs[5]; text:Math.round(model.vaporFlow)+""; font.pixelSize:fsValue; color:valueBlue; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-
-                            // Draw label – elide if too long
-                            Text { width:colWs[6]; text:model.drawLabel||""; font.pixelSize:fsSmall; color:warnAmber; height:parent.height; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight; elide:Text.ElideRight }
-                        }
-
-                        // V*/L* bar – right-anchored, always 140px, separated from text columns
+                        // Column headers
                         Item {
-                            id: trayBar
-                            anchors { right:parent.right; rightMargin:10; verticalCenter:parent.verticalCenter }
-                            width: 140
-                            height: parent.height
+                            id: drawColHdr
+                            anchors{left:parent.left;right:parent.right;top:drawHdr2.bottom}  height:rowH
+                            Row {
+                                anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6}  height:parent.height; spacing:4
+                                Text{width:parent.width-288;text:"Name"; font.pixelSize:fsSm;font.bold:true;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter}
+                                Text{width:60;text:"Tray";  font.pixelSize:fsSm;font.bold:true;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignHCenter}
+                                Text{width:52;text:"Phase"; font.pixelSize:fsSm;font.bold:true;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignHCenter}
+                                Text{width:78;text:"Basis"; font.pixelSize:fsSm;font.bold:true;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignHCenter}
+                                Text{width:68;text:"Value"; font.pixelSize:fsSm;font.bold:true;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                Text{width:24;text:"";      height:parent.height}
+                            }
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
 
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                anchors.left: parent.left
-                                anchors.right: parent.right
-                                height: 10
-                                radius: 5
-                                color: "#294f8f"
-
-                                Rectangle {
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width * vf
-                                    radius: 5
-                                    color: "#67b0ff"
+                        ScrollView {
+                            anchors{left:parent.left;right:parent.right;top:drawColHdr.bottom;bottom:drawFooter2.top} clip:true
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                            Column {
+                                width: parent.width; spacing:0
+                                Repeater {
+                                    model: appState?appState.drawSpecs:[]
+                                    delegate: Item {
+                                        width: parent?parent.width:0; height:rowH
+                                        property var spec: modelData; property int rowIdx: index
+                                        Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                                        Row {
+                                            anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6}  height:parent.height; spacing:4
+                                            CField{width:parent.width-288;anchors.verticalCenter:parent.verticalCenter;horizontalAlignment:Text.AlignLeft
+                                                text:spec.name||""
+                                                onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].name=text;drawCard2.commitSpecs(c)}}
+                                            CSpin{width:60;anchors.verticalCenter:parent.verticalCenter;from:2;to:appState?Math.max(2,appState.trays-1):30;value:spec.tray||1
+                                                onValueModified:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].tray=value;drawCard2.commitSpecs(c)}}
+                                            CCombo{width:52;anchors.verticalCenter:parent.verticalCenter;model:["L","V"];currentIndex:(spec.phase==="V")?1:0
+                                                onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].phase=model[index];drawCard2.commitSpecs(c)}}
+                                            CCombo{width:78;anchors.verticalCenter:parent.verticalCenter;model:["feedPct","kg/h"];currentIndex:(spec.basis==="kg/h")?1:0
+                                                onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].basis=model[index];drawCard2.commitSpecs(c)}}
+                                            CField{width:68;anchors.verticalCenter:parent.verticalCenter
+                                                text:spec.value!==undefined?fmt2(Number(spec.value)):"0.00"
+                                                onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].value=Number(text);drawCard2.commitSpecs(c)}}
+                                            Rectangle{width:24;height:parent.height-4;anchors.verticalCenter:parent.verticalCenter;color:"transparent"
+                                                Text{anchors.centerIn:parent;text:"×";font.pixelSize:11;color:errorRed;font.bold:true}
+                                                MouseArea{anchors.fill:parent;onClicked:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c.splice(rowIdx,1);drawCard2.commitSpecs(c)}}}
+                                        }
+                                        HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                                    }
                                 }
                             }
                         }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                    }
 
-                    Text {
-                        anchors.centerIn: parent
-                        visible: !appState || !appState.trayModel || appState.trayModel.rowCount() === 0
-                        text: "Run solver to populate tray table"
-                        color: textMuted; font.pixelSize: fsLabel; font.italic: true
-                    }
-                }
-            }
-        }
-
-        // ── Visual Profiles ──────────────────────────────────
-        Item {
-            id: visualProfilesPanel
-            visible: root.profilesSubTab === "Visual Profiles"
-            anchors { left:parent.left; right:parent.right; top:profilesSubTabs.bottom; topMargin:10; bottom:parent.bottom }
-
-            // Profile selector definitions: key into TrayModel.get(), label, unit, colour
-            // Profile definitions.
-            // key: TrayModel role name (tempK, vaporFrac, vaporFlow, liquidFlow)
-            //      OR "pressure" (computed from appState.topPressurePa + dpPerTrayPa * (N-tray))
-            //         "hasDraw"  (0/1 flag per tray – shows draw trays)
-            property var profileDefs: [
-                { key:"tempK",      label:"Temperature",     unit:"K",    color:"#2e76db" },
-                { key:"pressure",   label:"Pressure",        unit:"Pa",   color:"#7c3aed" },
-                { key:"vaporFrac",  label:"Vapour Fraction", unit:"—",    color:"#0891b2" },
-                { key:"liquidFlow", label:"Liquid Flow",     unit:"kg/h", color:"#059669" },
-                { key:"vaporFlow",  label:"Vapour Flow",     unit:"kg/h", color:"#d97706" }
-            ]
-            property int profileIndex: 0
-            property var activeDef: profileDefs[profileIndex]
-
-            // Profile selector row
-            Row {
-                id: profileSelRow
-                x: 0; y: 0; spacing: 6
-                Repeater {
-                    model: visualProfilesPanel.profileDefs.length
-                    delegate: Rectangle {
-                        width: 110; height: 26; radius: 8
-                        color: visualProfilesPanel.profileIndex === index ? tabActiveBg : tabIdleBg
-                        border.color: outerBorder; border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: visualProfilesPanel.profileDefs[index].label
-                            font.pixelSize: 10; font.bold: visualProfilesPanel.profileIndex === index
-                            color: visualProfilesPanel.profileIndex === index ? white : textDark
-                            elide: Text.ElideRight
-                            width: parent.width - 8
-                            horizontalAlignment: Text.AlignHCenter
+                        Item {
+                            id: drawFooter2
+                            anchors{left:parent.left;right:parent.right;bottom:parent.bottom}  height:36
+                            HDivider{anchors.top:parent.top;width:parent.width}
+                            Row {
+                                anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6;verticalCenter:parent.verticalCenter}  spacing:6
+                                ClassicButton{text:"+ Add Draw";width:86;baseColor:activeBlue
+                                    onClicked:{if(!appState)return;var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c.push({name:"New Draw",tray:appState.feedTray||16,basis:"feedPct",phase:"L",value:0});drawCard2.commitSpecs(c)}}
+                                ClassicButton{text:"Reset";width:58
+                                    onClicked:{if(appState)appState.resetDrawSpecsToDefaults()}}
+                                Text{anchors.verticalCenter:parent.verticalCenter
+                                    text:{var t=drawCard2.totalTargetPct();return "Total: "+t.toFixed(1)+"%  ("+Math.round(t*drawCard2.feedKgph()/100)+" kg/h)"}
+                                    font.pixelSize:fsSm;color:textMuted}
+                            }
                         }
-                        MouseArea { anchors.fill: parent; onClicked: {
-                            visualProfilesPanel.profileIndex = index
-                            profileCanvas.requestPaint()
+                    }
+
+                    // Solve / Status
+                    CompactFrame {
+                        x: parent.drawW + 6; y: 0; width: parent.solveW; height: parent.height
+
+                        SectionHeader { id: solveHdr; width: parent.width; text: "Solve / Status" }
+
+                        // Solve buttons
+                        Row {
+                            anchors{left:parent.left;right:parent.right;top:solveHdr.bottom;topMargin:6;leftMargin:6}  spacing:6; height:28
+                            ClassicButton{text:"Solve Column";width:110;baseColor:activeBlue
+                                enabled:appState?!appState.solving:false
+                                onClicked:{if(appState&&!appState.solving)appState.solve()}}
+                            ClassicButton{text:"Clear / Reset";width:96
+                                onClicked:{if(appState)appState.reset()}}
+                        }
+
+                        // Status rows
+                        Column {
+                            anchors{left:parent.left;right:parent.right;top:solveHdr.bottom;topMargin:42} spacing:0
+
+                            Item{width:parent.width;height:rowH
+                                Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:130;text:"Solve Status";font.pixelSize:fsLbl;color:textMuted}
+                                Text{anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter}
+                                    text:solveStatus();color:solveStatusColor();font.pixelSize:fsVal;font.bold:true}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+
+                            Repeater {
+                                model:[
+                                    {label:"Elapsed Time",  value:appState?fmtMs(appState.solveElapsedMs):"—"},
+                                    {label:"Condenser Qc",  value:appState?(String(Math.round(appState.qcCalcKW))+" kW"):"—"},
+                                    {label:"Reboiler Qr",   value:appState?(String(Math.round(appState.qrCalcKW))+" kW"):"—"},
+                                    {label:"Reflux Frac.",  value:appState?(fmt3(appState.refluxFraction*100)+"%"):"—"},
+                                    {label:"Boilup Frac.",  value:appState?(fmt3(appState.boilupFraction*100)+"%"):"—"},
+                                    {label:"T Overhead",    value:appState?(fmt3(appState.tColdK)+" K"):"—"},
+                                    {label:"T Bottoms",     value:appState?(fmt3(appState.tHotK)+" K"):"—"}
+                                ]
+                                delegate: Column {
+                                    width:parent.width
+                                    Item{width:parent.width;height:rowH
+                                        Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                                        Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:130;text:modelData.label;font.pixelSize:fsLbl;color:textMuted}
+                                        Text{anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter} text:modelData.value;font.pixelSize:fsVal;color:valueBlue}
+                                        HDivider{anchors.bottom:parent.bottom;width:parent.width;visible:index<6}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } // Draws/Solver sub-tab
+            } // Worksheet tab
+
+            // ==================================================
+            //  PERFORMANCE TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Performance"
+                property real halfW: (width - 6) / 2
+
+                CompactFrame {
+                    id: perfSolveCard2
+                    x:0; y:0; width:parent.halfW
+                    height: perfSolveHdr.height + 3*rowH + 1
+                    SectionHeader{id:perfSolveHdr;width:parent.width;text:"Solve Summary"}
+                    Column{anchors{left:parent.left;right:parent.right;top:perfSolveHdr.bottom}
+                        Repeater{model:[
+                            {label:"Solve Status",value:solveStatus()},
+                            {label:"Elapsed Time",value:appState?fmtMs(appState.solveElapsedMs):"—"},
+                            {label:"Specs Dirty",value:appState?(appState.specsDirty?"Yes":"No"):"—"}
+                        ]
+                        delegate:Item{width:parent.width;height:rowH
+                            Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:modelData.label;font.pixelSize:fsLbl;color:textMuted}
+                            Text{anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter} text:modelData.value;font.pixelSize:fsVal;color:valueBlue}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width;visible:index<2}
                         }}
                     }
                 }
+                CompactFrame {
+                    x:0; y:perfSolveCard2.height+4; width:parent.halfW
+                    height:energyHdr.height+3*rowH+1
+                    SectionHeader{id:energyHdr;width:parent.width;text:"Energy Summary"}
+                    Column{anchors{left:parent.left;right:parent.right;top:energyHdr.bottom}
+                        Repeater{model:[
+                            {label:"Condenser Duty",value:appState?(Math.round(appState.qcCalcKW)+" kW"):"—"},
+                            {label:"Reboiler Duty", value:appState?(Math.round(appState.qrCalcKW)+" kW"):"—"},
+                            {label:"Net Duty",      value:appState?(Math.round(appState.qrCalcKW-Math.abs(appState.qcCalcKW))+" kW"):"—"}
+                        ]
+                        delegate:Item{width:parent.width;height:rowH
+                            Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:160;text:modelData.label;font.pixelSize:fsLbl;color:textMuted}
+                            Text{anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter} text:modelData.value;font.pixelSize:fsVal;color:valueBlue}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width;visible:index<2}
+                        }}
+                    }
+                }
+                CompactFrame {
+                    x:parent.halfW+6; y:0; width:parent.halfW
+                    height:topBotHdr.height+4*rowH+1
+                    SectionHeader{id:topBotHdr;width:parent.width;text:"Top / Bottom Conditions"}
+                    Column{anchors{left:parent.left;right:parent.right;top:topBotHdr.bottom}
+                        Repeater{model:[
+                            {label:"Overhead Temperature",value:appState?(fmt3(appState.tColdK)+" K"):"—"},
+                            {label:"Bottoms Temperature", value:appState?(fmt3(appState.tHotK)+" K"):"—"},
+                            {label:"Reflux Fraction",     value:appState?(fmt3(appState.refluxFraction*100)+"%"):"—"},
+                            {label:"Boilup Fraction",     value:appState?(fmt3(appState.boilupFraction*100)+"%"):"—"}
+                        ]
+                        delegate:Item{width:parent.width;height:rowH
+                            Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                            Text{x:6;anchors.verticalCenter:parent.verticalCenter;width:170;text:modelData.label;font.pixelSize:fsLbl;color:textMuted}
+                            Text{anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter} text:modelData.value;font.pixelSize:fsVal;color:valueBlue}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width;visible:index<3}
+                        }}
+                    }
+                }
+                CompactFrame {
+                    x:parent.halfW+6; y:topBotHdr.parent.height>0?topBotHdr.parent.height+4:140; width:parent.halfW
+                    height:parent.height-y
+                    SectionHeader{id:warnHdr;width:parent.width;text:"Solver Warnings"}
+                    ListView{
+                        anchors{left:parent.left;right:parent.right;top:warnHdr.bottom;bottom:parent.bottom;margins:0;leftMargin:8;rightMargin:8}
+                        clip:true; model:appState?appState.diagnosticsModel:null
+                        delegate:Item{width:parent?parent.width:0;height:rowH
+                            Row{anchors{left:parent.left;right:parent.right;verticalCenter:parent.verticalCenter} spacing:6
+                                Rectangle{width:8;height:8;radius:2;color:warnAmber;anchors.verticalCenter:parent.verticalCenter}
+                                Text{text:model.message||"";color:textMain;font.pixelSize:fsLbl;wrapMode:Text.Wrap;width:parent.width-20}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}}
+                        Text{anchors.centerIn:parent;visible:!appState||!appState.diagnosticsModel||appState.diagnosticsModel.rowCount()===0
+                             text:"No warnings";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
+                    }
+                }
             }
 
-            // Chart area
-            Rectangle {
-                id: chartOuter
-                anchors { left:parent.left; right:parent.right; top:profileSelRow.bottom; topMargin:8; bottom:parent.bottom }
-                radius: 8; color: white; border.color: gridLine; border.width: 1
+            // ==================================================
+            //  PROFILES TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Profiles"
 
-                // Fixed margins for axes
-                // Y = tray number, X = profile value
-                readonly property int leftMargin:   46   // Y-axis: tray numbers (small integers)
-                readonly property int rightMargin:  16
-                readonly property int topMargin:    14
-                readonly property int bottomMargin: 56   // X-axis: profile value labels + title
+                Rectangle {
+                    id: profSubBar
+                    x:0; y:0; width:parent.width; height:32
+                    color:cmdBar; border.color:borderIn; border.width:1
+                    Common.ClassicTabs {
+                        id: profileModeTabs
+                        x: 6; y: 3
+                        tabs: [
+                            { text: "Tray Table", width: 86 },
+                            { text: "Visual Profiles", width: 106 }
+                        ]
+                        currentIndex: root.profilesSubTab === "Visual Profiles" ? 1 : 0
+                        onTabClicked: function(index) { root.profilesSubTab = index === 1 ? "Visual Profiles" : "Tray Table" }
+                    }
+                }
 
-                Canvas {
-                    id: profileCanvas
+                // Tray Table
+                Item {
+                    visible: root.profilesSubTab === "Tray Table"
+                    anchors{left:parent.left;right:parent.right;top:profSubBar.bottom;topMargin:4;bottom:parent.bottom}
+
+                    CompactFrame {
+                        anchors.fill: parent
+
+                        SectionHeader{id:trayTableHdr;width:parent.width;text:"Tray Profiles"}
+
+                        // Legend
+                        Row {
+                            anchors{right:parent.right;rightMargin:10;top:parent.top;topMargin:4} spacing:8
+                            Rectangle{width:16;height:8;radius:2;color:"#67b0ff";anchors.verticalCenter:parent.verticalCenter}
+                            Text{text:"Vapor (V*)";font.pixelSize:fsSm;color:textMuted;anchors.verticalCenter:parent.verticalCenter}
+                            Rectangle{width:16;height:8;radius:2;color:"#294f8f";anchors.verticalCenter:parent.verticalCenter}
+                            Text{text:"Liquid (1−V*)";font.pixelSize:fsSm;color:textMuted;anchors.verticalCenter:parent.verticalCenter}
+                        }
+
+                        // Header row
+                        Item {
+                            id: trayTblHdr
+                            anchors{left:parent.left;right:parent.right;top:trayTableHdr.bottom} height:rowH
+                            property var hdrs:  ["Tray","Temp (K)","Pressure (Pa)","Vap.Frac","Liq. Flow","Vap. Flow","Draw","V* / L*"]
+                            property var colWs: [50,    100,       110,            80,        100,        100,        120,   150]
+                            Row{anchors{left:parent.left;right:parent.right;leftMargin:8}
+                                Repeater{model:trayTblHdr.hdrs.length
+                                    delegate:Text{width:trayTblHdr.colWs[index];text:trayTblHdr.hdrs[index]
+                                        font.pixelSize:fsSm;font.bold:true;color:textMain
+                                        horizontalAlignment:index>0?Text.AlignRight:Text.AlignLeft
+                                        height:rowH;verticalAlignment:Text.AlignVCenter}}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
+
+                        ListView {
+                            anchors{left:parent.left;right:parent.right;top:trayTblHdr.bottom;bottom:parent.bottom}
+                            clip:true; verticalLayoutDirection:ListView.BottomToTop
+                            model:appState?appState.trayModel:null
+                            delegate:Item{
+                                width:parent?parent.width:0; height:rowH
+                                property var colWs:[50,100,110,80,100,100,120]
+                                property real vf:Math.max(0,Math.min(1,model.vaporFrac||0))
+                                Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                                Row{anchors{left:parent.left;right:trayBarItem.left;rightMargin:8;leftMargin:8} height:parent.height
+                                    Text{width:colWs[0];text:model.trayNumber||"—";font.pixelSize:fsVal;color:textMain;height:parent.height;verticalAlignment:Text.AlignVCenter}
+                                    Text{width:colWs[1];text:fmt3(model.tempK);font.pixelSize:fsVal;color:valueBlue;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                    Text{width:colWs[2];text:{if(!appState)return"—";var tN=model.trayNumber;return String(Math.round(appState.topPressurePa+appState.dpPerTrayPa*(appState.trays-tN)))}
+                                        font.pixelSize:fsVal;color:valueBlue;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                    Text{width:colWs[3];text:fmt3(model.vaporFrac);font.pixelSize:fsVal;color:valueBlue;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                    Text{width:colWs[4];text:Math.round(model.liquidFlow)+"";font.pixelSize:fsVal;color:valueBlue;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                    Text{width:colWs[5];text:Math.round(model.vaporFlow)+"";font.pixelSize:fsVal;color:valueBlue;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                    Text{width:colWs[6];text:model.drawLabel||"";font.pixelSize:fsSm;color:warnAmber;height:parent.height;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight;elide:Text.ElideRight}
+                                }
+                                Item{id:trayBarItem;anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter} width:140;height:parent.height
+                                    Rectangle{anchors.verticalCenter:parent.verticalCenter;anchors.left:parent.left;anchors.right:parent.right;height:8;radius:4;color:"#294f8f"
+                                        Rectangle{anchors.left:parent.left;anchors.top:parent.top;anchors.bottom:parent.bottom;width:parent.width*vf;radius:4;color:"#67b0ff"}}}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                            }
+                            Text{anchors.centerIn:parent;visible:!appState||!appState.trayModel||appState.trayModel.rowCount()===0
+                                 text:"Run solver to populate tray table";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
+                        }
+                    }
+                }
+
+                // Visual Profiles
+                Item {
+                    id: visualProfilesItem
+                    visible: root.profilesSubTab === "Visual Profiles"
+                    anchors{left:parent.left;right:parent.right;top:profSubBar.bottom;topMargin:4;bottom:parent.bottom}
+
+                    property var profileDefs:[
+                        {key:"tempK",     label:"Temperature",    unit:"K",    color:"#2e73b8"},
+                        {key:"pressure",  label:"Pressure",       unit:"Pa",   color:"#7c3aed"},
+                        {key:"vaporFrac", label:"Vapour Fraction",unit:"—",    color:"#0891b2"},
+                        {key:"liquidFlow",label:"Liquid Flow",    unit:"kg/h", color:"#059669"},
+                        {key:"vaporFlow", label:"Vapour Flow",    unit:"kg/h", color:"#d97706"}
+                    ]
+                    property int profileIndex: 0
+                    property var activeDef: profileDefs[profileIndex]
+
+                    Common.ClassicTabs {
+                        id: profSelRow
+                        x: 0; y: 0
+                        tabs: visualProfilesItem.profileDefs.map(function(def) {
+                            return { text: def.label, width: def.label === "Vapour Fraction" ? 126 : 106 }
+                        })
+                        currentIndex: visualProfilesItem.profileIndex
+                        onTabClicked: function(index) {
+                            visualProfilesItem.profileIndex = index
+                            profileCanvas2.requestPaint()
+                        }
+                    }
+
+                    CompactFrame {
+                        anchors{left:parent.left;right:parent.right;top:profSelRow.bottom;topMargin:4;bottom:parent.bottom}
+
+                        readonly property int lm:46; readonly property int rm:16; readonly property int tm:14; readonly property int bm:56
+
+                        Canvas {
+                            id: profileCanvas2
+                            anchors.fill: parent
+                            property var trayModel: appState?appState.trayModel:null
+                            property var def: visualProfilesItem.activeDef
+                            Connections{target:profileCanvas2.trayModel;function onDataChanged(){profileCanvas2.requestPaint()} ignoreUnknownSignals:true}
+                            onDefChanged: requestPaint()
+                            onPaint: {
+                                var ctx=getContext("2d"); ctx.reset()
+                                var par=parent
+                                var lm=par.lm,rm=par.rm,tm=par.tm,bm=par.bm
+                                var cw=width-lm-rm,ch=height-tm-bm
+                                ctx.fillStyle="#ffffff"; ctx.fillRect(lm,tm,cw,ch)
+                                ctx.strokeStyle="#2a2a2a"; ctx.lineWidth=1; ctx.strokeRect(lm,tm,cw,ch)
+                                var model=profileCanvas2.trayModel; var pdef=profileCanvas2.def
+                                if(!model||model.rowCount()===0||!pdef){ctx.fillStyle="#9ba8bf";ctx.font="13px sans-serif";ctx.textAlign="center";ctx.fillText("No data – run solver",lm+cw/2,tm+ch/2);return}
+                                var pts=[]; var nTrays=appState?appState.trays:0; var p0=appState?appState.topPressurePa:0; var dp=appState?appState.dpPerTrayPa:0
+                                for(var r=0;r<model.rowCount();r++){var row=model.get(r);var xVal=pdef.key==="pressure"?(p0+dp*(nTrays-row.trayNumber)):row[pdef.key];pts.push({tray:row.trayNumber,x:Number(xVal||0)})}
+                                pts.sort(function(a,b){return a.tray-b.tray})
+                                if(pts.length===0)return
+                                var minTray=pts[0].tray,maxTray=pts[pts.length-1].tray,minX=pts[0].x,maxX=pts[0].x
+                                for(var k=1;k<pts.length;k++){if(pts[k].x<minX)minX=pts[k].x;if(pts[k].x>maxX)maxX=pts[k].x}
+                                var xPad=(maxX-minX)*0.06||Math.abs(maxX)*0.05||1,xLo=minX-xPad,xHi=maxX+xPad,rngX=xHi-xLo||1,rngTray=(maxTray-minTray)||1
+                                var nGX=6,nGY=Math.min(pts.length,10)
+                                ctx.strokeStyle="#dde4f0";ctx.lineWidth=1;ctx.setLineDash([3,3])
+                                for(var gi=0;gi<=nGX;gi++){var gx=lm+gi*(cw/nGX);ctx.beginPath();ctx.moveTo(gx,tm);ctx.lineTo(gx,tm+ch);ctx.stroke()}
+                                for(var gj=0;gj<=nGY;gj++){var gy=tm+ch-gj*(ch/nGY);ctx.beginPath();ctx.moveTo(lm,gy);ctx.lineTo(lm+cw,gy);ctx.stroke()}
+                                ctx.setLineDash([])
+                                ctx.fillStyle="#5a6472";ctx.font="10px sans-serif";ctx.textAlign="right"
+                                var step=Math.max(1,Math.round(pts.length/nGY))
+                                for(var yi=0;yi<pts.length;yi+=step){var yp=tm+ch-(pts[yi].tray-minTray)/rngTray*ch;ctx.fillText(pts[yi].tray,lm-4,yp+4)}
+                                ctx.save();ctx.fillStyle="#1f2430";ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.translate(13,tm+ch/2);ctx.rotate(-Math.PI/2);ctx.fillText("Tray Number (1 = Bottoms)",0,0);ctx.restore()
+                                ctx.fillStyle="#5a6472";ctx.font="10px sans-serif";ctx.textAlign="center"
+                                for(var xi=0;xi<=nGX;xi++){var xv=xLo+xi*rngX/nGX;var xp=lm+xi*(cw/nGX);var xStr=Math.abs(xv)>=10000?xv.toExponential(2):Math.abs(xv)>=100?xv.toFixed(0):Math.abs(xv)>=1?xv.toFixed(2):xv.toFixed(4);ctx.fillText(xStr,xp,tm+ch+14)}
+                                ctx.fillStyle="#1f2430";ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.fillText(pdef.label+" ("+pdef.unit+")",lm+cw/2,tm+ch+44)
+                                ctx.strokeStyle=pdef.color;ctx.lineWidth=2;ctx.beginPath()
+                                for(var p=0;p<pts.length;p++){var px=lm+(pts[p].x-xLo)/rngX*cw;var py=tm+ch-(pts[p].tray-minTray)/rngTray*ch;if(p===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)}
+                                ctx.stroke()
+                                ctx.fillStyle=pdef.color
+                                for(var d=0;d<pts.length;d++){var dpx=lm+(pts[d].x-xLo)/rngX*cw;var dpy=tm+ch-(pts[d].tray-minTray)/rngTray*ch;ctx.beginPath();ctx.arc(dpx,dpy,3.5,0,2*Math.PI);ctx.fill()}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ==================================================
+            //  PRODUCTS TAB
+            // ==================================================
+            Item {
+                id: productsTab
+                anchors.fill: parent
+                visible: root.activeTab === "Products"
+                onVisibleChanged: if (visible && prodFrame) prodFrame.rebuildProdMbSorted()
+
+                CompactFrame {
+                    id: prodFrame
                     anchors.fill: parent
-                    property var trayModel: appState ? appState.trayModel : null
-                    property var def: visualProfilesPanel.activeDef
 
-                    Connections {
-                        target: profileCanvas.trayModel
-                        function onDataChanged() { profileCanvas.requestPaint() }
+                    SectionHeader { id: prodHdr; width: parent.width; text: "Material Balance" }
+
+                    Item {
+                        id: prodMbHdr2
+                        anchors{left:parent.left;right:parent.right;top:prodHdr.bottom}  height:rowH
+                        Row{anchors{left:parent.left;right:parent.right;leftMargin:8}
+                            Text{width:parent.width*0.55;text:"Product";    font.bold:true;font.pixelSize:fsLbl;color:textMain;height:rowH;verticalAlignment:Text.AlignVCenter}
+                            Text{width:parent.width*0.25;text:"Flow (kg/h)";font.bold:true;font.pixelSize:fsLbl;color:textMain;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                            Text{width:parent.width*0.16;text:"Feed %";     font.bold:true;font.pixelSize:fsLbl;color:textMain;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                        }
+                        HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                    }
+
+                    property var prodMbSorted: []
+                    function rebuildProdMbSorted() {
+                        var mbm=appState?appState.materialBalanceModel:null
+                        if(!mbm||!appState||!appState.solved){prodMbSorted=[];return}
+                        var n=mbm.rowCount(),rows=[]
+                        for(var i=0;i<n;i++){
+                            var idx=mbm.index(i,0),nm=mbm.data(idx,257)||"",kg=mbm.data(idx,258)||0,fr=mbm.data(idx,259)||0
+                            var nmL=nm.toLowerCase(),sortKey=0
+                            if(nmL.indexOf("distillate")>=0||nmL.indexOf("overhead")>=0)sortKey=99999
+                            else if(nmL.indexOf("bottoms")>=0||nmL.indexOf("residue")>=0)sortKey=-1
+                            else{var parts=nm.match(/Tray\s*(\d+)/i);sortKey=parts?parseInt(parts[1]):0}
+                            rows.push({name:nm,kgph:kg,frac:fr,sortKey:sortKey})
+                        }
+                        rows.sort(function(a,b){return b.sortKey-a.sortKey})
+                        prodMbSorted=rows
+                    }
+                    Component.onCompleted: rebuildProdMbSorted()
+
+                    Connections{
+                        target: appState ? appState.materialBalanceModel : null
+                        function onTotalsChanged(){ prodFrame.rebuildProdMbSorted() }
+                        function onModelReset(){ prodFrame.rebuildProdMbSorted() }
+                        function onRowsInserted(){ prodFrame.rebuildProdMbSorted() }
+                        function onRowsRemoved(){ prodFrame.rebuildProdMbSorted() }
+                        function onDataChanged(){ prodFrame.rebuildProdMbSorted() }
                         ignoreUnknownSignals: true
                     }
-                    onDefChanged: requestPaint()
-
-                    onPaint: {
-                        var ctx = getContext("2d")
-                        ctx.reset()
-
-                        var lm = chartOuter.leftMargin
-                        var rm = chartOuter.rightMargin
-                        var tm = chartOuter.topMargin
-                        var bm = chartOuter.bottomMargin
-                        var cw = width - lm - rm   // chart width
-                        var ch = height - tm - bm  // chart height
-
-                        // ── Background ───────────────────────────────────
-                        ctx.fillStyle = "#ffffff"
-                        ctx.fillRect(lm, tm, cw, ch)
-                        ctx.strokeStyle = "#2a2a2a"; ctx.lineWidth = 1
-                        ctx.strokeRect(lm, tm, cw, ch)
-
-                        // ── Collect data points ───────────────────────────
-                        var model = profileCanvas.trayModel
-                        var pdef = profileCanvas.def
-
-                        if (!model || model.rowCount() === 0 || !pdef) {
-                            ctx.fillStyle = "#9ba8bf"
-                            ctx.font = "13px sans-serif"
-                            ctx.textAlign = "center"
-                            ctx.fillText("No data – run solver", lm + cw/2, tm + ch/2)
-                            return
-                        }
-
-                        // ── Collect points: Y = tray, X = profile value ──
-                        var pts = []
-                        var nTrays = appState ? appState.trays : 0
-                        var p0 = appState ? appState.topPressurePa : 0
-                        var dp = appState ? appState.dpPerTrayPa : 0
-                        for (var r = 0; r < model.rowCount(); r++) {
-                            var row = model.get(r)
-                            var xVal
-                            if (pdef.key === "pressure") {
-                                xVal = p0 + dp * (nTrays - row.trayNumber)
-                            } else {
-                                xVal = row[pdef.key]
-                                if (xVal === undefined || xVal === null) xVal = 0
-                            }
-                            pts.push({ tray: row.trayNumber, x: Number(xVal) })
-                        }
-                        pts.sort(function(a,b){ return a.tray - b.tray })
-
-                        if (pts.length === 0) return
-
-                        var minTray = pts[0].tray, maxTray = pts[pts.length-1].tray
-                        var minX = pts[0].x, maxX = pts[0].x
-                        for (var k = 1; k < pts.length; k++) {
-                            if (pts[k].x < minX) minX = pts[k].x
-                            if (pts[k].x > maxX) maxX = pts[k].x
-                        }
-                        // Nice X (value) range with padding
-                        var xPad = (maxX - minX) * 0.06 || Math.abs(maxX) * 0.05 || 1
-                        var xLo = minX - xPad
-                        var xHi = maxX + xPad
-                        var rngX = xHi - xLo || 1
-                        var rngTray = (maxTray - minTray) || 1
-
-                        // ── Grid lines ────────────────────────────────────
-                        var nGridX = 6                        // value (horizontal) grid lines
-                        var nGridY = Math.min(pts.length, 10) // tray (vertical) grid lines
-                        ctx.strokeStyle = "#dde4f0"; ctx.lineWidth = 1
-                        ctx.setLineDash([3,3])
-                        // Horizontal lines (constant value)
-                        for (var gi = 0; gi <= nGridX; gi++) {
-                            var gx = lm + gi * (cw / nGridX)
-                            ctx.beginPath(); ctx.moveTo(gx, tm); ctx.lineTo(gx, tm+ch); ctx.stroke()
-                        }
-                        // Vertical lines (constant tray)
-                        for (var gj = 0; gj <= nGridY; gj++) {
-                            var gy = tm + ch - gj * (ch / nGridY)
-                            ctx.beginPath(); ctx.moveTo(lm, gy); ctx.lineTo(lm+cw, gy); ctx.stroke()
-                        }
-                        ctx.setLineDash([])
-
-                        // ── Y-axis labels (tray numbers) ──────────────────
-                        ctx.fillStyle = "#5a6472"
-                        ctx.font = "10px sans-serif"
-                        ctx.textAlign = "right"
-                        var step = Math.max(1, Math.round(pts.length / nGridY))
-                        for (var yi = 0; yi < pts.length; yi += step) {
-                            var yp = tm + ch - (pts[yi].tray - minTray) / rngTray * ch
-                            ctx.fillText(pts[yi].tray, lm - 4, yp + 4)
-                        }
-                        // Always label top tray
-                        var topPt = pts[pts.length-1]
-                        ctx.fillText(topPt.tray, lm - 4, tm + ch - (topPt.tray - minTray)/rngTray*ch + 4)
-
-                        // ── Y-axis title (rotated): "Tray Number" ─────────
-                        ctx.save()
-                        ctx.fillStyle = "#1f2430"
-                        ctx.font = "bold 11px sans-serif"
-                        ctx.textAlign = "center"
-                        ctx.translate(13, tm + ch/2)
-                        ctx.rotate(-Math.PI/2)
-                        ctx.fillText("Tray Number (1 = Bottoms)", 0, 0)
-                        ctx.restore()
-
-                        // ── X-axis labels (profile values) ────────────────
-                        ctx.fillStyle = "#5a6472"
-                        ctx.font = "10px sans-serif"
-                        ctx.textAlign = "center"
-                        for (var xi = 0; xi <= nGridX; xi++) {
-                            var xv = xLo + xi * rngX / nGridX
-                            var xp = lm + xi * (cw / nGridX)
-                            var xStr = Math.abs(xv) >= 10000 ? xv.toExponential(2)
-                                     : Math.abs(xv) >= 100   ? xv.toFixed(0)
-                                     : Math.abs(xv) >= 1     ? xv.toFixed(2)
-                                     : xv.toFixed(4)
-                            ctx.fillText(xStr, xp, tm + ch + 14)
-                        }
-
-                        // ── X-axis title (profile label + unit) ───────────
-                        ctx.fillStyle = "#1f2430"
-                        ctx.font = "bold 11px sans-serif"
-                        ctx.textAlign = "center"
-                        ctx.fillText(pdef.label + " (" + pdef.unit + ")", lm + cw/2, tm + ch + 44)
-
-                        // ── Data line ─────────────────────────────────────
-                        ctx.strokeStyle = pdef.color; ctx.lineWidth = 2
-                        ctx.beginPath()
-                        for (var p = 0; p < pts.length; p++) {
-                            var px = lm + (pts[p].x - xLo) / rngX * cw
-                            var py = tm + ch - (pts[p].tray - minTray) / rngTray * ch
-                            if (p === 0) ctx.moveTo(px, py)
-                            else ctx.lineTo(px, py)
-                        }
-                        ctx.stroke()
-
-                        // ── Data dots ─────────────────────────────────────
-                        ctx.fillStyle = pdef.color
-                        for (var d = 0; d < pts.length; d++) {
-                            var dpx = lm + (pts[d].x - xLo) / rngX * cw
-                            var dpy = tm + ch - (pts[d].tray - minTray) / rngTray * ch
-                            ctx.beginPath(); ctx.arc(dpx, dpy, 3.5, 0, 2*Math.PI); ctx.fill()
-                        }
+                    Connections{
+                        target: appState
+                        function onSolvedChanged(){ prodFrame.rebuildProdMbSorted() }
+                        ignoreUnknownSignals: true
                     }
-                }
-            }
-        }
-    }
-
-    // ==========================================================
-    //  PRODUCTS TAB  – Material Balance (sorted, with totals)
-    // ==========================================================
-    Item {
-        id: productsTab
-        visible: root.activeTab === "Products"
-        anchors { fill: workspaceFrame; margins: 10 }
-
-        CardFrame {
-            id: prodMbCard
-            anchors.fill: parent
-            title: "Material Balance"
-
-            // ── Column headers ────────────────────────────────
-            Item {
-                id: prodMbHdr
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:36 }
-                height: 28
-                Row {
-                    anchors { left:parent.left; right:parent.right; leftMargin:10 }
-                    Text { width:parent.width*0.55; text:"Product";     font.bold:true; font.pixelSize:fsLabel; color:textDark; height:28; verticalAlignment:Text.AlignVCenter }
-                    Text { width:parent.width*0.25; text:"Flow (kg/h)"; font.bold:true; font.pixelSize:fsLabel; color:textDark; height:28; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-                    Text { width:parent.width*0.16; text:"Feed %";      font.bold:true; font.pixelSize:fsLabel; color:textDark; height:28; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-                }
-                HDivider { anchors.bottom:parent.bottom; width:parent.width }
-            }
-
-            // ── Sorted rows ───────────────────────────────────
-            property var prodMbSorted: []
-
-            function rebuildProdMbSorted() {
-                var mbm = appState ? appState.materialBalanceModel : null
-                if (!mbm || !appState || !appState.solved) { prodMbSorted = []; return }
-                var n = mbm.rowCount()
-                var rows = []
-                for (var i = 0; i < n; i++) {
-                    var idx = mbm.index(i, 0)
-                    var nm  = mbm.data(idx, 257) || ""
-                    var kg  = mbm.data(idx, 258) || 0
-                    var fr  = mbm.data(idx, 259) || 0
-                    var nmL = nm.toLowerCase()
-                    var sortKey = 0
-                    if (nmL.indexOf("distillate") >= 0 || nmL.indexOf("overhead") >= 0)
-                        sortKey = 99999
-                    else if (nmL.indexOf("bottoms") >= 0 || nmL.indexOf("residue") >= 0)
-                        sortKey = -1
-                    else {
-                        var parts = nm.match(/Tray\s*(\d+)/i)
-                        sortKey = parts ? parseInt(parts[1]) : 0
+                    Connections{
+                        target: root
+                        function onActiveTabChanged(){ if(root.activeTab === "Products") prodFrame.rebuildProdMbSorted() }
+                        ignoreUnknownSignals: true
                     }
-                    rows.push({ name: nm, kgph: kg, frac: fr, sortKey: sortKey })
-                }
-                rows.sort(function(a,b){ return b.sortKey - a.sortKey })
-                prodMbSorted = rows
-            }
 
-            Connections {
-                target: appState ? appState.materialBalanceModel : null
-                function onTotalsChanged() { prodMbCard.rebuildProdMbSorted() }
-                ignoreUnknownSignals: true
-            }
-            Connections {
-                target: appState
-                function onSolvedChanged() { prodMbCard.rebuildProdMbSorted() }
-                ignoreUnknownSignals: true
-            }
-
-            ListView {
-                id: prodMbList
-                anchors { left:parent.left; right:parent.right; top:prodMbHdr.bottom; bottom:prodMbTotals.top }
-                clip: true
-                model: prodMbCard.prodMbSorted
-                delegate: Item {
-                    width: parent ? parent.width : 0; height: 28
-                    Row {
-                        anchors { left:parent.left; right:parent.right; leftMargin:10 }
-                        Text { width:parent.width*0.55; text:modelData.name||"—";              font.pixelSize:fsValue; color:textDark;  height:28; verticalAlignment:Text.AlignVCenter; elide:Text.ElideRight }
-                        Text { width:parent.width*0.25; text:Math.round(modelData.kgph||0)+""; font.pixelSize:fsValue; color:valueBlue; height:28; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-                        Text { width:parent.width*0.16; text:fmt2((modelData.frac||0)*100)+"%";font.pixelSize:fsValue; color:valueBlue; height:28; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight }
-                    }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
-                Text {
-                    anchors.centerIn: parent
-                    visible: !appState || !appState.solved
-                    text: "Run solver to see material balance"
-                    color: textMuted; font.pixelSize: fsLabel; font.italic: true
-                }
-            }
-
-            // ── Totals + balance error footer ─────────────────
-            Item {
-                id: prodMbTotals
-                anchors { left:parent.left; right:parent.right; bottom:parent.bottom }
-                height: 52
-                visible: appState && appState.solved
-
-                HDivider { anchors.top:parent.top; width:parent.width }
-
-                Column {
-                    anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:1 }
-                    spacing: 0
-
-                    Item {
-                        width: parent.width; height: 25
-                        Row {
-                            anchors { left:parent.left; right:parent.right; leftMargin:10 }
-                            Text { width:parent.width*0.55; text:"Total Products"; font.bold:true; font.pixelSize:fsLabel; color:textDark; height:25; verticalAlignment:Text.AlignVCenter }
-                            Text {
-                                width:parent.width*0.25
-                                text: appState && appState.materialBalanceModel ? Math.round(appState.materialBalanceModel.totalProductsKgph) + "" : "—"
-                                font.bold:true; font.pixelSize:fsLabel; color:valueBlue; height:25; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight
+                    ListView {
+                        anchors{left:parent.left;right:parent.right;top:prodMbHdr2.bottom;bottom:prodTotals.top}
+                        clip:true; model:prodFrame.prodMbSorted
+                        delegate:Item{width:parent?parent.width:0;height:rowH
+                            Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                            Row{anchors{left:parent.left;right:parent.right;leftMargin:8}
+                                Text{width:parent.width*0.55;text:modelData.name||"—";font.pixelSize:fsVal;color:textMain;height:rowH;verticalAlignment:Text.AlignVCenter;elide:Text.ElideRight}
+                                Text{width:parent.width*0.25;text:Math.round(modelData.kgph||0)+"";font.pixelSize:fsVal;color:valueBlue;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                Text{width:parent.width*0.16;text:fmt2((modelData.frac||0)*100)+"%";font.pixelSize:fsVal;color:valueBlue;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
                             }
-                            Text {
-                                width:parent.width*0.16
-                                text: appState && appState.materialBalanceModel ? fmt2(appState.materialBalanceModel.totalFrac * 100) + "%" : "—"
-                                font.bold:true; font.pixelSize:fsLabel; color:valueBlue; height:25; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight
-                            }
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
                         }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width }
+                        Text{anchors.centerIn:parent;visible:!appState||!appState.solved;text:"Run solver to see material balance";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
                     }
 
                     Item {
-                        width: parent.width; height: 25
-                        Row {
-                            anchors { left:parent.left; right:parent.right; leftMargin:10 }
-                            Text { width:parent.width*0.55; text:"Balance Error"; font.pixelSize:fsLabel; color:textMuted; height:25; verticalAlignment:Text.AlignVCenter }
-                            Text {
-                                width:parent.width*0.25
-                                property double errKgph: appState && appState.materialBalanceModel ? appState.materialBalanceModel.balanceErrKgph : 0
-                                text: fmt2(Math.abs(errKgph)) + " kg/h"
-                                font.pixelSize:fsLabel
-                                color: Math.abs(errKgph) > 100 ? errorRed : (Math.abs(errKgph) > 10 ? warnAmber : "#1a7a3c")
-                                height:25; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight
+                        id: prodTotals
+                        anchors{left:parent.left;right:parent.right;bottom:parent.bottom} height:rowH*2+1
+                        visible:appState&&appState.solved
+                        HDivider{anchors.top:parent.top;width:parent.width}
+                        Item{anchors{left:parent.left;right:parent.right;top:parent.top} height:rowH
+                            Rectangle{anchors.fill:parent;color:hdrBg}
+                            Row{anchors{left:parent.left;right:parent.right;leftMargin:8}
+                                Text{width:parent.width*0.55;text:"Total Products";font.bold:true;font.pixelSize:fsLbl;color:textMain;height:rowH;verticalAlignment:Text.AlignVCenter}
+                                Text{width:parent.width*0.25;text:appState&&appState.materialBalanceModel?Math.round(appState.materialBalanceModel.totalProductsKgph)+"":"—";font.bold:true;font.pixelSize:fsLbl;color:valueBlue;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                Text{width:parent.width*0.16;text:appState&&appState.materialBalanceModel?fmt2(appState.materialBalanceModel.totalFrac*100)+"%":"—";font.bold:true;font.pixelSize:fsLbl;color:valueBlue;height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
                             }
-                            Text {
-                                width:parent.width*0.16
-                                property double feedK: appState && appState.materialBalanceModel ? appState.materialBalanceModel.feedKgph : 1
-                                property double errK:  appState && appState.materialBalanceModel ? appState.materialBalanceModel.balanceErrKgph : 0
-                                property double errPct: (feedK > 0) ? Math.abs(errK) / feedK * 100 : 0
-                                text: fmt2(errPct) + "%"
-                                font.pixelSize:fsLabel
-                                color: errPct > 1.0 ? errorRed : (errPct > 0.1 ? warnAmber : "#1a7a3c")
-                                height:25; verticalAlignment:Text.AlignVCenter; horizontalAlignment:Text.AlignRight
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
+                        }
+                        Item{anchors{left:parent.left;right:parent.right;bottom:parent.bottom} height:rowH
+                            Row{anchors{left:parent.left;right:parent.right;leftMargin:8}
+                                Text{width:parent.width*0.55;text:"Balance Error";font.pixelSize:fsLbl;color:textMuted;height:rowH;verticalAlignment:Text.AlignVCenter}
+                                Text{width:parent.width*0.25
+                                    property double errKgph:appState&&appState.materialBalanceModel?appState.materialBalanceModel.balanceErrKgph:0
+                                    text:fmt2(Math.abs(errKgph))+" kg/h";font.pixelSize:fsLbl
+                                    color:Math.abs(errKgph)>100?errorRed:(Math.abs(errKgph)>10?warnAmber:"#1a7a3c")
+                                    height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
+                                Text{width:parent.width*0.16
+                                    property double feedK:appState&&appState.materialBalanceModel?appState.materialBalanceModel.feedKgph:1
+                                    property double errK:appState&&appState.materialBalanceModel?appState.materialBalanceModel.balanceErrKgph:0
+                                    property double errPct:(feedK>0)?Math.abs(errK)/feedK*100:0
+                                    text:fmt2(errPct)+"%";font.pixelSize:fsLbl
+                                    color:errPct>1.0?errorRed:(errPct>0.1?warnAmber:"#1a7a3c")
+                                    height:rowH;verticalAlignment:Text.AlignVCenter;horizontalAlignment:Text.AlignRight}
                             }
                         }
                     }
                 }
             }
-        }
-    }
 
-    // ==========================================================
-    //  RUN LOG TAB
-    // ==========================================================
-    Item {
-        id: runLogTab
-        visible: root.activeTab === "Run Log"
-        anchors { fill: workspaceFrame; margins: 10 }
+            // ==================================================
+            //  RUN LOG TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Run Log"
 
-        CardFrame {
-            anchors.fill: parent
-            title: "Run Log"
-
-            ScrollView {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:38; bottom:parent.bottom; margins:0; leftMargin:10; rightMargin:10 }
-                clip:true
-                ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-                ListView {
-                    id: runLogList
-                    model: appState ? appState.runLogModel : null
-                    spacing: 0
-                    delegate: Item {
-                        width: runLogList.width; height:24
-                        Text {
-                            x:4; anchors.verticalCenter:parent.verticalCenter
-                            text: model.text || ""
-                            font.pixelSize: fsValue; color: textDark
-                            font.family: "Monospace"
+                CompactFrame {
+                    anchors.fill: parent
+                    SectionHeader{id:runLogHdr;width:parent.width;text:"Run Log"}
+                    ScrollView {
+                        anchors{left:parent.left;right:parent.right;top:runLogHdr.bottom;bottom:parent.bottom;leftMargin:6;rightMargin:6}
+                        clip:true; ScrollBar.vertical.policy:ScrollBar.AsNeeded
+                        ListView {
+                            id:runLogList2; model:appState?appState.runLogModel:null; spacing:0
+                            delegate:Item{width:runLogList2.width;height:rowH
+                                Text{x:4;anchors.verticalCenter:parent.verticalCenter;text:model.text||"";font.pixelSize:fsVal;color:textMain;font.family:"Monospace"}
+                                HDivider{anchors.bottom:parent.bottom;width:parent.width;color:"#d0d8e8"}
+                            }
+                            onCountChanged: Qt.callLater(function(){runLogList2.positionViewAtEnd()})
+                            Text{anchors.centerIn:parent;visible:!appState||!appState.runLogModel||appState.runLogModel.rowCount()===0
+                                 text:"No run log entries yet";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
                         }
-                        HDivider { anchors.bottom:parent.bottom; width:parent.width; color: "#d0d8e8" }
-                    }
-                    // Auto-scroll to bottom when new entries arrive
-                    onCountChanged: Qt.callLater(function(){ runLogList.positionViewAtEnd() })
-
-                    Text {
-                        anchors.centerIn:parent
-                        visible: !appState || !appState.runLogModel || appState.runLogModel.rowCount()===0
-                        text:"No run log entries yet"; color:textMuted; font.pixelSize:fsLabel; font.italic:true
                     }
                 }
             }
-        }
-    }
 
-    // ==========================================================
-    //  DIAGNOSTICS TAB
-    // ==========================================================
-    Item {
-        id: diagnosticsTab
-        visible: root.activeTab === "Diagnostics"
-        anchors { fill: workspaceFrame; margins: 10 }
+            // ==================================================
+            //  DIAGNOSTICS TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Diagnostics"
 
-        CardFrame {
-            anchors.fill: parent
-            title: "Diagnostics"
-
-            ListView {
-                anchors { left:parent.left; right:parent.right; top:parent.top; topMargin:42; bottom:parent.bottom; margins:0; leftMargin:12; rightMargin:12 }
-                clip:true
-                model: appState ? appState.diagnosticsModel : null
-                spacing: 6
-                delegate: Item {
-                    width: parent ? parent.width : 0; height:38
-                    Row {
-                        anchors { left:parent.left; right:parent.right; verticalCenter:parent.verticalCenter }
-                        spacing: 8
-                        Rectangle {
-                            width:14; height:14; radius:3
-                            color: model.level === "error" ? errorRed : (model.level === "warn" ? warnAmber : softBlue)
-                            anchors.verticalCenter:parent.verticalCenter
+                CompactFrame {
+                    anchors.fill: parent
+                    SectionHeader{id:diagHdr;width:parent.width;text:"Diagnostics"}
+                    ListView {
+                        anchors{left:parent.left;right:parent.right;top:diagHdr.bottom;bottom:parent.bottom;leftMargin:8;rightMargin:8}
+                        clip:true; model:appState?appState.diagnosticsModel:null; spacing:4
+                        delegate:Item{width:parent?parent.width:0;height:rowH
+                            Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                            Row{anchors{left:parent.left;right:parent.right;leftMargin:4;verticalCenter:parent.verticalCenter} spacing:6
+                                Rectangle{width:8;height:8;radius:2;color:model.level==="error"?errorRed:(model.level==="warn"?warnAmber:activeBlue);anchors.verticalCenter:parent.verticalCenter}
+                                Text{text:model.message||"";font.pixelSize:fsLbl;color:textMain;wrapMode:Text.Wrap;width:parent.width-24}}
+                            HDivider{anchors.bottom:parent.bottom;width:parent.width}
                         }
-                        Text {
-                            text: model.message || ""
-                            font.pixelSize:fsLabel; color:textDark
-                            wrapMode:Text.Wrap
-                            width: parent.width - 30
-                        }
+                        Text{anchors.centerIn:parent;visible:!appState||!appState.diagnosticsModel||appState.diagnosticsModel.rowCount()===0
+                             text:"No diagnostics";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
                     }
-                    HDivider { anchors.bottom:parent.bottom; width:parent.width }
-                }
-                Text {
-                    anchors.centerIn:parent
-                    visible: !appState || !appState.diagnosticsModel || appState.diagnosticsModel.rowCount()===0
-                    text:"No diagnostics"; color:textMuted; font.pixelSize:fsLabel; font.italic:true
                 }
             }
-        }
+
+        } // content
     }
 }

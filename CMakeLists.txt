@@ -18,7 +18,9 @@ add_library(adt_core
   cpp/thermo/Flash.cpp
   cpp/thermo/EOSK.cpp
   cpp/thermo/Enthalpy.cpp
-  "cpp/thermo/PH_PT_Flash.cpp"
+  cpp/thermo/Entropy.cpp
+  cpp/thermo/PH_PS_PT_TS_Flash.cpp
+  cpp/thermo/StreamPropertyCalcs.cpp
   cpp/thermo/eos/PR.cpp
   cpp/thermo/eos/SRK.cpp
   cpp/thermo/eos/PRSV.cpp
@@ -52,6 +54,22 @@ target_include_directories(adt_core PUBLIC
 # ----------------------------
 qt_add_executable(appChatGPT5_ADT
     cpp/main.cpp
+    cpp/components/ComponentRecord.h
+    cpp/components/ComponentRecord.cpp
+    cpp/fluid/FluidPackageRecord.h
+    cpp/fluid/FluidPackageRecord.cpp
+    cpp/components/ComponentListRecord.h
+    cpp/components/ComponentListRecord.cpp
+    cpp/components/ComponentManager.h
+    cpp/components/ComponentManager.cpp
+    cpp/components/models/CompGroupListModel.h
+    cpp/components/models/CompGroupListModel.cpp
+    cpp/fluid/FluidPackageManager.h
+    cpp/fluid/FluidPackageManager.cpp
+    cpp/components/models/ComponentListModel.h
+    cpp/components/models/ComponentListModel.cpp
+    cpp/fluid/models/FluidPackageListModel.h
+    cpp/fluid/models/FluidPackageListModel.cpp
     cpp/flowsheet/UnitNode.h
     cpp/flowsheet/models/FlowsheetUnitModel.h
     cpp/flowsheet/models/FlowsheetUnitModel.cpp
@@ -80,13 +98,19 @@ qt_add_executable(appChatGPT5_ADT
 qt_add_qml_module(appChatGPT5_ADT
     URI ChatGPT5.ADT
     VERSION 1.0
+    NO_CACHEGEN
     QML_FILES
         qml/Main.qml
+        qml/common/ClassicTabs.qml
+        qml/common/ClassicButton.qml
         qml/pfd/PfdMainView.qml
         qml/pfd/PfdCanvas.qml
-        qml/pfd/UnitPalette.qml
+        qml/pfd/EquipmentPalette.qml
         qml/pfd/UnitNodeItem.qml
         qml/pfd/FloatingPanel.qml
+        qml/components/ComponentManagerView.qml
+        qml/fluid/FluidManagerView.qml
+        qml/displaySettings/DisplaySettingsPanel.qml
         cpp/unitops/column/qml/SpecsPanel.qml
         cpp/unitops/column/qml/DiagnosticsPanel.qml
         cpp/unitops/column/qml/ColumnView.qml
@@ -104,10 +128,13 @@ qt_add_qml_module(appChatGPT5_ADT
         cpp/streams/qml/StreamPhasesPanel.qml
         cpp/streams/qml/StreamPropertiesPanel.qml
         cpp/streams/qml/StreamWorkspaceWindow.qml
+        qml/spreadsheet/SimpleSpreadsheet.qml
+        qml/spreadsheet/SpreadsheetView.qml
+        qml/spreadsheet/SpreadsheetWorkspaceWindow.qml
     RESOURCES
-        cpp/unitops/column/qml/Column.png
-        qml/pfd/Column.png
-        qml/pfd/MaterialStream.png
+        icons/svg/Equip_Palette/Distillation_Column.svg
+        icons/svg/Equip_Palette/Material_Stream.svg
+        cpp/components/data/hydrocarbon_starter_components.json
 )
 # Link core into the Qt app (no Qt linkage needed in adt_core unless you use Qt types inside solver sources)
 target_link_libraries(appChatGPT5_ADT

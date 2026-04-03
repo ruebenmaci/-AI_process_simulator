@@ -14,6 +14,21 @@ Pane {
     property string pendingConnectionUnitId: ""
     property string connectionStatusText: ""
 
+    // ── Placement mode ────────────────────────────────────────────────────
+    // Set placementType to "column" or "stream" to enter placement mode.
+    // A ghost icon follows the cursor; left-click drops the unit there.
+    property string placementType: ""   // "" = inactive
+    readonly property bool inPlacementMode: placementType !== ""
+
+    function beginPlacement(unitType) {
+        placementType = unitType
+        sheet.forceActiveFocus()
+    }
+
+    function cancelPlacement() {
+        placementType = ""
+    }
+
     property real designDrawingWidth: 1180
     property real designDrawingHeight: 760
     property var unitRelPos: ({})
@@ -212,6 +227,188 @@ Pane {
         connectionOverlay.requestPaint()
     }
 
+    function hideContextMenu() {
+        contextMenuRect.visible = false
+        root.contextMenuUnitId = ""
+        root.contextMenuUnitType = ""
+        root.contextMenuConnected = false
+    }
+
+    function tryDeleteUnit(unitId) {
+        if (!root.flowsheet || unitId === "") return
+        root.flowsheet.selectUnit(unitId)
+        root.flowsheet.deleteSelectedUnitAndConnections()
+        root.hideContextMenu()
+        connectionOverlay.requestPaint()
+    }
+
+    function isStreamConnected(unitId) {
+        if (!root.flowsheet) return false
+        const connections = root.flowsheet.materialConnections
+        for (let i = 0; i < connections.length; ++i) {
+            if (connections[i].streamUnitId === unitId)
+                return true
+        }
+        return false
+    }
+
+    function unitHasConnections(unitId) {
+        if (!root.flowsheet || unitId === "") return false
+        const unitType = root.flowsheet.unitType(unitId)
+        const connections = root.flowsheet.materialConnections
+        if (unitType === "stream")
+            return root.isStreamConnected(unitId)
+        for (let i = 0; i < connections.length; ++i) {
+            if (connections[i].targetUnitId === unitId || connections[i].sourceUnitId === unitId)
+                return true
+        }
+        return false
+    }
+
+    function showContextMenu(unitId, sheetX, sheetY) {
+        if (!root.flowsheet) return
+        const unitType = root.flowsheet.unitType(unitId)
+        if (unitType === "") return
+
+        root.flowsheet.selectUnit(unitId)
+        root.contextMenuUnitId = unitId
+        root.contextMenuUnitType = unitType
+        root.contextMenuConnected = root.unitHasConnections(unitId)
+        const menuH = root.contextMenuConnected ? 72 : 38
+        contextMenuRect.x = Math.max(4, Math.min(sheetX, sheet.width  - 196))
+        contextMenuRect.y = Math.max(4, Math.min(sheetY, sheet.height - menuH - 4))
+        contextMenuRect.visible = true
+    }
+
+    property string contextMenuUnitId: ""
+    property string contextMenuUnitType: ""
+    property bool   contextMenuConnected: false
+
+    // ── Drag-to-connect snap state ────────────────────────────────────────
+    // When a stream is dragged near a column port, we highlight that port
+    // and auto-connect on drop.
+    property string snapColumnId: ""    // column being snapped to
+    property string snapPortName: ""    // "feed" | "distillate" | "bottoms"
+    readonly property bool snapActive: snapColumnId !== "" && snapPortName !== ""
+    property string draggingUnitId: ""  // unitId of item currently being dragged
+
+    // How close (px) the stream centre must be to a port to snap
+    readonly property real snapRadius: 48
+
+    // Port positions on a column item (mirrors itemPortPoint logic)
+    function columnPortPoint(colItem, port) {
+        if (!colItem) return null
+        const iconH = colItem.height - colItem.labelAreaHeight - 4
+        if (port === "feed")
+            return Qt.point(colItem.x,
+                            colItem.y + iconH * 0.50)
+        if (port === "distillate")
+            return Qt.point(colItem.x + colItem.width * 0.50,
+                            colItem.y)
+        if (port === "bottoms")
+            return Qt.point(colItem.x + colItem.width * 0.50,
+                            colItem.y + iconH * 0.90)
+        return null
+    }
+
+    // Check all columns for snap proximity while a stream is being dragged.
+    // streamItem: the UnitNodeItem being dragged
+    function updateSnapTarget(streamItem) {
+        if (!root.flowsheet || !streamItem) {
+            snapColumnId = ""; snapPortName = ""; return
+        }
+
+        const sx = streamItem.x + streamItem.width  / 2
+        const sy = streamItem.y + streamItem.height / 2
+
+        // Gather existing connections so we don't offer already-bound ports
+        const connections = root.flowsheet.materialConnections
+
+        let bestDist = root.snapRadius
+        let bestCol  = ""
+        let bestPort = ""
+
+        for (let i = 0; i < unitRepeater.count; ++i) {
+            const item = unitRepeater.itemAt(i)
+            if (!item || item.unitType !== "column") continue
+
+            const colId = item.unitId
+
+            const ports = ["feed", "distillate", "bottoms"]
+            for (let p = 0; p < ports.length; ++p) {
+                const port = ports[p]
+                // Skip ports that are already connected
+                let alreadyConnected = false
+                for (let c = 0; c < connections.length; ++c) {
+                    const conn = connections[c]
+                    if (conn.targetUnitId === colId && conn.targetPort === port) {
+                        alreadyConnected = true; break
+                    }
+                    if (conn.sourceUnitId === colId && conn.sourcePort === port) {
+                        alreadyConnected = true; break
+                    }
+                }
+                if (alreadyConnected) continue
+
+                const pp = columnPortPoint(item, port)
+                if (!pp) continue
+
+                const dist = Math.sqrt((sx - pp.x) * (sx - pp.x) +
+                                       (sy - pp.y) * (sy - pp.y))
+                if (dist < bestDist) {
+                    bestDist = dist
+                    bestCol  = colId
+                    bestPort = port
+                }
+            }
+        }
+
+        if (bestCol !== snapColumnId || bestPort !== snapPortName) {
+            snapColumnId = bestCol
+            snapPortName = bestPort
+            connectionOverlay.requestPaint()
+        }
+    }
+
+    function clearSnapTarget() {
+        if (snapColumnId !== "" || snapPortName !== "") {
+            snapColumnId = ""
+            snapPortName = ""
+            connectionOverlay.requestPaint()
+        }
+    }
+
+    // Attempt auto-connect on drop
+    function trySnapConnect(streamId) {
+        if (!snapActive || !root.flowsheet) return false
+        let ok = false
+        if (snapPortName === "feed")
+            ok = root.flowsheet.bindColumnFeedStream(snapColumnId, streamId)
+        else if (snapPortName === "distillate")
+            ok = root.flowsheet.bindColumnProductStream(snapColumnId, "distillate", streamId)
+        else if (snapPortName === "bottoms")
+            ok = root.flowsheet.bindColumnProductStream(snapColumnId, "bottoms", streamId)
+        clearSnapTarget()
+        if (ok) connectionOverlay.requestPaint()
+        return ok
+    }
+
+    // Called from delegate onMoved — checks snap at final dropped position
+    function onStreamDropped(unitId) {
+        if (!root.flowsheet) return
+        if (root.flowsheet.unitType(unitId) !== "stream") {
+            clearSnapTarget()
+            return
+        }
+        const item = unitItemById(unitId)
+        if (item) {
+            updateSnapTarget(item)
+            if (root.snapActive)
+                trySnapConnect(unitId)
+        }
+        clearSnapTarget()
+    }
+
     padding: 12
 
     background: Rectangle {
@@ -235,18 +432,43 @@ Pane {
             MouseArea {
                 id: mouseTracker
                 anchors.fill: parent
-                acceptedButtons: Qt.NoButton
+                acceptedButtons: root.inPlacementMode ? Qt.LeftButton | Qt.RightButton : Qt.NoButton
                 hoverEnabled: true
-                z: -1
+                z: root.inPlacementMode ? 10 : -1
+                cursorShape: root.inPlacementMode ? Qt.CrossCursor : Qt.ArrowCursor
 
                 onPositionChanged: function(mouse) {
                     root.mouseSheetX = mouse.x
                     root.mouseSheetY = mouse.y
+                    // Live snap detection while a stream is being dragged
+                    if (root.draggingUnitId !== "") {
+                        const item = root.unitItemById(root.draggingUnitId)
+                        if (item)
+                            root.updateSnapTarget(item)
+                    }
                 }
 
                 onExited: {
                     root.mouseSheetX = -1
                     root.mouseSheetY = -1
+                    root.draggingUnitId = ""
+                    root.clearSnapTarget()
+                }
+
+                onClicked: function(mouse) {
+                    if (!root.inPlacementMode) return
+                    if (mouse.button === Qt.RightButton) {
+                        root.cancelPlacement()
+                        return
+                    }
+                    // Place the unit at the clicked position (clamped to drawing border)
+                    const px = Math.max(drawingBorder.x, Math.min(mouse.x, drawingBorder.x + drawingBorder.width  - 10))
+                    const py = Math.max(drawingBorder.y, Math.min(mouse.y, drawingBorder.y + drawingBorder.height - 10))
+                    if (root.placementType === "column")
+                        root.flowsheet.addColumn(px, py)
+                    else if (root.placementType === "stream")
+                        root.flowsheet.addStream(px, py)
+                    root.cancelPlacement()
                 }
             }
 
@@ -265,6 +487,7 @@ Pane {
                 id: connectionOverlay
                 anchors.fill: drawingBorder
                 z: 0
+                enabled: false
 
                 onPaint: {
                     const ctx = getContext("2d")
@@ -312,6 +535,39 @@ Pane {
                             ctx.setLineDash([])
                         }
                     }
+
+                    // ── Drag-to-connect snap indicator ────────────────────
+                    if (root.snapActive) {
+                        const colItem = root.unitItemById(root.snapColumnId)
+                        if (colItem) {
+                            const pp = root.columnPortPoint(colItem, root.snapPortName)
+                            if (pp) {
+                                const px = pp.x - drawingBorder.x
+                                const py = pp.y - drawingBorder.y
+
+                                // Outer glow ring
+                                ctx.beginPath()
+                                ctx.arc(px, py, 14, 0, Math.PI * 2)
+                                ctx.strokeStyle = "#00c080"
+                                ctx.lineWidth = 3
+                                ctx.setLineDash([])
+                                ctx.stroke()
+
+                                // Filled inner dot
+                                ctx.beginPath()
+                                ctx.arc(px, py, 6, 0, Math.PI * 2)
+                                ctx.fillStyle = "#00c080"
+                                ctx.fill()
+
+                                // Port label (Feed / Distillate / Bottoms)
+                                const label = root.snapPortName.charAt(0).toUpperCase()
+                                              + root.snapPortName.slice(1)
+                                ctx.font = "bold 11px sans-serif"
+                                ctx.fillStyle = "#00802a"
+                                ctx.fillText(label, px + 18, py + 4)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -342,7 +598,6 @@ Pane {
                     exclusionRect: Qt.rect(titleBlock.x, titleBlock.y, titleBlock.width, titleBlock.height)
                     exclusionRect2: Qt.rect(mouseDebugBox.x, mouseDebugBox.y, mouseDebugBox.width, mouseDebugBox.height)
                     selected: root.flowsheet ? root.flowsheet.selectedUnitId === model.unitId : false
-                    pendingConnectionSelection: root.pendingConnectionUnitId === model.unitId
                     canvasScale: root.canvasScale
 
                     Component.onCompleted: {
@@ -354,10 +609,18 @@ Pane {
                     onHeightChanged: Qt.callLater(root.repositionUnitsFromStoredCoords)
 
                     onClicked: function(unitId) {
+                        root.hideContextMenu()
                         if (root.flowsheet)
                             root.flowsheet.selectUnit(unitId)
+                        // Track which stream is being dragged for live snap detection
+                        if (root.flowsheet && root.flowsheet.unitType(unitId) === "stream")
+                            root.draggingUnitId = unitId
                         if (root.handleConnectionClick(unitId))
                             return
+                    }
+
+                    onRightClicked: function(unitId, mouseX, mouseY) {
+                        root.showContextMenu(unitId, mouseX, mouseY)
                     }
 
                     onDoubleClicked: function(unitId) {
@@ -370,6 +633,9 @@ Pane {
                         root.updateUnitRelPos(unitId, nodeX, nodeY, this)
                         if (root.flowsheet)
                             root.flowsheet.moveUnit(unitId, nodeX, nodeY)
+                        // Snap-connect: if a stream was dropped near a column port, auto-connect
+                        root.onStreamDropped(unitId)
+                        root.draggingUnitId = ""
                         connectionOverlay.requestPaint()
                     }
                 }
@@ -382,6 +648,25 @@ Pane {
                 onTriggered: {
                     root.repositionUnitsFromStoredCoords()
                     connectionOverlay.requestPaint()
+                }
+            }
+
+            // Polls item position during drag to update live snap indicator
+            Timer {
+                id: snapPollTimer
+                interval: 33   // ~30 fps
+                repeat: true
+                running: root.draggingUnitId !== ""
+                onTriggered: {
+                    if (root.draggingUnitId === "") {
+                        stop()
+                        return
+                    }
+                    const item = root.unitItemById(root.draggingUnitId)
+                    if (item)
+                        root.updateSnapTarget(item)
+                    else
+                        root.clearSnapTarget()
                 }
             }
 
@@ -460,6 +745,168 @@ Pane {
                     }
                 }
             }
+
+            // ── Placement ghost icon ──────────────────────────────────────
+            // Follows the mouse cursor when placement mode is active.
+            // Shows a semi-transparent preview of the icon to be placed.
+            Item {
+                id: placementGhost
+                visible: root.inPlacementMode && root.mouseSheetX >= 0
+                z: 20
+                width:  root.placementType === "column" ? 100 : 50
+                height: root.placementType === "column" ? 100 : 50
+                x: root.mouseSheetX - width  / 2
+                y: root.mouseSheetY - height / 2
+
+                opacity: 0.72
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 4
+                    color:       "transparent"
+                    border.color: "#2f6fa3"
+                    border.width: 2
+                }
+
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    source: root.placementType === "column"
+                            ? Qt.resolvedUrl("../../icons/svg/Equip_Palette/Distillation_Column.svg")
+                            : Qt.resolvedUrl("../../icons/svg/Equip_Palette/Material_Stream.svg")
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
+                // "ESC or right-click to cancel" hint label
+                Label {
+                    anchors.top:              parent.bottom
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.topMargin:        4
+                    text:      "Click to place  •  Esc / RMB to cancel"
+                    font.pixelSize: 10
+                    color:     "#31404a"
+                    background: Rectangle {
+                        color:        "#ffffffcc"
+                        radius:       3
+                        border.color: "#c6d0d7"
+                        border.width: 1
+                    }
+                    padding: 3
+                }
+            }
+
+            // Escape key cancels placement mode
+            // ── Right-click context menu ──────────────────────────────────
+            MouseArea {
+                id: contextMenuDismissArea
+                anchors.fill: parent
+                visible: contextMenuRect.visible
+                enabled: contextMenuRect.visible
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                hoverEnabled: false
+                z: 49
+                onPressed: function(mouse) {
+                    const insideMenu = mouse.x >= contextMenuRect.x
+                                     && mouse.x <= contextMenuRect.x + contextMenuRect.width
+                                     && mouse.y >= contextMenuRect.y
+                                     && mouse.y <= contextMenuRect.y + contextMenuRect.height
+                    if (!insideMenu) {
+                        root.hideContextMenu()
+                        mouse.accepted = true
+                        return
+                    }
+                    mouse.accepted = false
+                }
+            }
+
+            Rectangle {
+                id: contextMenuRect
+                visible: false
+                z: 50
+                width: 192
+                height: root.contextMenuConnected ? 72 : 38
+                radius: 4
+                color: "#ffffff"
+                border.color: "#9aaab5"
+                border.width: 1
+
+                MouseArea {
+                    anchors.fill: parent
+                    onPressed: function(mouse) { mouse.accepted = true }
+                }
+
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    spacing: 0
+
+                    Rectangle {
+                        width: parent.width
+                        height: 34
+                        visible: root.contextMenuConnected
+                        radius: 3
+                        color: disconnectHover.containsMouse ? "#ddeeff" : "transparent"
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            text: root.contextMenuUnitType === "stream" ? "Disconnect Stream" : "Disconnect Streams"
+                            font.pixelSize: 13
+                            color: "#1a2a35"
+                        }
+                        MouseArea {
+                            id: disconnectHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            onClicked: {
+                                const unitId = root.contextMenuUnitId
+                                const unitType = root.contextMenuUnitType
+                                root.hideContextMenu()
+                                if (root.flowsheet && unitId !== "") {
+                                    if (unitType === "stream")
+                                        root.flowsheet.disconnectMaterialStream(unitId)
+                                    else if (root.flowsheet.disconnectUnitConnections)
+                                        root.flowsheet.disconnectUnitConnections(unitId)
+                                    connectionOverlay.requestPaint()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 34
+                        radius: 3
+                        color: deleteHover.containsMouse && !root.contextMenuConnected ? "#ffeeee" : "transparent"
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            text: root.contextMenuUnitType === "column"
+                                  ? "Delete Column"
+                                  : (root.contextMenuUnitType === "stream" ? "Delete Stream" : "Delete Unit")
+                            font.pixelSize: 13
+                            color: root.contextMenuConnected ? "#9aaab5" : "#8b1a1a"
+                        }
+                        MouseArea {
+                            id: deleteHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: !root.contextMenuConnected
+                            onClicked: {
+                                const unitId = root.contextMenuUnitId
+                                root.hideContextMenu()
+                                if (unitId !== "")
+                                    root.tryDeleteUnit(unitId)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Keys.onEscapePressed: root.cancelPlacement()
         }
     }
 }

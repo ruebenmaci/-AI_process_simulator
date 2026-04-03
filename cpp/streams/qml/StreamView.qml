@@ -1,98 +1,82 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ChatGPT5.ADT 1.0
+import "../../../qml/common" as Common
 
 Item {
     id: root
 
-    property var streamObject: null
-    property var unitObject: null
-    property string streamTitle: unitObject ? (unitObject.name || unitObject.id || "Stream") : "Stream"
-    property int currentTab: 0
+    property var    streamObject: null
+    property var    unitObject:   null
+    property int    currentTab:   0
+    property string streamTitle:  ""   // legacy property — callers may set this directly
 
-    readonly property color bg: "#dfe4ee"
-    readonly property color chrome: "#d2d9e6"
-    readonly property color panel: "#e9edf5"
-    readonly property color panelInset: "#f4f6fa"
-    readonly property color border: "#2a2a2a"
-    readonly property color activeBlue: "#2e76db"
-    readonly property color textDark: "#1f2430"
-    readonly property color textBlue: "#1c4ea7"
-    readonly property color mutedText: "#5a6472"
+    // ── Palette (mirrors ComponentManagerView exactly) ─────────────────
+    readonly property color bgOuter:   "#d8dde2"
+    readonly property color cmdBar:    "#c8d0d8"
+    readonly property color borderOut: "#6d7883"
+    readonly property color borderIn:  "#97a2ad"
+
+    // ── Shared primitives ──────────────────────────────────────────────
+
+    // ── Root background ────────────────────────────────────────────────
+    Rectangle { anchors.fill: parent; color: bgOuter }
 
     Rectangle {
-        anchors.fill: parent
-        color: root.panel
-        border.color: root.border
-        border.width: 1
+        anchors.fill: parent; anchors.margins: 4
+        color: bgOuter; border.color: borderOut; border.width: 1
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 10
-            spacing: 8
+        // ── Tab / command bar ──────────────────────────────────────────
+        Rectangle {
+            id: tabBar
+            x: 0; y: 0; width: parent.width; height: 40
+            color: cmdBar; border.color: borderIn; border.width: 1
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                Repeater {
-                    model: ["Conditions", "Properties", "Composition", "Phases"]
-
-                    delegate: Button {
-                        text: modelData
-                        checkable: true
-                        checked: root.currentTab === index
-                        onClicked: root.currentTab = index
-
-                        Layout.preferredWidth: 110
-                        Layout.preferredHeight: 28
-
-                        contentItem: Text {
-                            text: parent.text
-                            color: "#1f2430"
-                            font.pixelSize: 12
-                            font.bold: true
-                            horizontalAlignment: Text.AlignHCenter
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-
-                        background: Rectangle {
-                            radius: 10
-                            color: root.currentTab === index ? "#3b79d8" : "#cfd4dc"
-                            border.color: "#3f3f3f"
-                            border.width: 1
-                        }
-                    }
-                }
-
-                Item { Layout.fillWidth: true }
+            Common.ClassicTabs {
+                id: streamTabs
+                x: 8; y: 6
+                tabs: [
+                    { text: "Conditions",  width: 92 },
+                    { text: "Properties",  width: 86 },
+                    { text: "Composition", width: 96 },
+                    { text: "Phases",      width: 74 }
+                ]
+                currentIndex: root.currentTab
+                onTabClicked: function(index) { root.currentTab = index }
             }
 
-            StackLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                currentIndex: root.currentTab
+        }
 
-                StreamConditionsPanel {
-                    streamObject: root.streamObject
-                    unitObject: root.unitObject
-                }
+        // ── Panel area ─────────────────────────────────────────────────
+        Item {
+            x: 6; y: tabBar.height + 6
+            width: parent.width - 12
+            height: parent.height - tabBar.height - 12
 
-                StreamPropertiesPanel {
-                    streamObject: root.streamObject
-                    unitObject: root.unitObject
-                }
-
-                StreamCompositionPanel {
-                    streamObject: root.streamObject
-                    unitObject: root.unitObject
-                }
-
-                StreamPhasesPanel {
-                    streamObject: root.streamObject
-                    unitObject: root.unitObject
-                }
+            StreamConditionsPanel {
+                anchors.fill: parent
+                visible: root.currentTab === 0
+                streamObject: root.streamObject
+                unitObject:   root.unitObject
+            }
+            StreamPropertiesPanel {
+                anchors.fill: parent
+                visible: root.currentTab === 1
+                streamObject: root.streamObject
+                unitObject:   root.unitObject
+            }
+            StreamCompositionPanel {
+                anchors.fill: parent
+                visible: root.currentTab === 2
+                streamObject: root.streamObject
+                unitObject:   root.unitObject
+            }
+            StreamPhasesPanel {
+                anchors.fill: parent
+                visible: root.currentTab === 3
+                streamObject: root.streamObject
+                unitObject:   root.unitObject
             }
         }
     }

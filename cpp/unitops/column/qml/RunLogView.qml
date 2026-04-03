@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ChatGPT5.ADT 1.0
 
 Item {
     id: root
@@ -192,12 +193,12 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Button { text: "Prev"; onClicked: root.jumpPrev(); Layout.preferredWidth: 60 }
-                Button { text: "Next"; onClicked: root.jumpNext(); Layout.preferredWidth: 60 }
+                ClassicButton { text: "Prev"; onClicked: root.jumpPrev(); Layout.preferredWidth: 60 }
+                ClassicButton { text: "Next"; onClicked: root.jumpNext(); Layout.preferredWidth: 60 }
 
                 Item { Layout.fillWidth: true }
 
-                Button {
+                ClassicButton {
                     text: "Clear search"
                     onClicked: {
                         searchField.text = "";
@@ -207,7 +208,7 @@ Item {
                         root.clearSelection();
                     }
                 }
-                Button {
+                ClassicButton {
                     text: "Clear log"
                     onClicked: { if (model) model.clear(); root.currentRow = -1; }
                 }

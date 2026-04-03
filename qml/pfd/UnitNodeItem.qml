@@ -15,7 +15,6 @@ Item {
     property string name: ""
     property string unitType: ""
     property bool selected: false
-    property bool pendingConnectionSelection: false
     property var flowsheet: null
     property Item dragBounds: null
     property real dragPaddingLeft: 0
@@ -28,6 +27,7 @@ Item {
     signal clicked(string unitId)
     signal doubleClicked(string unitId)
     signal moved(string unitId, real x, real y)
+    signal rightClicked(string unitId, real mouseX, real mouseY)
 
     function clamp(v, lo, hi) {
         return Math.max(lo, Math.min(hi, v))
@@ -123,8 +123,8 @@ Item {
         Rectangle {
             anchors.fill: parent
             color: "transparent"
-            border.width: pendingConnectionSelection ? 3 : (selected ? 2 : 0)
-            border.color: pendingConnectionSelection ? "#cc7a00" : "#2f6fa3"
+            border.width: selected ? 2 : 0
+            border.color: "#2f6fa3"
             radius: 4
         }
 
@@ -137,7 +137,7 @@ Item {
         Component {
             id: columnIconComponent
             Image {
-                source: Qt.resolvedUrl("Column.png")
+                source: Qt.resolvedUrl("../../icons/svg/Equip_Palette/Distillation_Column.svg")
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 mipmap: true
@@ -147,7 +147,7 @@ Item {
         Component {
             id: streamIconComponent
             Image {
-                source: Qt.resolvedUrl("MaterialStream.png")
+                source: Qt.resolvedUrl("../../icons/svg/Equip_Palette/Material_Stream.svg")
                 fillMode: Image.PreserveAspectFit
                 width: root.unitType === "stream" ? Math.round(40 * root.canvasScale) : Math.round(64 * root.canvasScale)
                 height: root.unitType === "stream" ? Math.round(40 * root.canvasScale) : Math.round(64 * root.canvasScale)
@@ -177,15 +177,23 @@ Item {
 
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         hoverEnabled: true
-        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        preventStealing: true
+        propagateComposedEvents: false
+        cursorShape: (pressed && pressedButtons === Qt.LeftButton) ? Qt.ClosedHandCursor : Qt.OpenHandCursor
 
         property real pressOffsetX: 0
         property real pressOffsetY: 0
         property bool dragged: false
 
         onPressed: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                root.rightClicked(root.unitId, root.x + mouse.x, root.y + mouse.y)
+                mouse.accepted = true
+                return
+            }
+
             pressOffsetX = mouse.x
             pressOffsetY = mouse.y
             dragged = false
@@ -193,23 +201,26 @@ Item {
             mouse.accepted = true
         }
 
-        onPositionChanged: function(mouse) {
-            if (!pressed)
+        onReleased: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                mouse.accepted = true
                 return
+            }
 
-            const dx = mouse.x - pressOffsetX
-            const dy = mouse.y - pressOffsetY
+            if (dragged)
+                root.moved(root.unitId, root.x, root.y)
 
-            if (!dragged && (Math.abs(dx) > 1 || Math.abs(dy) > 1))
-                dragged = true
-
-            root.applyConstrainedPosition(root.x + dx, root.y + dy)
             mouse.accepted = true
         }
 
-        onReleased: function(mouse) {
-            if (dragged)
-                root.moved(root.unitId, root.x, root.y)
+        onPositionChanged: function(mouse) {
+            if (!pressed || pressedButtons !== Qt.LeftButton)
+                return
+            const dx = mouse.x - pressOffsetX
+            const dy = mouse.y - pressOffsetY
+            if (!dragged && (Math.abs(dx) > 1 || Math.abs(dy) > 1))
+                dragged = true
+            root.applyConstrainedPosition(root.x + dx, root.y + dy)
             mouse.accepted = true
         }
 

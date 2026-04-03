@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-3.000 -3.000 104.000 95.000"
+     width="96" height="96">
+  <path d="M 0.0000 89.0000 L 0.0000 30.0000 L 98.0000 89.0000 L 98.0000 30.0000 Z" fill="white" stroke="#141414" stroke-width="2.00"/>
+  <rect x="19.0000" y="0.0000" width="60.0000" height="30.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <path d="M 49.0000 15.0000 L 49.0000 59.0000 M 19.0000 15.0000 L 79.0000 15.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
+</svg>

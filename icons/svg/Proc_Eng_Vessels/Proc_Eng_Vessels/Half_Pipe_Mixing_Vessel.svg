@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-3.000 -3.000 106.000 179.000"
+     width="96" height="96">
+  <rect x="45.0000" y="0.0000" width="10.0000" height="20.0000" fill="white" stroke="#141414" stroke-width="2.00"/>
+  <rect x="0.0000" y="100.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <rect x="0.0000" y="115.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <rect x="0.0000" y="130.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <rect x="90.0000" y="100.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <rect x="90.0000" y="115.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <rect x="90.0000" y="130.0000" width="10.0000" height="10.0000" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <path d="M 75.3600 159.1400 L 81.1400 167.3000 L 89.3000 161.5300 L 83.5300 153.3600 Z M 57.1800 163.9800 L 58.9800 173.8200 L 68.8200 172.0200 L 67.0200 162.1800 Z M 16.2700 152.6500 L 10.1500 160.5700 L 18.0700 166.6800 L 24.1800 158.7700 Z M 32.3900 161.9200 L 29.9200 171.6100 L 39.6100 174.0800 L 42.0800 164.3900 Z" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <path d="M 10.0000 50.0000 A 40.0000 15.0000 0.0 1 1 90.0000 50.0000 L 90.0000 140.0000 A 40.0000 25.0000 0.0 1 1 10.0000 140.0000 Z" fill="none" stroke="#141414" stroke-width="2.00"/>
+  <path d="M 43.0000 3.0000 L 57.0000 3.0000 M 43.0000 17.0000 L 57.0000 17.0000 M 50.0000 20.0000 L 50.0000 150.5000" stroke="#141414" stroke-width="2.00" fill="none"/>
+  <ellipse cx="40.0000" cy="150.0000" rx="10.0000" ry="3.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
+  <ellipse cx="60.0000" cy="150.0000" rx="10.0000" ry="3.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
+</svg>

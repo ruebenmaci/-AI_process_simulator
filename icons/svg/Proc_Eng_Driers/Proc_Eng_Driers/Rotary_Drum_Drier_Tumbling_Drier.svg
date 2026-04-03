@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="-3.000 -3.000 106.000 146.000"
+     width="96" height="96">
+  <path d="M 10.0000 0.0000 L 90.0000 0.0000 L 100.0000 25.0000 L 100.0000 140.0000 L 0.0000 140.0000 L 0.0000 25.0000 Z" fill="white" stroke="#141414" stroke-width="2.00"/>
+  <ellipse cx="50.0000" cy="50.0000" rx="20.0000" ry="20.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
+  <path d="M 33.0000 25.4000 A 30.0000 30.0000 0.0 0 1 67.0000 25.4000" stroke="#141414" stroke-width="2.00" fill="none"/>
+</svg>

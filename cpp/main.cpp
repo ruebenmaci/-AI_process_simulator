@@ -3,6 +3,9 @@
 #include <QtQuickControls2/QQuickStyle>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QSettings>
+#include <QObject>
+#include <QStringList>
 
 #include <QDebug>
 #include <windows.h>
@@ -10,64 +13,144 @@
 #include "unitops/column/state/ColumnUnitState.h"
 #include "flowsheet/state/FlowsheetState.h"
 #include "components/ComponentManager.h"
+#include "fluid/FluidPackageManager.h"
 
 # define QT_QML_DEBUG
 
+// ── Display settings exposed to QML ───────────────────────────────────────────
+class DisplaySettings : public QObject
+{
+   Q_OBJECT
+      Q_PROPERTY(double scaleFactor   READ scaleFactor   WRITE setScaleFactor   NOTIFY scaleFactorChanged)
+      Q_PROPERTY(QStringList presets  READ presets       CONSTANT)
+      Q_PROPERTY(QString restartNote  READ restartNote   CONSTANT)
+
+public:
+   explicit DisplaySettings(QObject* parent = nullptr) : QObject(parent)
+   {
+      QSettings s("AIProcessSimulator", "DisplaySettings");
+      m_scaleFactor = s.value("scaleFactor", 1.0).toDouble();
+   }
+
+   double scaleFactor() const { return m_scaleFactor; }
+
+   void setScaleFactor(double v) {
+      if (qFuzzyCompare(m_scaleFactor, v)) return;
+      m_scaleFactor = v;
+      QSettings s("AIProcessSimulator", "DisplaySettings");
+      s.setValue("scaleFactor", v);
+      emit scaleFactorChanged();
+   }
+
+   // Handy preset labels shown in a ComboBox
+   QStringList presets() const {
+      return { "100%  (native)", "110%", "125%", "150%", "175%", "200%" };
+   }
+
+   // Corresponding numeric values — called from QML by preset index
+   Q_INVOKABLE double presetValue(int index) const {
+      static const double vals[] = { 1.0, 1.1, 1.25, 1.5, 1.75, 2.0 };
+      if (index < 0 || index >= 6) return 1.0;
+      return vals[index];
+   }
+
+   // Returns the preset index that best matches the current scale factor
+   Q_INVOKABLE int currentPresetIndex() const {
+      static const double vals[] = { 1.0, 1.1, 1.25, 1.5, 1.75, 2.0 };
+      for (int i = 0; i < 6; ++i)
+         if (qAbs(vals[i] - m_scaleFactor) < 0.01) return i;
+      return -1;  // custom value
+   }
+
+   QString restartNote() const {
+      return "Scale change takes effect after restarting the application.";
+   }
+
+signals:
+   void scaleFactorChanged();
+
+private:
+   double m_scaleFactor = 1.0;
+};
+
+// ── Message handler ────────────────────────────────────────────────────────────
 static void vsMessageHandler(QtMsgType type,
    const QMessageLogContext& ctx, const QString& msg)
 {
    Q_UNUSED(type);
-
    QString context;
-   if (ctx.file) {
+   if (ctx.file)
       context = QString(" (%1:%2)").arg(ctx.file).arg(ctx.line);
-   }
-
    const QString out = msg + context + "\n";
-
-   // Visual Studio Output window
    OutputDebugStringW(reinterpret_cast<LPCWSTR>(out.utf16()));
-
-   // Also stderr (useful if you run from a terminal)
    fprintf(stderr, "%s", out.toLocal8Bit().constData());
 }
 
-int main(int argc, char *argv[]) {
-  qInstallMessageHandler(vsMessageHandler);
+// ── main ──────────────────────────────────────────────────────────────────────
+int main(int argc, char* argv[]) {
+   qInstallMessageHandler(vsMessageHandler);
 
-  // Use a non-native Controls style so background/indicator customization works
-  QQuickStyle::setStyle("Fusion");
+   // Read saved scale factor BEFORE QGuiApplication is constructed —
+   // QT_SCALE_FACTOR must be set before the application object exists.
+   {
+      QSettings s("AIProcessSimulator", "DisplaySettings");
+      double sf = s.value("scaleFactor", 1.0).toDouble();
+      if (sf < 0.5 || sf > 4.0) sf = 1.0;  // clamp sanity check
+      qputenv("QT_SCALE_FACTOR", QString::number(sf, 'f', 2).toUtf8());
+      qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");  // let QT_SCALE_FACTOR be the sole control
+   }
 
-  QGuiApplication app(argc, argv);
+   QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
+      Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
-  QQmlApplicationEngine engine;
+   QQuickStyle::setStyle("Fusion");
 
-  ComponentManager componentManager;
-  engine.rootContext()->setContextProperty("gComponentManager", &componentManager);
+   QGuiApplication app(argc, argv);
 
-  ColumnUnitState state;
-  engine.rootContext()->setContextProperty("appState", &state);
-  engine.rootContext()->setContextProperty("gAppState", &state);
+   QQmlApplicationEngine engine;
 
-  FlowsheetState flowsheet;
-  engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
+   // Expose display settings to QML
+   DisplaySettings displaySettings;
+   engine.rootContext()->setContextProperty("gDisplaySettings", &displaySettings);
 
-  const QUrl url(QStringLiteral("qrc:/qt/qml/chatgpt5_qt_adt_simulator/qml/Main.qml"));
-  QObject::connect(
+   ComponentManager componentManager;
+   QObject::connect(&componentManager, &ComponentManager::errorOccurred, [](const QString& msg) {
+      qWarning() << "[ComponentManager]" << msg;
+      });
+   qDebug() << "[ComponentManager]" << componentManager.lastLoadStatus();
+   engine.rootContext()->setContextProperty("gComponentManager", &componentManager);
+
+   FluidPackageManager fluidPackageManager;
+   QObject::connect(&fluidPackageManager, &FluidPackageManager::errorOccurred, [](const QString& msg) {
+      qWarning() << "[FluidPackageManager]" << msg;
+      });
+   qDebug() << "[FluidPackageManager]" << fluidPackageManager.lastStatus();
+   engine.rootContext()->setContextProperty("gFluidPackageManager", &fluidPackageManager);
+
+   ColumnUnitState state;
+   engine.rootContext()->setContextProperty("appState", &state);
+   engine.rootContext()->setContextProperty("gAppState", &state);
+
+   FlowsheetState flowsheet;
+   engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
+
+   const QUrl url(QStringLiteral("qrc:/qt/qml/chatgpt5_qt_adt_simulator/qml/Main.qml"));
+   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreated, &app,
-      [url](QObject *obj, const QUrl &objUrl) {
-        if (!obj && url == objUrl)
-          QCoreApplication::exit(-1);
+      [url](QObject* obj, const QUrl& objUrl) {
+         if (!obj && url == objUrl)
+            QCoreApplication::exit(-1);
       },
       Qt::QueuedConnection);
 
-  // This loads Main.qml from the qt_add_qml_module URI
-  engine.loadFromModule("ChatGPT5.ADT", "Main");
+   engine.loadFromModule("ChatGPT5.ADT", "Main");
 
-  if (engine.rootObjects().isEmpty()) {
-     qDebug() << "Failed to load QML from module";
-     return -1;
-  }
+   if (engine.rootObjects().isEmpty()) {
+      qDebug() << "Failed to load QML from module";
+      return -1;
+   }
 
-  return app.exec();
+   return app.exec();
 }
+
+#include "main.moc"

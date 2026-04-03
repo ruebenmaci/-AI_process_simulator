@@ -1,6 +1,7 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ChatGPT5.ADT 1.0
 
 Item {
     id: root
@@ -8,16 +9,17 @@ Item {
     property var streamObject: null
     property var unitObject: null
 
-    readonly property color chrome: "#d2d9e6"
-    readonly property color panelInset: "#f4f6fa"
-    readonly property color border: "#2a2a2a"
-    readonly property color activeBlue: "#2e76db"
-    readonly property color textDark: "#1f2430"
-    readonly property color mutedText: "#5a6472"
-    readonly property color rowAlt: "#eef2f8"
-    readonly property color warnBg: "#fff4db"
+    // ── Palette (ComponentManagerView) ─────────────────────────────
+    readonly property color chrome:     "#c8d0d8"
+    readonly property color panelInset: "#e8ebef"
+    readonly property color border:     "#97a2ad"
+    readonly property color activeBlue: "#2e73b8"
+    readonly property color textDark:   "#1f2a34"
+    readonly property color mutedText:  "#526571"
+    readonly property color rowAlt:     "#f4f6f8"
+    readonly property color warnBg:     "#fff4db"
     readonly property color warnBorder: "#d19a1c"
-    readonly property color infoBg: "#eef4ff"
+    readonly property color infoBg:     "#eef4ff"
     readonly property color infoBorder: "#8aa9d6"
 
     readonly property bool isProductStream: !!root.streamObject && root.streamObject.productStream
@@ -67,7 +69,6 @@ Item {
         color: root.panelInset
         border.color: root.border
         border.width: 1
-        radius: 8
 
         ColumnLayout {
             anchors.fill: parent
@@ -83,7 +84,7 @@ Item {
                     text: "Component Properties"
                     color: root.textDark
                     font.bold: true
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                 }
 
                 Item {
@@ -95,42 +96,37 @@ Item {
                     id: massSumLabel
                     text: root.streamObject ? ("Mass fraction sum: " + fmt6(root.streamObject.massFractionSum)) : ""
                     color: root.textDark
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                     font.bold: true
                     elide: Text.ElideRight
                     horizontalAlignment: Text.AlignRight
                 }
 
-                Button {
+                ClassicButton {
                     id: normalizeButton
-                    text: "Normalize Fractions"
+                    text: "Normalize Fractions"; width: 130
                     visible: !root.isProductStream
                     enabled: !!root.streamObject && root.canEditCrude
-                    Layout.preferredWidth: Math.max(implicitWidth + 20, 150)
-                    Layout.minimumWidth: Math.max(implicitWidth + 20, 150)
-                    Layout.alignment: Qt.AlignRight
+                    Layout.preferredWidth: 130; Layout.alignment: Qt.AlignRight
                     onClicked: if (root.streamObject) root.streamObject.normalizeComposition()
                 }
-
-                Button {
+                ClassicButton {
                     id: resetCompositionButton
-                    text: "Reset Composition"
+                    text: "Reset Composition"; width: 120
                     visible: !root.isProductStream
                     enabled: !!root.streamObject && root.canEditCrude
                     onClicked: if (root.streamObject) root.streamObject.resetCompositionToFluidDefault()
                 }
-
-                Button {
+                ClassicButton {
                     id: resetPropertiesButton
-                    text: "Reset Properties"
+                    text: "Reset Properties"; width: 110
                     visible: !root.isProductStream
                     enabled: !!root.streamObject && root.canEditCrude
                     onClicked: if (root.streamObject) root.streamObject.resetComponentPropertiesToFluidDefault()
                 }
-
-                Button {
+                ClassicButton {
                     id: clearEditsButton
-                    text: "Clear Custom Edits"
+                    text: "Clear Custom Edits"; width: 120
                     visible: !root.isProductStream
                     enabled: !!root.streamObject && root.canEditCrude && root.streamObject.hasCustomComposition
                     onClicked: if (root.streamObject) root.streamObject.clearCustomCompositionEdits()
@@ -153,7 +149,7 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                     text: root.streamObject ? root.streamObject.compositionEditStatusLabel : ""
                     color: root.textDark
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                     font.bold: true
                 }
             }
@@ -163,7 +159,7 @@ Item {
                 visible: !!root.streamObject
                 text: root.streamObject ? root.streamObject.compositionSourceLabel : ""
                 color: root.mutedText
-                font.pixelSize: 11
+                font.pixelSize: 10
                 font.italic: true
             }
             Rectangle {
@@ -182,7 +178,7 @@ Item {
                     wrapMode: Text.WordWrap
                     text: "Warning: mass fractions do not currently sum to 1.0."
                     color: "#744f00"
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                 }
             }
 
@@ -193,13 +189,14 @@ Item {
                 Label {
                     text: "View basis"
                     color: root.textDark
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                     font.bold: true
                 }
 
                 ComboBox {
                     id: basisCombo
                     Layout.preferredWidth: 150
+                    font.pixelSize: 10
                     model: ["Mass fraction", "Mole fraction"]
                     currentIndex: root.compositionBasis === "Mole fraction" ? 1 : 0
                     onActivated: root.compositionBasis = currentText
@@ -209,6 +206,7 @@ Item {
                     id: nonzeroOnlyCheck
                     text: "Show nonzero only"
                     checked: root.showNonzeroOnly
+                    font.pixelSize: 10
                     onToggled: root.showNonzeroOnly = checked
                 }
 
@@ -217,7 +215,7 @@ Item {
                 Label {
                     text: "Filter"
                     color: root.textDark
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                     font.bold: true
                 }
 
@@ -225,6 +223,7 @@ Item {
                     id: filterField
                     Layout.preferredWidth: 180
                     Layout.minimumWidth: 140
+                    font.pixelSize: 10
                     placeholderText: "Component name"
                     text: root.componentFilterText
                     onTextChanged: root.componentFilterText = text
@@ -247,14 +246,13 @@ Item {
                     text: "Mole fraction view is read-only. Switch back to Mass fraction to edit composition values."
                     wrapMode: Text.WordWrap
                     color: root.mutedText
-                    font.pixelSize: 11
+                    font.pixelSize: 10
                 }
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                radius: 8
                 color: root.panelInset
                 border.color: root.border
                 border.width: 1
@@ -298,15 +296,15 @@ Item {
                                     anchors.rightMargin: root.tableSideMargins
                                     spacing: root.tableSpacing
 
-                                    Label { text: "Component"; color: root.textDark; font.bold: true; width: root.colComponentW; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: root.fractionHeaderText(); color: root.textDark; font.bold: true; width: root.colFractionW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "Tb (K)"; color: root.textDark; font.bold: true; width: root.colTbW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "MW"; color: root.textDark; font.bold: true; width: root.colMwW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "Tc (K)"; color: root.textDark; font.bold: true; width: root.colTcW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "Pc"; color: root.textDark; font.bold: true; width: root.colPcW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "omega"; color: root.textDark; font.bold: true; width: root.colOmegaW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "SG"; color: root.textDark; font.bold: true; width: root.colSgW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
-                                    Label { text: "delta"; color: root.textDark; font.bold: true; width: root.colDeltaW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "Component"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colComponentW; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: root.fractionHeaderText(); color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colFractionW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "Tb (K)"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colTbW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "MW"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colMwW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "Tc (K)"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colTcW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "Pc"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colPcW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "omega"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colOmegaW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "SG"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colSgW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                                    Label { text: "delta"; color: root.textDark; font.bold: true; font.pixelSize: 10; width: root.colDeltaW; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
                                 }
                             }
 
@@ -406,7 +404,7 @@ Item {
                                     Label {
                                         text: componentName
                                         color: root.textDark
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         width: root.colComponentW
                                         elide: Text.ElideRight
                                         verticalAlignment: Text.AlignVCenter
@@ -448,7 +446,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(fracField); border.width: 1 }
@@ -491,7 +489,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(tbField); border.width: 1 }
@@ -528,7 +526,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(mwField); border.width: 1 }
@@ -565,7 +563,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(tcField); border.width: 1 }
@@ -602,7 +600,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(pcField); border.width: 1 }
@@ -639,7 +637,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(omegaField); border.width: 1 }
@@ -676,7 +674,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(sgField); border.width: 1 }
@@ -713,7 +711,7 @@ Item {
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
                                         horizontalAlignment: Text.AlignRight
-                                        font.pixelSize: 11
+                                        font.pixelSize: 10
                                         padding: 4
                                         selectByMouse: true
                                         background: Rectangle { radius: 4; color: "white"; border.color: fieldBg(deltaField); border.width: 1 }
@@ -935,7 +933,7 @@ Item {
                     visible: !root.streamObject
                     text: "No stream selected."
                     color: root.mutedText
-                    font.pixelSize: 12
+                    font.pixelSize: 10
                 }
             }
         }

@@ -529,13 +529,7 @@ Item {
                                     Layout.preferredWidth: 28
                                     Layout.preferredHeight: 26
                                     padding: 0
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: "#0b0f14"
-                                        font.pixelSize: 12
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
+                                    font.pixelSize: 12
                                     background: Rectangle {
                                         radius: 8
                                         color: enabled ? "#93c5fd" : "#334155"
@@ -572,14 +566,8 @@ Item {
                         });
                         root.syncToAppState();
                     }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#0b0f14"
-                        font.pixelSize: 12
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    font.pixelSize: 12
+                    font.bold: true
                     background: Rectangle {
                         radius: 10
                         color: "#93c5fd"
@@ -593,14 +581,8 @@ Item {
                     onClicked: {
                         if (appState) appState.resetDrawSpecsToDefaults();
                     }
-                    contentItem: Text {
-                        text: parent.text
-                        color: "#0b0f14"
-                        font.pixelSize: 12
-                        font.bold: true
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
+                    font.pixelSize: 12
+                    font.bold: true
                     background: Rectangle {
                         radius: 10
                         color: "#93c5fd"
