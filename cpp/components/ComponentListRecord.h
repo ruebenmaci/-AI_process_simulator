@@ -13,6 +13,8 @@ struct ComponentListRecord {
     QStringList componentIds;   // ordered list of component IDs
     QString     notes;
     QString     source;         // "user" | "starter"
+    QString     listType;       // e.g. "pseudo-crude", "pure-component", "mixed"
+    QString     sourceFluidName;
 
     QVariantMap  toVariantMap() const;
     QJsonObject  toJson()       const;

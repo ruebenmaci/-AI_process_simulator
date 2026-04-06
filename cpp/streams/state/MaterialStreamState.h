@@ -8,6 +8,7 @@
 #include "../../thermo/pseudocomponents/FluidDefinition.hpp"
 
 class ComponentManager;
+class FluidPackageManager;
 #include "../../thermo/StreamPropertyCalcs.hpp"   // StreamPhaseProps
 
 class StreamCompositionModel;
@@ -40,12 +41,24 @@ public:
    };
    Q_ENUM(ThermoSpecMode)
 
+      enum class ThermoSpecVariable {
+      Temperature = 0,
+      Pressure,
+      Enthalpy,
+      Entropy,
+      VaporFraction
+   };
+   Q_ENUM(ThermoSpecVariable)
+
       explicit MaterialStreamState(QObject* parent = nullptr);
 
    // ── Existing properties (unchanged) ──────────────────────────────────────
    Q_PROPERTY(QString streamName READ streamName WRITE setStreamName NOTIFY streamNameChanged)
       Q_PROPERTY(QStringList fluidNames READ fluidNames NOTIFY fluidNamesChanged)
       Q_PROPERTY(QString selectedFluid READ selectedFluid WRITE setSelectedFluid NOTIFY selectedFluidChanged)
+      Q_PROPERTY(QStringList availableFluidPackageIds READ availableFluidPackageIds NOTIFY availableFluidPackagesChanged)
+      Q_PROPERTY(QString selectedFluidPackageId READ selectedFluidPackageId WRITE setSelectedFluidPackageId NOTIFY selectedFluidPackageChanged)
+      Q_PROPERTY(QString selectedFluidPackageName READ selectedFluidPackageName NOTIFY selectedFluidPackageChanged)
       Q_PROPERTY(double flowRateKgph READ flowRateKgph WRITE setFlowRateKgph NOTIFY flowRateKgphChanged)
       Q_PROPERTY(double molarFlowKmolph READ molarFlowKmolph WRITE setMolarFlowKmolph NOTIFY derivedConditionsChanged)
       Q_PROPERTY(double volumetricFlowM3ph READ volumetricFlowM3ph NOTIFY derivedConditionsChanged)
@@ -76,6 +89,15 @@ public:
       Q_PROPERTY(QString compositionEditStatusLabel READ compositionEditStatusLabel NOTIFY streamTypeChanged)
       Q_PROPERTY(FlowSpecMode flowSpecMode READ flowSpecMode WRITE setFlowSpecMode NOTIFY flowSpecModeChanged)
       Q_PROPERTY(ThermoSpecMode thermoSpecMode READ thermoSpecMode WRITE setThermoSpecMode NOTIFY thermoSpecModeChanged)
+      Q_PROPERTY(ThermoSpecVariable primaryThermoSpec READ primaryThermoSpec WRITE setPrimaryThermoSpec NOTIFY thermoSpecSelectionChanged)
+      Q_PROPERTY(ThermoSpecVariable secondaryThermoSpec READ secondaryThermoSpec WRITE setSecondaryThermoSpec NOTIFY thermoSpecSelectionChanged)
+      Q_PROPERTY(QString inferredFlashSpecLabel READ inferredFlashSpecLabel NOTIFY thermoSpecSelectionChanged)
+      Q_PROPERTY(bool packageSupportsCurrentSpecPair READ packageSupportsCurrentSpecPair NOTIFY derivedConditionsChanged)
+      Q_PROPERTY(bool fluidPackageValid READ fluidPackageValid NOTIFY derivedConditionsChanged)
+      Q_PROPERTY(QString fluidPackageThermoMethod READ fluidPackageThermoMethod NOTIFY derivedConditionsChanged)
+      Q_PROPERTY(QString fluidPackageStatus READ fluidPackageStatus NOTIFY derivedConditionsChanged)
+      Q_PROPERTY(QString packageSupportMismatchText READ packageSupportMismatchText NOTIFY derivedConditionsChanged)
+      Q_PROPERTY(QString packageComponentListName READ packageComponentListName NOTIFY derivedConditionsChanged)
       Q_PROPERTY(bool supportsPS READ supportsPS CONSTANT)
       Q_PROPERTY(bool temperatureEditable READ temperatureEditable NOTIFY thermoSpecModeChanged)
       Q_PROPERTY(bool pressureEditable READ pressureEditable NOTIFY thermoSpecModeChanged)
@@ -146,6 +168,10 @@ public:
    QStringList fluidNames() const { return fluidNames_; }
    QString selectedFluid() const { return selectedFluid_; }
    void setSelectedFluid(const QString& value);
+   QStringList availableFluidPackageIds() const { return availableFluidPackageIds_; }
+   QString selectedFluidPackageId() const { return selectedFluidPackageId_; }
+   QString selectedFluidPackageName() const { return selectedFluidPackageName_; }
+   void setSelectedFluidPackageId(const QString& value);
    double flowRateKgph() const { return flowRateKgph_; }
    void setFlowRateKgph(double value);
    void setMolarFlowKmolph(double value);
@@ -195,6 +221,17 @@ public:
    void setFlowSpecMode(FlowSpecMode value);
    ThermoSpecMode thermoSpecMode() const { return thermoSpecMode_; }
    void setThermoSpecMode(ThermoSpecMode value);
+   ThermoSpecVariable primaryThermoSpec() const { return primaryThermoSpec_; }
+   ThermoSpecVariable secondaryThermoSpec() const { return secondaryThermoSpec_; }
+   void setPrimaryThermoSpec(ThermoSpecVariable value);
+   void setSecondaryThermoSpec(ThermoSpecVariable value);
+   QString inferredFlashSpecLabel() const;
+   bool packageSupportsCurrentSpecPair() const;
+   bool fluidPackageValid() const;
+   QString fluidPackageThermoMethod() const;
+   QString fluidPackageStatus() const;
+   QString packageSupportMismatchText() const;
+   QString packageComponentListName() const;
    bool supportsPS() const { return true; }
    bool temperatureEditable() const;
    bool pressureEditable() const;
@@ -217,6 +254,11 @@ public:
    Q_INVOKABLE void normalizeComposition();
    Q_INVOKABLE void resetComponentPropertiesToFluidDefault();
    Q_INVOKABLE void clearCustomCompositionEdits();
+
+   // Re-resolves the fluid definition from the assigned package and re-runs
+   // the flash. Call this when the package's component list membership changes
+   // so the stream immediately reflects the new component set.
+   void reloadFluidDefinition();
    bool setCompositionStd(const std::vector<double>& value);
    bool setComponentProperty(int row, const QString& field, double value);
 
@@ -245,6 +287,8 @@ signals:
    void streamNameChanged();
    void fluidNamesChanged();
    void selectedFluidChanged();
+   void availableFluidPackagesChanged();
+   void selectedFluidPackageChanged();
    void flowRateKgphChanged();
    void temperatureKChanged();
    void pressurePaChanged();
@@ -257,12 +301,20 @@ signals:
    void derivedConditionsChanged();
    void flowSpecModeChanged();
    void thermoSpecModeChanged();
+   void thermoSpecSelectionChanged();
 
 private:
    ComponentManager* componentManager_() const;
+   FluidPackageManager* fluidPackageManager_() const;
 
 private:
    void refreshFluidDefinition_();
+   bool tryResolveFluidDefinitionFromPackage_(FluidDefinition& out) const;
+   bool preserveCompositionAcrossFluidChange_(const FluidDefinition& previousFluid, bool previousCustomComposition);
+   QString legacySourceFluidNameForPackage_(const QString& packageId) const;
+   void refreshAvailableFluidPackages_();
+   void syncSelectedFluidPackageFromLegacyFluid_();
+   void syncSelectedFluidPackageMetadata_();
    bool applyComposition_(std::vector<double> value, bool customFlag, bool normalize);
    bool setComponentPropertyByKey_(int row, const QString& field, double value);
    void emitDerivedConditionsChanged_();
@@ -270,11 +322,17 @@ private:
    bool normalizedComposition_(std::vector<double>& z) const;
    void validateAndUpdateStatus_();
    void applyCanonicalFlowFromActiveSpec_();
+   void syncSpecPairFromThermoMode_();
+   void applyThermoModeFromSpecPair_();
+   bool isSpecPairValid_(ThermoSpecVariable first, ThermoSpecVariable second) const;
 
    // ── Existing member data (unchanged) ─────────────────────────────────────
    QString streamRoleLabel_ = QStringLiteral("Feed stream");
    QStringList fluidNames_;
    QString selectedFluid_;
+   QStringList availableFluidPackageIds_;
+   QString selectedFluidPackageId_;
+   QString selectedFluidPackageName_;
    FluidDefinition fluidDefinition_;
    double flowRateKgph_ = 100000.0;
    double temperatureK_ = 640.0;
@@ -293,6 +351,8 @@ private:
    double bulkDensityOverrideKgM3_ = std::numeric_limits<double>::quiet_NaN();
    FlowSpecMode flowSpecMode_ = FlowSpecMode::MassFlow;
    ThermoSpecMode thermoSpecMode_ = ThermoSpecMode::TP;
+   ThermoSpecVariable primaryThermoSpec_ = ThermoSpecVariable::Temperature;
+   ThermoSpecVariable secondaryThermoSpec_ = ThermoSpecVariable::Pressure;
    double specifiedMolarFlowKmolph_ = std::numeric_limits<double>::quiet_NaN();
    double specifiedStandardLiquidVolumeFlowM3ph_ = std::numeric_limits<double>::quiet_NaN();
    QString specificationStatus_ = QStringLiteral("Ready");

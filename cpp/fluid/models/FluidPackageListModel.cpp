@@ -21,7 +21,10 @@ QVariant FluidPackageListModel::data(const QModelIndex& index, int role) const
     case IdRole:              return p.id;
     case NameRole:            return p.name;
     case PropertyMethodRole:  return p.propertyMethod;
+    case ThermoMethodIdRole:  return p.thermoMethodId;
+    case PhaseModelFamilyRole:return p.phaseModelFamily;
     case ComponentListIdRole: return p.componentListId;
+    case IsCrudePackageRole:  return p.isCrudePackage;
     case IsDefaultRole:       return p.isDefault;
     case SourceRole:          return p.source;
     case NotesRole:           return p.notes;
@@ -38,7 +41,10 @@ QHash<int, QByteArray> FluidPackageListModel::roleNames() const
         { IdRole,              "id"              },
         { NameRole,            "name"            },
         { PropertyMethodRole,  "propertyMethod"  },
+        { ThermoMethodIdRole,  "thermoMethodId"  },
+        { PhaseModelFamilyRole,"phaseModelFamily"},
         { ComponentListIdRole, "componentListId" },
+        { IsCrudePackageRole,  "isCrudePackage"  },
         { IsDefaultRole,       "isDefault"       },
         { SourceRole,          "source"          },
         { NotesRole,           "notes"           },

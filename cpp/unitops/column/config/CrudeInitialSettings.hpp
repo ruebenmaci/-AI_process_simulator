@@ -6,6 +6,11 @@
 #include <optional>
 
 // NOTE: All temperatures are Kelvin in this module.
+//
+// CrudeInitialSettings is now an *optional operating-template provider* only.
+// It supplies legacy column defaults (feed rate, tray temps, draw fractions)
+// keyed by crude name. It no longer owns thermo identity — EOS selection is
+// driven by the fluid package's ThermoConfig via SimulationOptions::thermoConfig.
 
 struct MurphreeEff {
   double etaV_top = 0.75;

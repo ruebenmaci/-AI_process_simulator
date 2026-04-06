@@ -9,6 +9,7 @@
 #include "CounterCurrentColumnSimulator.hpp"  // ProgressEvent
 #include "../thermo/pseudocomponents/FluidDefinition.hpp"
 #include "../../../utils/LogLevel.hpp"
+#include "../../../thermo/ThermoConfig.hpp"
 
 struct SolverDrawSpec {
    int trayIndex0 = -1;                 // 0-based tray
@@ -31,7 +32,11 @@ struct SolverInputs {
   double topPressurePa = 150000.0;
   double dpPerTrayPa = 200.0;
 
-  // UI specs
+  // Resolved thermo configuration from the feed stream's fluid package.
+  // When set (thermoMethodId non-empty), this takes priority over eosMode/eosManual.
+  thermo::ThermoConfig thermoConfig;
+
+  // UI specs (legacy fallback when no fluid package is assigned)
   std::string eosMode = "auto";        // "auto" | "manual"
   std::string eosManual = "PRSV";      // "PR" | "PRSV" | "SRK"
 

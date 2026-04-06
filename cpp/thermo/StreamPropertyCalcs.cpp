@@ -21,6 +21,9 @@
 #include "Entropy.hpp"
 #include "EOSK.hpp"
 #include "eos/PRSV.hpp"
+#include "eos/PR.hpp"
+#include "eos/SRK.hpp"
+#include "ThermoConfig.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -63,17 +66,29 @@ double eosDensity(
     double P, double T,
     const std::vector<double>& x,
     const std::vector<Component>& comps,
-    bool liquid)
+    bool liquid,
+    const thermo::ThermoConfig& thermoConfig)
 {
     if (x.empty() || comps.empty() || !ok(P) || !ok(T))
         return std::numeric_limits<double>::quiet_NaN();
 
-    const PRSVResult r = solvePRSV_mixture(P, T, x, -1, comps, nullptr, nullptr);
-    const double Z = liquid ? r.ZL : r.ZV;
+    const std::string eosName = thermoConfig.eosName.empty() ? std::string("PRSV") : thermoConfig.eosName;
+
+    double Z = std::numeric_limits<double>::quiet_NaN();
+    if (eosName == "PR") {
+        const PRResult r = solvePR_mixture(P, T, x, comps, nullptr);
+        Z = liquid ? r.ZL : r.ZV;
+    } else if (eosName == "SRK") {
+        const auto r = solveSRK(P, T, x, comps, nullptr);
+        Z = liquid ? r.ZL : r.ZV;
+    } else {
+        const PRSVResult r = solvePRSV_mixture(P, T, x, -1, comps, nullptr, nullptr);
+        Z = liquid ? r.ZL : r.ZV;
+    }
+
     if (!ok(Z)) return std::numeric_limits<double>::quiet_NaN();
 
-    const double Mw_kg_mol = mixMw(x, comps) / 1000.0;  // kg/mol
-    // ρ = P·Mw / (Z·R·T)
+    const double Mw_kg_mol = mixMw(x, comps) / 1000.0;
     const double rho = (P * Mw_kg_mol) / (Z * R_J * T);
     return ok(rho) ? rho : std::numeric_limits<double>::quiet_NaN();
 }
@@ -390,12 +405,13 @@ void criticalMix(const std::vector<double>& z, const std::vector<Component>& com
 // ============================================================================
 double stdVolFlowM3ph(double massFlowKgph,
                       const std::vector<double>& z,
-                      const std::vector<Component>& comps)
+                      const std::vector<Component>& comps,
+                      const thermo::ThermoConfig& thermoConfig)
 {
     if (!(massFlowKgph > 0.0) || z.empty() || comps.empty())
         return std::numeric_limits<double>::quiet_NaN();
 
-    const double rhoStd = eosDensity(P_STD, T_STD, z, comps, /*liquid=*/true);
+    const double rhoStd = eosDensity(P_STD, T_STD, z, comps, /*liquid=*/true, thermoConfig);
     if (!ok(rhoStd)) return std::numeric_limits<double>::quiet_NaN();
 
     return massFlowKgph / rhoStd;
@@ -415,59 +431,59 @@ StreamPhaseProps calcStreamProperties(
     const std::vector<double>& y,
     double V,
     double massFlowKgph,
-    const std::vector<Component>& comps)
+    const std::vector<Component>& comps,
+    const thermo::ThermoConfig& thermoConfig)
 {
     StreamPhaseProps out;
 
     const bool hasLiq = std::isfinite(V) && V < 0.9999 && !x.empty();
     const bool hasVap = std::isfinite(V) && V > 0.0001 && !y.empty();
 
-    // ── Densities ──────────────────────────────────────────────────────────
-    if (hasLiq) out.rhoLiq = eosDensity(P, T, x, comps, true);
-    if (hasVap) out.rhoVap = eosDensity(P, T, y, comps, false);
+    if (hasLiq) out.rhoLiq = eosDensity(P, T, x, comps, true, thermoConfig);
+    if (hasVap) out.rhoVap = eosDensity(P, T, y, comps, false, thermoConfig);
 
-    // ── Viscosities ────────────────────────────────────────────────────────
     if (hasLiq) out.viscLiqCp = viscLiqCp(x, comps, T);
     if (hasVap) out.viscVapCp = viscVapCp(y, comps, T);
 
-    // ── Thermal conductivities ─────────────────────────────────────────────
     if (hasLiq) out.kCondLiqWmK = kCondLiq(x, comps, T);
     if (hasVap) out.kCondVapWmK = kCondVap(y, comps, T, P);
 
-    // ── Cp ─────────────────────────────────────────────────────────────────
     if (hasLiq) out.cpLiqKJkgK = mixCp(x, comps, T, true);
     if (hasVap) out.cpVapKJkgK = mixCp(y, comps, T, false);
 
-    // ── Cp/Cv ratio (vapour, ideal-gas identity) ───────────────────────────
     if (hasVap && ok(out.cpVapKJkgK)) {
-        const double Mwv   = mixMw(y, comps); // kg/kmol
-        const double RkJkg = R_kJ / (Mwv / 1000.0); // kJ/(kg·K)   R/Mw
+        const double Mwv   = mixMw(y, comps);
+        const double RkJkg = R_kJ / (Mwv / 1000.0);
         const double CvVap = out.cpVapKJkgK - RkJkg;
         if (CvVap > 0.0)
             out.cpCvRatioVap = out.cpVapKJkgK / CvVap;
     }
 
-    // ── Enthalpies (EOS departure + ideal-gas, matches flashPT) ───────────
-    if (hasLiq) out.hLiqKJkg = hLiq(x, T, -1, comps, P, nullptr);
-    if (hasVap) out.hVapKJkg = hVap(y, T, -1, comps, P, nullptr);
+    if (hasLiq) out.hLiqKJkg = hLiqWithConfig(x, T, thermoConfig, -1, comps, P, nullptr);
+    if (hasVap) out.hVapKJkg = hVapWithConfig(y, T, thermoConfig, -1, comps, P, nullptr);
 
-    // ── Entropies ──────────────────────────────────────────────────────────
     if (hasLiq) out.sLiqKJkgK = sLiq(x, T, -1, comps, P);
     if (hasVap) out.sVapKJkgK = sVap(y, T, -1, comps, P);
 
-    // ── Surface tension ────────────────────────────────────────────────────
-    // Only meaningful in two-phase region
     if (hasLiq && hasVap)
         out.surfTensionNm = surfaceTension(x, comps, out.rhoLiq, out.rhoVap);
 
-    // ── Watson K factor (feed composition) ────────────────────────────────
     out.watsonK = watsonKFactor(z, comps);
-
-    // ── Critical mixture (feed composition, Kay's rule) ───────────────────
     criticalMix(z, comps, out.TcMixK, out.PcMixKPa);
-
-    // ── Standard volumetric flow ───────────────────────────────────────────
-    out.stdVolFlowM3ph = stdVolFlowM3ph(massFlowKgph, z, comps);
+    out.stdVolFlowM3ph = stdVolFlowM3ph(massFlowKgph, z, comps, thermoConfig);
 
     return out;
+}
+
+StreamPhaseProps calcStreamProperties(
+    double T,
+    double P,
+    const std::vector<double>& z,
+    const std::vector<double>& x,
+    const std::vector<double>& y,
+    double V,
+    double massFlowKgph,
+    const std::vector<Component>& comps)
+{
+    return calcStreamProperties(T, P, z, x, y, V, massFlowKgph, comps, thermo::makeThermoConfig("PRSV"));
 }

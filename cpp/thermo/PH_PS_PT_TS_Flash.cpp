@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "PH_PS_PT_TS_Flash.hpp"
+#include "ThermoConfig.hpp"
 #include "Enthalpy.hpp"
 #include "Entropy.hpp"
 #include "EOSK.hpp"
@@ -543,6 +544,11 @@ FlashPHResult flashPH(const FlashPHInput& in) {
    const auto& comps = *in.components;
    FlashPHResult ret;
 
+   // Resolve EOS: prefer thermoConfig.thermoMethodId, fall back to eosManual, then PRSV.
+   const std::string resolvedEos = !in.thermoConfig.thermoMethodId.empty()
+      ? in.thermoConfig.thermoMethodId
+      : (in.eosManual.empty() ? "PRSV" : in.eosManual);
+
    const double Tmin = 180.0, Tmax = 1200.0;
    const double T0 = clamp(isFinite(in.Tseed) ? in.Tseed : 660.0, Tmin, Tmax);
 
@@ -563,7 +569,7 @@ FlashPHResult flashPH(const FlashPHInput& in) {
          in.kij, /*log=*/false,
          in.murphreeEtaV,
          in.eosMode,
-         in.eosManual.empty() ? "PRSV" : in.eosManual,
+         resolvedEos,
          in.log);
 
       RRAndComp rr_seed;
@@ -618,7 +624,7 @@ FlashPHResult flashPH(const FlashPHInput& in) {
    if (!isFinite(in.Htarget) || std::fabs(in.Htarget) > 1e6) {
       auto ek0 = eosK(in.P, T0, in.z, comps,
          in.trayIndex, in.trays, in.crudeName,
-         in.kij, /*log=*/false, in.murphreeEtaV, in.eosMode, in.eosManual.empty() ? "PRSV" : in.eosManual, in.log);
+         in.kij, /*log=*/false, in.murphreeEtaV, in.eosMode, resolvedEos, in.log);
 
       RRAndComp rr;
       if (ek0.singlePhase) {
@@ -664,7 +670,7 @@ FlashPHResult flashPH(const FlashPHInput& in) {
       RRAndComp r;
       auto ek = eosK(in.P, T, in.z, comps,
          in.trayIndex, in.trays, in.crudeName,
-         in.kij, /*log=*/false, in.murphreeEtaV, in.eosMode, in.eosManual.empty() ? "PRSV" : in.eosManual, in.log);
+         in.kij, /*log=*/false, in.murphreeEtaV, in.eosMode, resolvedEos, in.log);
 
       validateSinglePhase(ek, log, in.trayIndex, "PH_RESID");
 
@@ -1416,14 +1422,20 @@ FlashPSResult flashPS(const FlashPSInput& in) {
       return ret;
    }
    const auto& comps = *in.components;
+
+   // Resolve EOS: prefer thermoConfig.thermoMethodId, fall back to eosManual, then PRSV.
+   const std::string resolvedEos = !in.thermoConfig.thermoMethodId.empty()
+      ? in.thermoConfig.thermoMethodId
+      : (in.eosManual.empty() ? "PRSV" : in.eosManual);
+
    auto solveAtT = [&](double T) {
-      return flashPT(in.P, T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, in.eosManual, in.log);
-   };
+      return flashPT(in.P, T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, resolvedEos, in.log);
+      };
    auto sResid = [&](double T) -> double {
       const auto pt = solveAtT(T);
       if (!std::isfinite(pt.S)) return std::numeric_limits<double>::quiet_NaN();
       return pt.S - in.Starget;
-   };
+      };
    double lo = 200.0, hi = 1200.0;
    double fLo = sResid(lo), fHi = sResid(hi);
    bool bracketed = std::isfinite(fLo) && std::isfinite(fHi) && fLo * fHi <= 0.0;
@@ -1445,13 +1457,15 @@ FlashPSResult flashPS(const FlashPSInput& in) {
          if (!std::isfinite(fMid)) break;
          Tsol = mid;
          if (std::fabs(fMid) < 1e-6 || (hi - lo) < 1e-6) break;
-         if (fLo * fMid <= 0.0) { hi = mid; fHi = fMid; } else { lo = mid; fLo = fMid; }
+         if (fLo * fMid <= 0.0) { hi = mid; fHi = fMid; }
+         else { lo = mid; fLo = fMid; }
       }
    }
    if (!std::isfinite(Tsol)) {
       Tsol = std::isfinite(in.Tseed) ? std::clamp(in.Tseed, 200.0, 1200.0) : 500.0;
       ret.status = "no-bracket";
-   } else {
+   }
+   else {
       ret.status = "ok";
    }
    const auto pt = solveAtT(Tsol);
@@ -1479,14 +1493,20 @@ FlashTSResult flashTS(const FlashTSInput& in) {
       return ret;
    }
    const auto& comps = *in.components;
+
+   // Resolve EOS: prefer thermoConfig.thermoMethodId, fall back to eosManual, then PRSV.
+   const std::string resolvedEos = !in.thermoConfig.thermoMethodId.empty()
+      ? in.thermoConfig.thermoMethodId
+      : (in.eosManual.empty() ? "PRSV" : in.eosManual);
+
    auto solveAtP = [&](double P) {
-      return flashPT(P, in.T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, in.eosManual, in.log);
-   };
+      return flashPT(P, in.T, in.z, &comps, in.trayIndex, in.trays, in.crudeName, in.kij, in.murphreeEtaV, in.eosMode, resolvedEos, in.log);
+      };
    auto sResid = [&](double P) -> double {
       const auto pt = solveAtP(P);
       if (!std::isfinite(pt.S)) return std::numeric_limits<double>::quiet_NaN();
       return pt.S - in.Starget;
-   };
+      };
 
    const double Pmin = 1.0e3;
    const double Pmax = 5.0e7;
@@ -1502,7 +1522,7 @@ FlashTSResult flashTS(const FlashTSInput& in) {
       grid.push_back(std::clamp(in.Pseed * 2.0, Pmin, Pmax));
    }
    std::sort(grid.begin(), grid.end());
-   grid.erase(std::unique(grid.begin(), grid.end(), [](double a, double b){ return std::fabs(a-b) <= std::max(1.0, 1e-9*std::max(std::fabs(a), std::fabs(b))); }), grid.end());
+   grid.erase(std::unique(grid.begin(), grid.end(), [](double a, double b) { return std::fabs(a - b) <= std::max(1.0, 1e-9 * std::max(std::fabs(a), std::fabs(b))); }), grid.end());
 
    double bestP = std::numeric_limits<double>::quiet_NaN();
    double bestAbs = std::numeric_limits<double>::infinity();
@@ -1556,4 +1576,24 @@ FlashTSResult flashTS(const FlashTSInput& in) {
    ret.Scalc = pt.S;
    ret.dS = std::isfinite(pt.S) ? (pt.S - in.Starget) : std::numeric_limits<double>::quiet_NaN();
    return ret;
+}
+
+// ThermoConfig-aware overload of flashPT.
+// Resolves the EOS string from thermoConfig.thermoMethodId and delegates to the
+// primary flashPT signature. The column simulator continues to use the primary
+// signature directly and is not affected by this addition.
+FlashPTResult flashPT(
+   double P,
+   double T,
+   const std::vector<double>& z,
+   const thermo::ThermoConfig& thermoConfig,
+   const std::vector<Component>* components,
+   const std::vector<std::vector<double>>* kij,
+   double murphreeEtaV,
+   const std::function<void(const std::string&)>& log)
+{
+   const std::string eos = thermoConfig.thermoMethodId.empty()
+      ? "PRSV" : thermoConfig.thermoMethodId;
+   return flashPT(P, T, z, components, -1, 32, /*crudeHint=*/"", kij, murphreeEtaV,
+      /*eosMode=*/"manual", eos, log);
 }

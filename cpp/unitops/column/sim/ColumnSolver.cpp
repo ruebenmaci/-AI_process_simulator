@@ -14,6 +14,7 @@ SolverOutputs solveColumn(
   const FluidThermoData& thermo = in.fluidThermo;
 
   SimulationOptions opt;
+  opt.thermoConfig = in.thermoConfig;
   opt.crudeName = in.fluidName;
   opt.trays = std::max(2, in.trays);
   opt.feedRate_kgph = std::max(0.0, in.feedRateKgph);

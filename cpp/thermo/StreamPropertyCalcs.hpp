@@ -22,6 +22,7 @@
 #include <vector>
 #include <limits>
 #include "pseudocomponents/componentData.hpp"
+#include "ThermoConfig.hpp"
 
 struct StreamPhaseProps {
     // ── Per-phase densities ─────────────────────────────────────────────────
@@ -81,6 +82,18 @@ struct StreamPhaseProps {
 // the calculation cannot be performed (e.g. single-phase stream has no liquid
 // density when V == 1).
 // ---------------------------------------------------------------------------
+StreamPhaseProps calcStreamProperties(
+    double T,
+    double P,
+    const std::vector<double>& z,
+    const std::vector<double>& x,
+    const std::vector<double>& y,
+    double V,
+    double massFlowKgph,
+    const std::vector<Component>& comps,
+    const thermo::ThermoConfig& thermoConfig
+);
+
 StreamPhaseProps calcStreamProperties(
     double T,
     double P,

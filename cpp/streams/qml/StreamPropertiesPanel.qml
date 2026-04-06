@@ -84,7 +84,7 @@ Item {
                 SimpleSpreadsheet {
                     id: sheetSummary
                     readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 7; numCols: 1
+                    x: 4; width: parent.width - 8; numRows: 11; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)
                     colLabels: ["Value"]
                     cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
@@ -94,11 +94,15 @@ Item {
                         if (!root.has()) return
                         const s = root.streamObject
                         const mf = s.flowRateKgph; const mol = s.molarFlowKmolph; const vf = s.volumetricFlowM3ph
-                        rowLabels = ["Phase", "Vapour fraction", "Thermo region", "Flash method",
-                                     "Molar flow", "Volumetric flow", "Std. vol. flow"]
+                        rowLabels = ["Fluid package", "Thermo method", "Package status", "Phase", "Vapour fraction", "Thermo region", "Flash method",
+                                     "Specification", "Molar flow", "Volumetric flow", "Std. vol. flow"]
                         colLabels = ["Value"]
-                        const vals = [s.phaseStatus || "—", root.fmt(s.vaporFraction, 4),
+                        const vals = [s.selectedFluidPackageName || s.selectedFluidPackageId || "—",
+                                      s.fluidPackageThermoMethod || "—",
+                                      s.fluidPackageStatus || "—",
+                                      s.phaseStatus || "—", root.fmt(s.vaporFraction, 4),
                                       s.thermoRegionLabel || "—", s.flashMethod || "—",
+                                      s.specificationStatus || "—",
                                       root.fmt(mol, 3) + " kmol/h",
                                       root.fmt(vf,  3) + " m³/h",
                                       root.fmt(s.calcStdVolFlowM3ph, 3) + " m³/h"]

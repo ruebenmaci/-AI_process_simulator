@@ -5,6 +5,8 @@
 
 #include "components/ComponentListRecord.h"
 
+class ComponentManager;
+
 // Model that exposes the vector<ComponentListRecord> to QML.
 // Registered as gComponentManager.componentListModel in QML.
 class CompGroupListModel : public QAbstractListModel
@@ -18,6 +20,12 @@ public:
         CountRole,   // number of componentIds
         NotesRole,
         SourceRole,
+        ListTypeRole,
+        SourceFluidNameRole,
+        ResolvedCountRole,
+        ValidRole,
+        StatusTextRole,
+        MissingCountRole,
         RecordRole   // full QVariantMap
     };
     Q_ENUM(Roles)
@@ -29,8 +37,10 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void setLists(const std::vector<sim::ComponentListRecord>* lists);
+    void setManager(const ComponentManager* manager);
     void refresh();
 
 private:
     const std::vector<sim::ComponentListRecord>* lists_ = nullptr;
+    const ComponentManager* manager_ = nullptr;
 };

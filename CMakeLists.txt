@@ -21,6 +21,7 @@ add_library(adt_core
   cpp/thermo/Entropy.cpp
   cpp/thermo/PH_PS_PT_TS_Flash.cpp
   cpp/thermo/StreamPropertyCalcs.cpp
+  cpp/thermo/ThermoConfig.cpp
   cpp/thermo/eos/PR.cpp
   cpp/thermo/eos/SRK.cpp
   cpp/thermo/eos/PRSV.cpp
@@ -111,17 +112,8 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/components/ComponentManagerView.qml
         qml/fluid/FluidManagerView.qml
         qml/displaySettings/DisplaySettingsPanel.qml
-        cpp/unitops/column/qml/SpecsPanel.qml
-        cpp/unitops/column/qml/DiagnosticsPanel.qml
-        cpp/unitops/column/qml/ColumnView.qml
         cpp/unitops/column/qml/ColumnWorkspaceWindow.qml
-        cpp/unitops/column/qml/MaterialBalanceView.qml
-        cpp/unitops/column/qml/DrawConfigView.qml
-        cpp/unitops/column/qml/RunLogView.qml
-        cpp/unitops/column/qml/TrayRow.qml
-        cpp/unitops/column/qml/RunSummaryView.qml
-        cpp/unitops/column/qml/RunResultsView.qml
-        cpp/unitops/column/qml/HysysColumnMockup.qml
+        cpp/unitops/column/qml/DistillationColumn.qml
         cpp/streams/qml/StreamView.qml
         cpp/streams/qml/StreamCompositionPanel.qml
         cpp/streams/qml/StreamConditionsPanel.qml

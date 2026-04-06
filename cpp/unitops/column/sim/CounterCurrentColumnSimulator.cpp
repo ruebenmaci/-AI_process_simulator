@@ -214,6 +214,9 @@ SimulationResult simulateColumn(const SimulationOptions& opt) {
    const double T_MAX = 900.0;
 
    auto pickEOS = [&](int trayIndex0) -> std::string {
+      // Prefer ThermoConfig-driven EOS when a fluid package is assigned.
+      if (!opt.thermoConfig.thermoMethodId.empty() && !opt.thermoConfig.eosName.empty())
+         return opt.thermoConfig.eosName;
       return getEOSForTray(trayIndex0, N, opt.crudeName, opt.eosMode, opt.eosManual);
       };
 
@@ -300,20 +303,11 @@ SimulationResult simulateColumn(const SimulationOptions& opt) {
    const double Tf = T[f];
 
    // Compute equilibrium enthalpy at the *specified* feed conditions (TP evaluation)
-   FlashPTResult eq = flashPT(
-      Pf,
-      Tf,
-      opt.feedZ,
-      opt.components,
-      f,
-      N,
-      opt.crudeName,        // or crudeHint string used by eosK
-      opt.kij,
-      /*murphreeEtaV=*/1.0, // match what you pass to flashPH
-      opt.eosMode,
-      opt.eosManual,
-      logFn               // std::function<void(const std::string&)>
-   );
+   FlashPTResult eq = opt.thermoConfig.thermoMethodId.empty()
+      ? flashPT(Pf, Tf, opt.feedZ, opt.components, f, N, opt.crudeName,
+                opt.kij, /*murphreeEtaV=*/1.0, opt.eosMode, opt.eosManual, logFn)
+      : flashPT(Pf, Tf, opt.feedZ, opt.thermoConfig, opt.components,
+                opt.kij, /*murphreeEtaV=*/1.0, logFn);
 
    const double Hfeed = eq.H;
 
@@ -369,6 +363,7 @@ SimulationResult simulateColumn(const SimulationOptions& opt) {
    in.crudeName = opt.crudeName;
    in.eosMode = opt.eosMode;
    in.eosManual = opt.eosManual;
+   in.thermoConfig = opt.thermoConfig;
    in.kij = opt.kij;
    in.log = logFn;
    in.logLevel = opt.logLevel;
@@ -683,6 +678,7 @@ SimulationResult simulateColumn(const SimulationOptions& opt) {
          in.crudeName = opt.crudeName;
          in.eosMode = opt.eosMode;
          in.eosManual = opt.eosManual;
+         in.thermoConfig = opt.thermoConfig;
          in.log = logFn;
          in.logLevel = opt.logLevel;
          // inside the main tray sweep (where i is the tray index)
@@ -1450,6 +1446,7 @@ SimulationResult simulateColumn(const SimulationOptions& opt) {
       in.crudeName = opt.crudeName;
       in.eosMode = opt.eosMode;
       in.eosManual = opt.eosManual;
+      in.thermoConfig = opt.thermoConfig;
       in.log = logFn;
       in.logLevel = opt.logLevel;
       // inside final tray reporting loop (second flashPH path)

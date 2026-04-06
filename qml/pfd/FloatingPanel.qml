@@ -13,8 +13,6 @@ Item {
     property Item boundsItem: parent
     property alias contentItem: contentHost.data
     property bool active: true
-    property bool showHysysMockup: false
-    property bool showViewSwitcher: true
     property real panelZ: 0
 
     signal closeRequested()
@@ -102,7 +100,7 @@ Item {
                 id: titleLabel
                 anchors.left: appIcon.right
                 anchors.leftMargin: 8
-                anchors.right: root.showViewSwitcher ? viewSwitcher.left : winButtonRow.left
+                anchors.right: winButtonRow.left
                 anchors.rightMargin: 8
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -112,33 +110,6 @@ Item {
                 font.family: "Segoe UI"
                 elide: Text.ElideRight
                 verticalAlignment: Text.AlignVCenter
-            }
-
-            // View switcher (column workspace only)
-            Row {
-                id: viewSwitcher
-                visible: root.showViewSwitcher
-                anchors.right: winButtonRow.left
-                anchors.rightMargin: 12
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
-
-                ClassicButton {
-                    text: "Workspace"
-                    checkable: true
-                    checked: !root.showHysysMockup
-                    implicitHeight: 22; implicitWidth: 80
-                    font.pixelSize: 11
-                    onClicked: root.showHysysMockup = false
-                }
-                ClassicButton {
-                    text: "HYSYS Mockup"
-                    checkable: true
-                    checked: root.showHysysMockup
-                    implicitHeight: 22; implicitWidth: 96
-                    font.pixelSize: 11
-                    onClicked: root.showHysysMockup = true
-                }
             }
 
             // Win-style min / max / close buttons

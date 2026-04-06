@@ -1,6 +1,8 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
+import ChatGPT5.ADT 1.0
+import "../../../../qml/common" as Common
 
 Rectangle {
     id: root
@@ -77,23 +79,6 @@ Rectangle {
         color: frameInner; border.color: borderIn; border.width: 1
     }
 
-    component CompactButton : Rectangle {
-        id: cbr
-        property alias text: cbl.text
-        property bool  enabled_: true
-        property color baseColor: "#d8dde3"
-        signal clicked
-        height: 24; opacity: enabled_ ? 1.0 : 0.45
-        color: !enabled_ ? "#d0d5da" : (cma.pressed ? "#b0b8c2" : (cma.containsMouse ? "#e4e8ed" : baseColor))
-        border.color: cma.pressed ? "#6a7880" : borderIn; border.width: 1
-        Rectangle { anchors.left:cbr.left; anchors.top:cbr.top; width:cbr.width-1; height:1; color:"#f8fafc"; visible:!cma.pressed&&cbr.enabled_ }
-        Rectangle { anchors.left:cbr.left; anchors.top:cbr.top; width:1; height:cbr.height-1; color:"#f8fafc"; visible:!cma.pressed&&cbr.enabled_ }
-        Rectangle { anchors.right:cbr.right; anchors.bottom:cbr.bottom; width:cbr.width-1; height:1; color:"#7f8993"; visible:!cma.pressed&&cbr.enabled_ }
-        Rectangle { anchors.right:cbr.right; anchors.bottom:cbr.bottom; width:1; height:cbr.height-1; color:"#7f8993"; visible:!cma.pressed&&cbr.enabled_ }
-        Text { id: cbl; anchors.centerIn: cbr; anchors.verticalCenterOffset: cma.pressed?1:0; font.pixelSize: fsLbl; color: textMain }
-        MouseArea { id: cma; anchors.fill: cbr; hoverEnabled: true; enabled: cbr.enabled_; onClicked: cbr.clicked() }
-    }
-
     // A standard label|control row — label on left, control fills remaining width
     component FormRow : Item {
         id: frow
@@ -163,11 +148,15 @@ Rectangle {
     // Tab button (top-level)
     component TabBtn : Rectangle {
         id: tbr; property string label: ""; property bool active: false; signal clicked
-        height: 24; radius: 0
+        height: active ? 26 : 24
+        radius: 0
         color: active ? activeBlue : (tma.containsMouse ? "#e4e8ed" : "#d8dde3")
         border.color: active ? "#1a5a90" : borderIn; border.width: 1
+        transform: Translate { y: tbr.active ? -2 : 0 }
+        z: active ? 2 : 1
         Rectangle { anchors.left:tbr.left; anchors.top:tbr.top; width:tbr.width-1; height:1; color:"#f8fafc"; visible:!active }
         Rectangle { anchors.left:tbr.left; anchors.top:tbr.top; width:1; height:tbr.height-1; color:"#f8fafc"; visible:!active }
+        Rectangle { anchors.left: tbr.left; anchors.right: tbr.right; anchors.bottom: tbr.bottom; height: active ? 2 : 1; color: active ? cmdBar : borderIn }
         Text { anchors.centerIn: parent; text: tbr.label; font.pixelSize: fsLbl; font.bold: true
                color: active ? white : textMain }
         MouseArea { id: tma; anchors.fill: parent; hoverEnabled: true; onClicked: tbr.clicked() }
@@ -175,9 +164,13 @@ Rectangle {
 
     component SubTabBtn : Rectangle {
         id: stbr; property string label: ""; property bool active: false; signal clicked
-        height: 24; radius: 0
+        height: active ? 26 : 24
+        radius: 0
         color: active ? activeBlue : (stma.containsMouse ? "#e4e8ed" : "#d8dde3")
         border.color: active ? "#1a5a90" : borderIn; border.width: 1
+        transform: Translate { y: stbr.active ? -2 : 0 }
+        z: active ? 2 : 1
+        Rectangle { anchors.left: stbr.left; anchors.right: stbr.right; anchors.bottom: stbr.bottom; height: active ? 2 : 1; color: active ? cmdBar : borderIn }
         Text { anchors.centerIn: parent; text: stbr.label; font.pixelSize: fsLbl; font.bold: true
                color: active ? white : textMain }
         MouseArea { id: stma; anchors.fill: parent; hoverEnabled: true; onClicked: stbr.clicked() }
@@ -198,14 +191,22 @@ Rectangle {
             x: 0; y: 0; width: parent.width; height: 40
             color: cmdBar; border.color: borderIn; border.width: 1
 
-            Row {
-                x: 8; y: 8; spacing: 6
-                TabBtn { label: "Worksheet/Solver"; width: 120; active: root.activeTab === "Worksheet/Solver"; onClicked: root.activeTab = "Worksheet/Solver" }
-                TabBtn { label: "Performance";      width: 90;  active: root.activeTab === "Performance";      onClicked: root.activeTab = "Performance" }
-                TabBtn { label: "Profiles";         width: 72;  active: root.activeTab === "Profiles";         onClicked: root.activeTab = "Profiles" }
-                TabBtn { label: "Products";         width: 72;  active: root.activeTab === "Products";         onClicked: root.activeTab = "Products" }
-                TabBtn { label: "Run Log";          width: 68;  active: root.activeTab === "Run Log";          onClicked: root.activeTab = "Run Log" }
-                TabBtn { label: "Diagnostics";      width: 84;  active: root.activeTab === "Diagnostics";      onClicked: root.activeTab = "Diagnostics" }
+            Common.ClassicTabs {
+                id: mainTabs
+                x: 8; y: 6
+                tabs: [
+                    { text: "Worksheet/Solver", width: 130 },
+                    { text: "Performance",      width: 92 },
+                    { text: "Profiles",         width: 76 },
+                    { text: "Products",         width: 76 },
+                    { text: "Run Log",          width: 74 },
+                    { text: "Diagnostics",      width: 90 }
+                ]
+                currentIndex: ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"].indexOf(root.activeTab)
+                onTabClicked: function(index) {
+                    const names = ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"]
+                    root.activeTab = names[index]
+                }
             }
         }
 
@@ -228,9 +229,15 @@ Rectangle {
                     id: wsSubBar
                     x: 0; y: 0; width: parent.width; height: 32
                     color: cmdBar; border.color: borderIn; border.width: 1
-                    Row { x: 6; y: 4; spacing: 6
-                        SubTabBtn { label: "Setup";        width: 80;  active: root.worksheetSubTab === "Setup";        onClicked: root.worksheetSubTab = "Setup" }
-                        SubTabBtn { label: "Draws/Solver"; width: 100; active: root.worksheetSubTab === "Draws/Solver"; onClicked: root.worksheetSubTab = "Draws/Solver" }
+                    Common.ClassicTabs {
+                        id: wsTabs
+                        x: 6; y: 3
+                        tabs: [
+                            { text: "Setup", width: 80 },
+                            { text: "Draws/Solver", width: 102 }
+                        ]
+                        currentIndex: root.worksheetSubTab === "Draws/Solver" ? 1 : 0
+                        onTabClicked: function(index) { root.worksheetSubTab = index === 1 ? "Draws/Solver" : "Setup" }
                     }
                 }
 
@@ -270,13 +277,13 @@ Rectangle {
                             Item { width: parent.width; height: rowH
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Stream"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:8;verticalCenter:parent.verticalCenter}
-                                       text: appState&&appState.feedStream?(appState.feedStream.streamName||"—"):"—"
+                                       text: appState ? (appState.connectedFeedStreamName || "—") : "—"
                                        font.pixelSize:fsVal; color:valueBlue }
                                 HDivider { anchors.bottom:parent.bottom; width:parent.width }
                             }
                             // Fluid / Crude
                             Item { width: parent.width; height: rowH
-                                Text { id:crudeLbl2; x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Fluid / Crude"; font.pixelSize:fsLbl; color:textMuted }
+                                Text { id:crudeLbl2; x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed fluid"; font.pixelSize:fsLbl; color:textMuted }
                                 CCombo {
                                     anchors{left:parent.left;leftMargin:168;right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter}
                                     model: appState&&appState.feedStream?appState.feedStream.fluidNames:[]
@@ -650,9 +657,9 @@ Rectangle {
                             HDivider{anchors.top:parent.top;width:parent.width}
                             Row {
                                 anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6;verticalCenter:parent.verticalCenter}  spacing:6
-                                CompactButton{text:"+ Add Draw";width:86;baseColor:activeBlue
+                                ClassicButton{text:"+ Add Draw";width:86;baseColor:activeBlue
                                     onClicked:{if(!appState)return;var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c.push({name:"New Draw",tray:appState.feedTray||16,basis:"feedPct",phase:"L",value:0});drawCard2.commitSpecs(c)}}
-                                CompactButton{text:"Reset";width:58
+                                ClassicButton{text:"Reset";width:58
                                     onClicked:{if(appState)appState.resetDrawSpecsToDefaults()}}
                                 Text{anchors.verticalCenter:parent.verticalCenter
                                     text:{var t=drawCard2.totalTargetPct();return "Total: "+t.toFixed(1)+"%  ("+Math.round(t*drawCard2.feedKgph()/100)+" kg/h)"}
@@ -670,10 +677,10 @@ Rectangle {
                         // Solve buttons
                         Row {
                             anchors{left:parent.left;right:parent.right;top:solveHdr.bottom;topMargin:6;leftMargin:6}  spacing:6; height:28
-                            CompactButton{text:"Solve Column";width:110;baseColor:activeBlue
-                                enabled_:appState?!appState.solving:false
+                            ClassicButton{text:"Solve Column";width:110;baseColor:activeBlue
+                                enabled:appState?!appState.solving:false
                                 onClicked:{if(appState&&!appState.solving)appState.solve()}}
-                            CompactButton{text:"Clear / Reset";width:96
+                            ClassicButton{text:"Clear / Reset";width:96
                                 onClicked:{if(appState)appState.reset()}}
                         }
 
@@ -804,11 +811,17 @@ Rectangle {
 
                 Rectangle {
                     id: profSubBar
-                    x:0;y:0;width:parent.width;height:32
-                    color:cmdBar;border.color:borderIn;border.width:1
-                    Row{x:6;y:4;spacing:6
-                        SubTabBtn{label:"Tray Table";    width:86; active:root.profilesSubTab==="Tray Table";    onClicked:root.profilesSubTab="Tray Table"}
-                        SubTabBtn{label:"Visual Profiles";width:106;active:root.profilesSubTab==="Visual Profiles";onClicked:root.profilesSubTab="Visual Profiles"}
+                    x:0; y:0; width:parent.width; height:32
+                    color:cmdBar; border.color:borderIn; border.width:1
+                    Common.ClassicTabs {
+                        id: profileModeTabs
+                        x: 6; y: 3
+                        tabs: [
+                            { text: "Tray Table", width: 86 },
+                            { text: "Visual Profiles", width: 106 }
+                        ]
+                        currentIndex: root.profilesSubTab === "Visual Profiles" ? 1 : 0
+                        onTabClicked: function(index) { root.profilesSubTab = index === 1 ? "Visual Profiles" : "Tray Table" }
                     }
                 }
 
@@ -892,17 +905,16 @@ Rectangle {
                     property int profileIndex: 0
                     property var activeDef: profileDefs[profileIndex]
 
-                    Row{id:profSelRow;x:0;y:0;spacing:6
-                        Repeater{model:visualProfilesItem.profileDefs.length
-                            delegate:Rectangle{width:106;height:24;radius:0
-                                color:visualProfilesItem.profileIndex===index?activeBlue:(pma.containsMouse?"#e4e8ed":"#d8dde3")
-                                border.color:visualProfilesItem.profileIndex===index?"#1a5a90":borderIn;border.width:1
-                                Text{anchors.centerIn:parent;text:visualProfilesItem.profileDefs[index].label
-                                     font.pixelSize:fsSm;font.bold:visualProfilesItem.profileIndex===index
-                                     color:visualProfilesItem.profileIndex===index?white:textMain;elide:Text.ElideRight
-                                     width:parent.width-8;horizontalAlignment:Text.AlignHCenter}
-                                MouseArea{id:pma;anchors.fill:parent;hoverEnabled:true;onClicked:{visualProfilesItem.profileIndex=index;profileCanvas2.requestPaint()}}
-                            }
+                    Common.ClassicTabs {
+                        id: profSelRow
+                        x: 0; y: 0
+                        tabs: visualProfilesItem.profileDefs.map(function(def) {
+                            return { text: def.label, width: def.label === "Vapour Fraction" ? 126 : 106 }
+                        })
+                        currentIndex: visualProfilesItem.profileIndex
+                        onTabClicked: function(index) {
+                            visualProfilesItem.profileIndex = index
+                            profileCanvas2.requestPaint()
                         }
                     }
 

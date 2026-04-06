@@ -18,11 +18,14 @@
 #include <QCoreApplication>
 #include <QStringConverter>
 
+#include "streams/state/StreamUnitState.h"
 #include "unitops/column/config/CrudeInitialSettings.hpp"
 #include "../../thermo/pseudocomponents/FluidDefinition.hpp"
+#include "../../thermo/ThermoConfig.hpp"
 #include "unitops/column/sim/ColumnSolver.hpp"
 #include "../../../thermo/EOSK.hpp"
 #include "../../../thermo/eos/PRSV.hpp"
+#include "../../../fluid/FluidPackageManager.h"
 
 static constexpr int MAX_LOG_BUFFER_LINES = 5000;
 
@@ -182,6 +185,17 @@ void ColumnUnitState::clearSpecsDirty_()
    setSpecsDirty_(false);
 }
 
+QString ColumnUnitState::connectedFeedStreamName() const
+{
+   if (flowsheetState_ && !connectedFeedStreamUnitId_.isEmpty()) {
+      if (auto* streamUnit = flowsheetState_->findStreamUnitById(connectedFeedStreamUnitId_)) {
+         QString n = streamUnit->name();
+         if (!n.isEmpty()) return n;
+         return streamUnit->id();
+      }
+   }
+   return QString();
+}
 
 MaterialStreamState* ColumnUnitState::activeFeedStream()
 {
@@ -216,6 +230,8 @@ void ColumnUnitState::setConnectedFeedStreamUnitId(const QString& streamUnitId)
    attachActiveFeedStreamSignals_();
    emit feedStreamChanged();
    emit selectedCrudeChanged();
+   emit selectedFluidPackageChanged();
+   emit effectiveThermoMethodChanged();
    emit feedRateKgphChanged();
    emit feedTempKChanged();
    markSpecsDirty_();
@@ -244,6 +260,7 @@ QString ColumnUnitState::connectedProductStreamUnitId(const QString& portName) c
 void ColumnUnitState::detachActiveFeedStreamSignals_()
 {
    QObject::disconnect(activeFeedSelectedFluidConn_);
+   QObject::disconnect(activeFeedSelectedFluidPackageConn_);
    QObject::disconnect(activeFeedFlowConn_);
    QObject::disconnect(activeFeedTempConn_);
    QObject::disconnect(activeFeedCompositionConn_);
@@ -266,6 +283,13 @@ void ColumnUnitState::attachActiveFeedStreamSignals_()
       applyCrudeDefaults(stream->selectedFluid());
       markSpecsDirty_();
       emit selectedCrudeChanged();
+      emit effectiveThermoMethodChanged();
+   });
+   activeFeedSelectedFluidPackageConn_ = connect(stream, &MaterialStreamState::selectedFluidPackageChanged, this, [this]()
+   {
+      markSpecsDirty_();
+      emit selectedFluidPackageChanged();
+      emit effectiveThermoMethodChanged();
    });
    activeFeedFlowConn_ = connect(stream, &MaterialStreamState::flowRateKgphChanged, this, [this]()
    {
@@ -319,10 +343,19 @@ void ColumnUnitState::pushProductStreamScaffolding_(const SolverOutputs& out)
       stream->setIsCrudeFeed(false);
       stream->setStreamName(expectedName);
 
+      // Product streams are fully defined by the solver: force TP spec so the
+      // UI shows T and P as the defining conditions (not editable spec fields),
+      // and MassFlow since the solver output is in kg/h.
+      stream->setThermoSpecMode(MaterialStreamState::ThermoSpecMode::TP);
+      stream->setFlowSpecMode(MaterialStreamState::FlowSpecMode::MassFlow);
+
       if (auto* feed = activeFeedStream()) {
          const QString basisFluid = feed->selectedFluid().trimmed();
          if (!basisFluid.isEmpty())
             stream->setSelectedFluid(basisFluid);
+         const QString packageId = feed->selectedFluidPackageId().trimmed();
+         if (!packageId.isEmpty())
+            stream->setSelectedFluidPackageId(packageId);
       }
 
       if (snapshot && !snapshot->composition.empty())
@@ -411,6 +444,49 @@ void ColumnUnitState::setSelectedCrude(const QString& v)
       return;
 
    activeFeedStream()->setSelectedFluid(v);
+}
+
+QString ColumnUnitState::selectedFluidPackageName() const
+{
+   const auto* feed = activeFeedStream();
+   return feed ? feed->selectedFluidPackageName() : QString{};
+}
+
+QString ColumnUnitState::packageSelectedThermoMethod_() const
+{
+   const auto* feed = activeFeedStream();
+   if (!feed)
+      return {};
+   const QString pkgId = feed->selectedFluidPackageId().trimmed();
+   if (pkgId.isEmpty())
+      return {};
+   auto* mgr = FluidPackageManager::instance();
+   if (!mgr)
+      return {};
+   return mgr->thermoMethodIdForPackage(pkgId).trimmed();
+}
+
+QString ColumnUnitState::packageThermoLabel_() const
+{
+   const QString method = packageSelectedThermoMethod_();
+   if (method.isEmpty())
+      return QStringLiteral("Legacy %1").arg(eosMode_ == QStringLiteral("manual") ? eosManual_ : QStringLiteral("tray-based EOS"));
+   return QStringLiteral("From package (%1)").arg(method);
+}
+
+QString ColumnUnitState::effectiveThermoMethod() const
+{
+   const QString method = packageSelectedThermoMethod_();
+   if (!method.isEmpty())
+      return method;
+   if (eosMode_ == QStringLiteral("manual") && !eosManual_.trimmed().isEmpty())
+      return eosManual_.trimmed();
+   return QStringLiteral("auto");
+}
+
+bool ColumnUnitState::packageThermoControlled() const
+{
+   return !packageSelectedThermoMethod_().isEmpty();
 }
 
 // ---------------- EOS settings ----------------
@@ -897,6 +973,18 @@ void ColumnUnitState::solve()
 
    SolverInputs in;
    const MaterialStreamState* feed = activeFeedStream();
+
+   // Guard: warn via diagnostics if the feed stream has no valid fluid package.
+   // The solve proceeds using legacy crude-based thermo in this case.
+   if (feed->selectedFluidPackageId().trimmed().isEmpty()) {
+      qWarning() << "[ColumnUnitState] Feed stream has no fluid package assigned."
+                 << "Solver will use legacy crude-string EOS selection.";
+   } else if (!feed->fluidPackageValid()) {
+      qWarning() << "[ColumnUnitState] Feed stream fluid package is invalid or unresolvable:"
+                 << feed->selectedFluidPackageId()
+                 << "— Solver will fall back to legacy EOS selection.";
+   }
+
    in.fluidName = feed->selectedFluid().toStdString();
    in.fluidThermo = feed->fluidDefinition().thermo;
    in.feedComposition = feed->compositionStd();
@@ -916,8 +1004,20 @@ void ColumnUnitState::solve()
    const int solverEmitLevel = (uiLogLevel <= 0) ? 1 : uiLogLevel; // 2=Debug
    in.logLevel = static_cast<LogLevel>(solverEmitLevel);
 
-   in.eosMode = eosMode_.toStdString();
-   in.eosManual = eosManual_.toStdString();
+   // Resolve ThermoConfig from the feed stream's fluid package (primary path).
+   // Also keep eosMode/eosManual populated for legacy fallback inside the solver.
+   const QString packageThermoMethod = packageSelectedThermoMethod_();
+   if (!packageThermoMethod.isEmpty()) {
+      const QString pkgId = feed->selectedFluidPackageId().trimmed();
+      auto* fpm = FluidPackageManager::instance();
+      if (fpm)
+         in.thermoConfig = fpm->thermoConfigForPackageResolved(pkgId);
+      in.eosMode   = "manual";
+      in.eosManual = packageThermoMethod.toStdString();
+   } else {
+      in.eosMode   = eosMode_.toStdString();
+      in.eosManual = eosManual_.toStdString();
+   }
    in.condenserType = condenserType_.toStdString();
    in.reboilerType = reboilerType_.toStdString();
    in.condenserSpec = condenserSpec_.toStdString();
@@ -998,8 +1098,10 @@ void ColumnUnitState::solve()
    {
       qDebug() << "[DrawSpecs Solver] entries=0";
    }
-   runLogModel_.append(QString("Solve: fluid=%1 trays=%2 feed=%3 kg/h feedTray=%4")
+   runLogModel_.append(QString("Solve: fluid=%1 package=%2 thermo=%3 trays=%4 feed=%5 kg/h feedTray=%6")
                        .arg(feed->selectedFluid())
+                       .arg(feed->selectedFluidPackageName().isEmpty() ? QStringLiteral("(legacy)") : feed->selectedFluidPackageName())
+                       .arg(effectiveThermoMethod())
                        .arg(in.trays)
                        .arg(feedRateKgph(), 0, 'f', 0)
                        .arg(in.feedTray));

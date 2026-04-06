@@ -24,7 +24,7 @@ Item {
 
     readonly property bool isProductStream: !!root.streamObject && root.streamObject.productStream
     readonly property bool canEditStream: !!root.streamObject && !root.isProductStream
-    readonly property bool canEditCrude: root.canEditStream && !!root.streamObject && root.streamObject.isCrudeFeed
+    readonly property bool canEditComposition: root.canEditStream && !!root.streamObject && root.streamObject.componentEditingEnabled
 
     readonly property int colComponentW: 100
     readonly property int colFractionW: 80
@@ -81,7 +81,7 @@ Item {
 
                 Label {
                     id: componentPropsLabel
-                    text: "Component Properties"
+                    text: "Package Component Properties"
                     color: root.textDark
                     font.bold: true
                     font.pixelSize: 11
@@ -106,7 +106,7 @@ Item {
                     id: normalizeButton
                     text: "Normalize Fractions"; width: 130
                     visible: !root.isProductStream
-                    enabled: !!root.streamObject && root.canEditCrude
+                    enabled: !!root.streamObject && root.canEditComposition
                     Layout.preferredWidth: 130; Layout.alignment: Qt.AlignRight
                     onClicked: if (root.streamObject) root.streamObject.normalizeComposition()
                 }
@@ -114,21 +114,21 @@ Item {
                     id: resetCompositionButton
                     text: "Reset Composition"; width: 120
                     visible: !root.isProductStream
-                    enabled: !!root.streamObject && root.canEditCrude
+                    enabled: !!root.streamObject && root.canEditComposition
                     onClicked: if (root.streamObject) root.streamObject.resetCompositionToFluidDefault()
                 }
                 ClassicButton {
                     id: resetPropertiesButton
                     text: "Reset Properties"; width: 110
                     visible: !root.isProductStream
-                    enabled: !!root.streamObject && root.canEditCrude
+                    enabled: !!root.streamObject && root.canEditComposition
                     onClicked: if (root.streamObject) root.streamObject.resetComponentPropertiesToFluidDefault()
                 }
                 ClassicButton {
                     id: clearEditsButton
                     text: "Clear Custom Edits"; width: 120
                     visible: !root.isProductStream
-                    enabled: !!root.streamObject && root.canEditCrude && root.streamObject.hasCustomComposition
+                    enabled: !!root.streamObject && root.canEditComposition && root.streamObject.hasCustomComposition
                     onClicked: if (root.streamObject) root.streamObject.clearCustomCompositionEdits()
                 }
             }
@@ -157,14 +157,14 @@ Item {
             Label {
                 Layout.fillWidth: true
                 visible: !!root.streamObject
-                text: root.streamObject ? root.streamObject.compositionSourceLabel : ""
+                text: root.streamObject ? ((root.streamObject.selectedFluidPackageName ? ("Fluid package: " + root.streamObject.selectedFluidPackageName + "   •   ") : "") + root.streamObject.compositionSourceLabel) : ""
                 color: root.mutedText
                 font.pixelSize: 10
                 font.italic: true
             }
             Rectangle {
                 Layout.fillWidth: true
-                visible: !!root.streamObject && !root.isProductStream && root.streamObject.isCrudeFeed && !root.streamObject.massFractionsBalanced
+                visible: !!root.streamObject && !root.isProductStream && root.streamObject.componentEditingEnabled && !root.streamObject.massFractionsBalanced
                 color: root.warnBg
                 border.color: root.warnBorder
                 border.width: 1
@@ -804,7 +804,7 @@ Item {
     
                                 function pasteIntoSelectedRows() {
                                     if (!root.streamObject || !root.streamObject.compositionModel) return
-                                    if (!root.canEditCrude) {
+                                    if (!root.canEditComposition) {
                                         console.log("Cannot paste - stream is not editable")
                                         return
                                     }
@@ -868,7 +868,7 @@ Item {
     
                                 function clearSelectedRows() {
                                     if (!root.streamObject || !root.streamObject.compositionModel) return
-                                    if (!root.canEditCrude) return
+                                    if (!root.canEditComposition) return
         
                                     var indices = getSelectedRowIndices()
                                     var model = root.streamObject.compositionModel
@@ -899,7 +899,7 @@ Item {
                             
                             MenuItem {
                                 text: "Paste into Selected Rows"
-                                enabled: listView.getSelectedRowIndices().length > 0 && root.canEditCrude
+                                enabled: listView.getSelectedRowIndices().length > 0 && root.canEditComposition
                                 onTriggered: listView.pasteIntoSelectedRows()
                             }
                             
@@ -920,7 +920,7 @@ Item {
                             
                             MenuItem {
                                 text: "Clear Selected Rows"
-                                enabled: listView.getSelectedRowIndices().length > 0 && root.canEditCrude
+                                enabled: listView.getSelectedRowIndices().length > 0 && root.canEditComposition
                                 onTriggered: listView.clearSelectedRows()
                             }
                         }

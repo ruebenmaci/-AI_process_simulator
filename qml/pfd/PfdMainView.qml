@@ -289,7 +289,6 @@ Item {
         onVisibleChanged: if (visible) root.raisePanel(componentManagerPanel)
         panelTitle: "Component Manager"
         boundsItem: root
-        showViewSwitcher: false
         minPanelWidth: 860
         minPanelHeight: 560
         width: Math.min(980, Math.max(860, root.width - 260))
@@ -321,7 +320,6 @@ Item {
         onVisibleChanged: if (visible) root.raisePanel(fluidManagerPanel)
         panelTitle: "Fluid Package Manager"
         boundsItem: root
-        showViewSwitcher: false
         minPanelWidth: 1040
         minPanelHeight: 720
         width: Math.min(1240, Math.max(1040, root.width - 100))
@@ -376,18 +374,14 @@ Item {
 
         readonly property int columnNormalWidth: 1320
         readonly property int columnNormalHeight: 860
-        readonly property int columnMockupWidth: 924
-        readonly property int columnMockupHeight: 652
         readonly property int streamWidth: 924
         readonly property int streamHeight: 652
         readonly property bool streamMode: !!root.activeUnit && root.activeUnit.type === "stream"
 
-        width: streamMode ? streamWidth : (showHysysMockup ? columnMockupWidth : columnNormalWidth)
-        height: streamMode ? streamHeight : (showHysysMockup ? columnMockupHeight : columnNormalHeight)
+        width: streamMode ? streamWidth : columnNormalWidth
+        height: streamMode ? streamHeight : columnNormalHeight
 
         active: visible && root.activePanel === floatingWorkspace
-        showViewSwitcher: !streamMode
-        showHysysMockup: streamMode ? false : showHysysMockup
 
         onXChanged: root.floatingWorkspacePos = Qt.point(x, y)
         onYChanged: root.floatingWorkspacePos = Qt.point(x, y)
@@ -410,7 +404,6 @@ Item {
             ColumnWorkspaceWindow {
                 anchors.fill: parent
                 appState: root.activeUnit
-                showHysysMockup: floatingWorkspace.showHysysMockup
             }
         }
 
@@ -429,7 +422,6 @@ Item {
         onVisibleChanged: if (visible) root.raisePanel(spreadsheetPanel)
         panelTitle: "Spreadsheet"
         boundsItem: root
-        showViewSwitcher: false
         minPanelWidth: 800
         minPanelHeight: 500
         width: Math.min(1200, Math.max(800, root.width - 120))

@@ -11,7 +11,16 @@ struct FluidPackageRecord {
     QString id;
     QString name;
     QString componentListId;  // references a ComponentListRecord by id
+
+    // Legacy UI/display label kept for compatibility with the current FluidManagerView.
     QString propertyMethod;
+
+    // Phase 0 HYSYS-style ownership fields.
+    QString thermoMethodId;
+    QString phaseModelFamily;
+    QStringList supportFlags;
+    bool isCrudePackage = false;
+
     QString notes;
     QString source;
     QStringList tags;

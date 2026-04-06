@@ -6,24 +6,31 @@
 #include <vector>
 
 #include "fluid/FluidPackageRecord.h"
+#include "thermo/pseudocomponents/FluidDefinition.hpp"
+#include "thermo/ThermoConfig.hpp"
 
 class FluidPackageListModel;
 
 class FluidPackageManager : public QObject
 {
     Q_OBJECT
-    Q_PROPERTY(QObject*     fluidPackageModel    READ fluidPackageModel    CONSTANT)
-    Q_PROPERTY(int          fluidPackageCount    READ fluidPackageCount    NOTIFY fluidPackagesChanged)
-    Q_PROPERTY(QStringList  propertyMethods      READ propertyMethods      CONSTANT)
-    Q_PROPERTY(QString      defaultFluidPackageId READ defaultFluidPackageId NOTIFY fluidPackagesChanged)
-    Q_PROPERTY(QString      lastStatus           READ lastStatus           NOTIFY fluidPackagesChanged)
+    Q_PROPERTY(QObject*     fluidPackageModel      READ fluidPackageModel      CONSTANT)
+    Q_PROPERTY(int          fluidPackageCount      READ fluidPackageCount      NOTIFY fluidPackagesChanged)
+    Q_PROPERTY(QStringList  propertyMethods        READ propertyMethods        CONSTANT)
+    Q_PROPERTY(QStringList  availableThermoMethods READ availableThermoMethods CONSTANT)
+    Q_PROPERTY(QString      defaultFluidPackageId  READ defaultFluidPackageId  NOTIFY fluidPackagesChanged)
+    Q_PROPERTY(QString      lastStatus             READ lastStatus             NOTIFY fluidPackagesChanged)
 
 public:
     explicit FluidPackageManager(QObject* parent = nullptr);
+    ~FluidPackageManager() override;
+
+    static FluidPackageManager* instance();
 
     QObject*    fluidPackageModel()     const;
     int         fluidPackageCount()     const;
     QStringList propertyMethods()       const;
+    QStringList availableThermoMethods() const;
     QString     defaultFluidPackageId() const;
     QString     lastStatus()            const;
 
@@ -35,6 +42,17 @@ public:
     Q_INVOKABLE bool createStarterPackages();
     Q_INVOKABLE bool saveToJsonFile(const QString& path) const;
     Q_INVOKABLE bool loadFromJsonFile(const QString& path);
+
+    // Phase 0 ownership scaffolding.
+    Q_INVOKABLE bool packageExists(const QString& packageId) const;
+    Q_INVOKABLE QString fluidPackageName(const QString& packageId) const;
+    Q_INVOKABLE QString thermoMethodIdForPackage(const QString& packageId) const;
+    Q_INVOKABLE QString starterPackageIdForLegacyCrudeName(const QString& crudeName) const;
+    Q_INVOKABLE QVariantMap thermoConfigForPackage(const QString& packageId) const;
+    thermo::ThermoConfig thermoConfigForPackageResolved(const QString& packageId) const;
+    FluidDefinition resolveFluidDefinitionForPackage(const QString& packageId) const;
+    Q_INVOKABLE QVariantMap describeResolvedPackage(const QString& packageId) const;
+    Q_INVOKABLE QVariantMap packageEditorSummary(const QString& packageId) const;
 
 signals:
     void fluidPackagesChanged();
@@ -49,4 +67,6 @@ private:
     std::vector<sim::FluidPackageRecord> packages_;
     FluidPackageListModel* model_ = nullptr;
     QString lastStatus_;
+
+    static FluidPackageManager* instance_;
 };

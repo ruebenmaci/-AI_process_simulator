@@ -31,7 +31,11 @@ class ColumnUnitState : public ProcessUnitState {
 
       Q_PROPERTY(QStringList crudeNames READ crudeNames CONSTANT)
       Q_PROPERTY(QObject* feedStream READ feedStream NOTIFY feedStreamChanged)
+      Q_PROPERTY(QString connectedFeedStreamName READ connectedFeedStreamName NOTIFY feedStreamChanged)
       Q_PROPERTY(QString selectedCrude READ selectedCrude WRITE setSelectedCrude NOTIFY selectedCrudeChanged)
+      Q_PROPERTY(QString selectedFluidPackageName READ selectedFluidPackageName NOTIFY selectedFluidPackageChanged)
+      Q_PROPERTY(QString effectiveThermoMethod READ effectiveThermoMethod NOTIFY effectiveThermoMethodChanged)
+      Q_PROPERTY(bool packageThermoControlled READ packageThermoControlled NOTIFY selectedFluidPackageChanged)
 
       Q_PROPERTY(bool solving READ solving NOTIFY solvingChanged)
       Q_PROPERTY(qint64 solveElapsedMs READ solveElapsedMs NOTIFY solveElapsedMsChanged)
@@ -138,10 +142,14 @@ public:
    void setFlowsheetState(FlowsheetState* flowsheet);
    void setConnectedFeedStreamUnitId(const QString& streamUnitId);
    QString connectedFeedStreamUnitId() const { return connectedFeedStreamUnitId_; }
+   QString connectedFeedStreamName() const;
    void setConnectedProductStreamUnitId(const QString& portName, const QString& streamUnitId);
    QString connectedProductStreamUnitId(const QString& portName) const;
    QString selectedCrude() const;
    void setSelectedCrude(const QString& v);
+   QString selectedFluidPackageName() const;
+   QString effectiveThermoMethod() const;
+   bool packageThermoControlled() const;
 
    QString eosMode() const;
    void setEosMode(const QString& v);
@@ -244,6 +252,8 @@ signals:
 
    void drawSpecsChanged();
    void selectedCrudeChanged();
+   void selectedFluidPackageChanged();
+   void effectiveThermoMethodChanged();
    void feedStreamChanged();
 
    void eosModeChanged();
@@ -290,6 +300,8 @@ private:
    void attachActiveFeedStreamSignals_();
    void detachActiveFeedStreamSignals_();
    void pushProductStreamScaffolding_(const SolverOutputs& out);
+   QString packageSelectedThermoMethod_() const;
+   QString packageThermoLabel_() const;
 
    bool solving_ = false;
    bool specsDirty_ = false;
@@ -315,6 +327,7 @@ private:
    QString connectedBottomsStreamUnitId_;
    QPointer<MaterialStreamState> observedActiveFeedStream_;
    QMetaObject::Connection activeFeedSelectedFluidConn_;
+   QMetaObject::Connection activeFeedSelectedFluidPackageConn_;
    QMetaObject::Connection activeFeedFlowConn_;
    QMetaObject::Connection activeFeedTempConn_;
    QMetaObject::Connection activeFeedCompositionConn_;

@@ -1,4 +1,5 @@
 #include "MaterialStreamState.h"
+#include "../../thermo/ThermoConfig.hpp"
 
 #include "../models/StreamCompositionModel.h"
 
@@ -14,6 +15,7 @@
 
 #include "../../thermo/EOSK.hpp"
 #include "components/ComponentManager.h"
+#include "fluid/FluidPackageManager.h"
 #include "../../thermo/Flash.hpp"
 #include "../../thermo/PH_PS_PT_TS_Flash.hpp"
 #include "../../thermo/StreamPropertyCalcs.hpp"
@@ -250,6 +252,13 @@ MaterialStreamState::MaterialStreamState(QObject* parent)
       ? QStringLiteral("Brent")
       : (fluidNames_.isEmpty() ? QStringLiteral("Brent") : fluidNames_.front());
 
+   refreshAvailableFluidPackages_();
+   // Do NOT call syncSelectedFluidPackageFromLegacyFluid_ here.
+   // New streams start with no package assigned; initializeWithDefaultPackage()
+   // (called by FlowsheetState immediately after construction) sets the correct
+   // default. syncSelectedFluidPackageFromLegacyFluid_ is a migration bridge
+   // for streams loaded from old persistence data and must not run on new streams.
+
    refreshFluidDefinition_();
    resetToFluidDefaults();
    resetCompositionToFluidDefault();
@@ -271,11 +280,44 @@ void MaterialStreamState::setSelectedFluid(const QString& value)
    }
 
    selectedFluid_ = value;
+   syncSelectedFluidPackageFromLegacyFluid_();
    refreshFluidDefinition_();
    resetToFluidDefaults();
    resetCompositionToFluidDefault();
    recalcFeedPhase_();
    emit selectedFluidChanged();
+   emitDerivedConditionsChanged_();
+}
+
+void MaterialStreamState::setSelectedFluidPackageId(const QString& value)
+{
+   const QString normalized = value.trimmed();
+   if (selectedFluidPackageId_ == normalized) {
+      return;
+   }
+
+   const FluidDefinition previousFluid = fluidDefinition_;
+   const bool previousCustomComposition = hasCustomComposition_;
+
+   selectedFluidPackageId_ = normalized;
+   syncSelectedFluidPackageMetadata_();
+
+   const QString legacyFluidName = legacySourceFluidNameForPackage_(selectedFluidPackageId_);
+   const bool legacyFluidChanged = !legacyFluidName.isEmpty() && legacyFluidName != selectedFluid_;
+   if (legacyFluidChanged) {
+      selectedFluid_ = legacyFluidName;
+   }
+
+   refreshFluidDefinition_();
+   if (!preserveCompositionAcrossFluidChange_(previousFluid, previousCustomComposition)) {
+      resetCompositionToFluidDefault();
+   }
+   recalcFeedPhase_();
+
+   emit selectedFluidPackageChanged();
+   if (legacyFluidChanged) {
+      emit selectedFluidChanged();
+   }
    emitDerivedConditionsChanged_();
 }
 
@@ -331,10 +373,12 @@ void MaterialStreamState::setTemperatureK(double value)
    temperatureK_ = value;
    if (thermoSpecMode_ != ThermoSpecMode::TS && thermoSpecMode_ != ThermoSpecMode::TP)
       thermoSpecMode_ = ThermoSpecMode::TP;
+   syncSpecPairFromThermoMode_();
    recalcFeedPhase_();
    validateAndUpdateStatus_();
    emit temperatureKChanged();
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
    emitDerivedConditionsChanged_();
 }
 
@@ -550,9 +594,11 @@ void MaterialStreamState::setSpecifiedVaporFraction(double value)
    specifiedVaporFraction_ = value;
    if (thermoSpecMode_ != ThermoSpecMode::PVF)
       thermoSpecMode_ = ThermoSpecMode::PVF;
+   syncSpecPairFromThermoMode_();
    recalcFeedPhase_();
    validateAndUpdateStatus_();
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
    emitDerivedConditionsChanged_();
 }
 
@@ -563,9 +609,11 @@ void MaterialStreamState::setEnthalpyKJkg(double value)
    enthalpyKJkg_ = value;
    if (thermoSpecMode_ != ThermoSpecMode::PH)
       thermoSpecMode_ = ThermoSpecMode::PH;
+   syncSpecPairFromThermoMode_();
    recalcFeedPhase_();
    validateAndUpdateStatus_();
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
    emitDerivedConditionsChanged_();
 }
 
@@ -578,10 +626,12 @@ void MaterialStreamState::setEntropyKJkgK(double value)
    entropyKJkgK_ = value;
    if (thermoSpecMode_ != ThermoSpecMode::TS && thermoSpecMode_ != ThermoSpecMode::PS)
       thermoSpecMode_ = ThermoSpecMode::PS;
+   syncSpecPairFromThermoMode_();
 
    recalcFeedPhase_();
    validateAndUpdateStatus_();
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
    emitDerivedConditionsChanged_();
 }
 
@@ -615,12 +665,225 @@ void MaterialStreamState::setFlowSpecMode(FlowSpecMode value)
    emitDerivedConditionsChanged_();
 }
 
+void MaterialStreamState::syncSpecPairFromThermoMode_()
+{
+   switch (thermoSpecMode_) {
+   case ThermoSpecMode::TP:
+      primaryThermoSpec_ = ThermoSpecVariable::Temperature;
+      secondaryThermoSpec_ = ThermoSpecVariable::Pressure;
+      break;
+   case ThermoSpecMode::PH:
+      primaryThermoSpec_ = ThermoSpecVariable::Pressure;
+      secondaryThermoSpec_ = ThermoSpecVariable::Enthalpy;
+      break;
+   case ThermoSpecMode::PS:
+      primaryThermoSpec_ = ThermoSpecVariable::Pressure;
+      secondaryThermoSpec_ = ThermoSpecVariable::Entropy;
+      break;
+   case ThermoSpecMode::PVF:
+      primaryThermoSpec_ = ThermoSpecVariable::Pressure;
+      secondaryThermoSpec_ = ThermoSpecVariable::VaporFraction;
+      break;
+   case ThermoSpecMode::TS:
+      primaryThermoSpec_ = ThermoSpecVariable::Temperature;
+      secondaryThermoSpec_ = ThermoSpecVariable::Entropy;
+      break;
+   }
+}
+
+bool MaterialStreamState::isSpecPairValid_(ThermoSpecVariable first, ThermoSpecVariable second) const
+{
+   if (first == second)
+      return false;
+   const auto a = first;
+   const auto b = second;
+   return (a == ThermoSpecVariable::Temperature && b == ThermoSpecVariable::Pressure)
+      || (a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Temperature)
+      || (a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Enthalpy)
+      || (a == ThermoSpecVariable::Enthalpy && b == ThermoSpecVariable::Pressure)
+      || (a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Entropy)
+      || (a == ThermoSpecVariable::Entropy && b == ThermoSpecVariable::Pressure)
+      || (a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::VaporFraction)
+      || (a == ThermoSpecVariable::VaporFraction && b == ThermoSpecVariable::Pressure)
+      || (a == ThermoSpecVariable::Temperature && b == ThermoSpecVariable::Entropy)
+      || (a == ThermoSpecVariable::Entropy && b == ThermoSpecVariable::Temperature);
+}
+
+void MaterialStreamState::applyThermoModeFromSpecPair_()
+{
+   if (!isSpecPairValid_(primaryThermoSpec_, secondaryThermoSpec_))
+      return;
+
+   const auto a = primaryThermoSpec_;
+   const auto b = secondaryThermoSpec_;
+   if ((a == ThermoSpecVariable::Temperature && b == ThermoSpecVariable::Pressure)
+      || (a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Temperature)) {
+      thermoSpecMode_ = ThermoSpecMode::TP;
+   }
+   else if ((a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Enthalpy)
+      || (a == ThermoSpecVariable::Enthalpy && b == ThermoSpecVariable::Pressure)) {
+      thermoSpecMode_ = ThermoSpecMode::PH;
+   }
+   else if ((a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::Entropy)
+      || (a == ThermoSpecVariable::Entropy && b == ThermoSpecVariable::Pressure)) {
+      thermoSpecMode_ = ThermoSpecMode::PS;
+   }
+   else if ((a == ThermoSpecVariable::Pressure && b == ThermoSpecVariable::VaporFraction)
+      || (a == ThermoSpecVariable::VaporFraction && b == ThermoSpecVariable::Pressure)) {
+      thermoSpecMode_ = ThermoSpecMode::PVF;
+   }
+   else if ((a == ThermoSpecVariable::Temperature && b == ThermoSpecVariable::Entropy)
+      || (a == ThermoSpecVariable::Entropy && b == ThermoSpecVariable::Temperature)) {
+      thermoSpecMode_ = ThermoSpecMode::TS;
+   }
+}
+
+QString MaterialStreamState::inferredFlashSpecLabel() const
+{
+   switch (thermoSpecMode_) {
+   case ThermoSpecMode::TP: return QStringLiteral("TP");
+   case ThermoSpecMode::PH: return QStringLiteral("PH");
+   case ThermoSpecMode::PS: return QStringLiteral("PS");
+   case ThermoSpecMode::PVF: return QStringLiteral("PVF");
+   case ThermoSpecMode::TS: return QStringLiteral("TS");
+   }
+   return QStringLiteral("Unknown");
+}
+
+
+bool MaterialStreamState::fluidPackageValid() const
+{
+   auto* fpm = fluidPackageManager_();
+   return fpm && !selectedFluidPackageId_.trimmed().isEmpty() && fpm->packageExists(selectedFluidPackageId_);
+}
+
+QString MaterialStreamState::fluidPackageThermoMethod() const
+{
+   auto* fpm = fluidPackageManager_();
+   if (!fpm || selectedFluidPackageId_.trimmed().isEmpty())
+      return QString();
+   return fpm->thermoMethodIdForPackage(selectedFluidPackageId_);
+}
+
+QString MaterialStreamState::fluidPackageStatus() const
+{
+   auto* fpm = fluidPackageManager_();
+   if (!fpm)
+      return QStringLiteral("Fluid package manager unavailable");
+   if (selectedFluidPackageId_.trimmed().isEmpty())
+      return QStringLiteral("No fluid package selected");
+   if (!fpm->packageExists(selectedFluidPackageId_))
+      return QStringLiteral("Selected fluid package was not found");
+
+   const QString methodId = fpm->thermoMethodIdForPackage(selectedFluidPackageId_).trimmed();
+   if (methodId.isEmpty())
+      return QStringLiteral("Fluid package is missing a thermo method");
+
+   const QString pkgName = selectedFluidPackageName_.trimmed().isEmpty() ? selectedFluidPackageId_ : selectedFluidPackageName_;
+   return QStringLiteral("Using %1 (%2)").arg(pkgName, methodId);
+}
+
+QString MaterialStreamState::packageSupportMismatchText() const
+{
+   if (packageSupportsCurrentSpecPair())
+      return QString();
+
+   auto* fpm = fluidPackageManager_();
+   const QString methodId = fpm ? fpm->thermoMethodIdForPackage(selectedFluidPackageId_) : QString();
+   const QString pkgName = selectedFluidPackageName_.trimmed().isEmpty() ? selectedFluidPackageId_ : selectedFluidPackageName_;
+
+   if (!pkgName.trimmed().isEmpty() && !methodId.trimmed().isEmpty()) {
+      return QStringLiteral("%1 uses %2 and does not currently support %3 flash.")
+         .arg(pkgName, methodId, inferredFlashSpecLabel());
+   }
+   if (!methodId.trimmed().isEmpty()) {
+      return QStringLiteral("Selected thermo method %1 does not currently support %2 flash.")
+         .arg(methodId, inferredFlashSpecLabel());
+   }
+   return QStringLiteral("Selected fluid package does not currently support %1 flash.")
+      .arg(inferredFlashSpecLabel());
+}
+
+QString MaterialStreamState::packageComponentListName() const
+{
+   auto* fpm = fluidPackageManager_();
+   if (!fpm || selectedFluidPackageId_.trimmed().isEmpty())
+      return QString();
+   // packageEditorSummary is the authoritative source for componentListName —
+   // it resolves through ComponentManager::describeComponentList which provides
+   // the human-readable "name" field under the "componentListName" key.
+   const QVariantMap summary = fpm->packageEditorSummary(selectedFluidPackageId_);
+   return summary.value(QStringLiteral("componentListName")).toString().trimmed();
+}
+
+bool MaterialStreamState::packageSupportsCurrentSpecPair() const
+{
+   auto* fpm = fluidPackageManager_();
+   if (!fpm || selectedFluidPackageId_.isEmpty())
+      return true;
+   const auto cfg = fpm->thermoConfigForPackageResolved(selectedFluidPackageId_);
+   thermo::FlashSpecType spec = thermo::FlashSpecType::Unknown;
+   switch (thermoSpecMode_) {
+   case ThermoSpecMode::TP: spec = thermo::FlashSpecType::TP; break;
+   case ThermoSpecMode::PH: spec = thermo::FlashSpecType::PH; break;
+   case ThermoSpecMode::PS: spec = thermo::FlashSpecType::PS; break;
+   case ThermoSpecMode::PVF: spec = thermo::FlashSpecType::PVF; break;
+   case ThermoSpecMode::TS: spec = thermo::FlashSpecType::TS; break;
+   }
+   return cfg.supportsFlashSpec(spec);
+}
+
+void MaterialStreamState::setPrimaryThermoSpec(ThermoSpecVariable value)
+{
+   if (primaryThermoSpec_ == value)
+      return;
+   primaryThermoSpec_ = value;
+   if (primaryThermoSpec_ == secondaryThermoSpec_) {
+      switch (primaryThermoSpec_) {
+      case ThermoSpecVariable::Temperature: secondaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::Pressure: secondaryThermoSpec_ = ThermoSpecVariable::Temperature; break;
+      case ThermoSpecVariable::Enthalpy: secondaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::Entropy: secondaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::VaporFraction: secondaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      }
+   }
+   applyThermoModeFromSpecPair_();
+   emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
+   recalcFeedPhase_();   // re-flash with the new spec pair
+   validateAndUpdateStatus_();
+   emitDerivedConditionsChanged_();
+}
+
+void MaterialStreamState::setSecondaryThermoSpec(ThermoSpecVariable value)
+{
+   if (secondaryThermoSpec_ == value)
+      return;
+   secondaryThermoSpec_ = value;
+   if (secondaryThermoSpec_ == primaryThermoSpec_) {
+      switch (secondaryThermoSpec_) {
+      case ThermoSpecVariable::Temperature: primaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::Pressure: primaryThermoSpec_ = ThermoSpecVariable::Temperature; break;
+      case ThermoSpecVariable::Enthalpy: primaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::Entropy: primaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      case ThermoSpecVariable::VaporFraction: primaryThermoSpec_ = ThermoSpecVariable::Pressure; break;
+      }
+   }
+   applyThermoModeFromSpecPair_();
+   emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
+   recalcFeedPhase_();   // re-flash with the new spec pair
+   validateAndUpdateStatus_();
+   emitDerivedConditionsChanged_();
+}
+
 void MaterialStreamState::setThermoSpecMode(ThermoSpecMode value)
 {
    if (thermoSpecMode_ == value)
       return;
 
    thermoSpecMode_ = value;
+   syncSpecPairFromThermoMode_();
 
    if (thermoSpecMode_ == ThermoSpecMode::PVF) {
       double vfSeed = std::numeric_limits<double>::quiet_NaN();
@@ -636,6 +899,7 @@ void MaterialStreamState::setThermoSpecMode(ThermoSpecMode value)
    }
 
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
    recalcFeedPhase_();
    validateAndUpdateStatus_();
    emitDerivedConditionsChanged_();
@@ -681,10 +945,27 @@ bool MaterialStreamState::standardLiquidVolumeFlowEditable() const
    return flowSpecMode_ == FlowSpecMode::StdLiquidVolumeFlow;
 }
 
+void MaterialStreamState::reloadFluidDefinition()
+{
+   // Re-resolve from the assigned package. If the component list membership
+   // changed, the new component set is picked up here.
+   const FluidDefinition previousFluid = fluidDefinition_;
+   const bool previousCustomComposition = hasCustomComposition_;
+   refreshFluidDefinition_();
+
+   // Preserve composition if the component set is identical, otherwise reset.
+   if (!preserveCompositionAcrossFluidChange_(previousFluid, previousCustomComposition))
+      resetCompositionToFluidDefault();
+
+   recalcFeedPhase_();
+   emitDerivedConditionsChanged_();
+}
+
 void MaterialStreamState::resetToFluidDefaults()
 {
    flowSpecMode_ = FlowSpecMode::MassFlow;
    thermoSpecMode_ = ThermoSpecMode::TP;
+   syncSpecPairFromThermoMode_();
    flowRateKgph_ = fluidDefinition_.columnDefaults.feedRate_kgph;
    temperatureK_ = fluidDefinition_.columnDefaults.Tfeed_K;
    pressurePa_ = fluidDefinition_.columnDefaults.Ptop_Pa;
@@ -693,6 +974,7 @@ void MaterialStreamState::resetToFluidDefaults()
    emit pressurePaChanged();
    emit flowSpecModeChanged();
    emit thermoSpecModeChanged();
+   emit thermoSpecSelectionChanged();
 }
 
 void MaterialStreamState::resetCompositionToFluidDefault()
@@ -745,13 +1027,100 @@ bool MaterialStreamState::setComponentProperty(int row, const QString& field, do
    return setComponentPropertyByKey_(row, field, value);
 }
 
+void MaterialStreamState::refreshAvailableFluidPackages_()
+{
+   QStringList nextIds;
+   if (auto* fm = fluidPackageManager_()) {
+      const QVariantList packages = fm->listFluidPackages();
+      for (const auto& v : packages) {
+         const QString id = v.toMap().value(QStringLiteral("id")).toString();
+         if (!id.trimmed().isEmpty())
+            nextIds.push_back(id);
+      }
+   }
+   nextIds.removeDuplicates();
+   if (nextIds == availableFluidPackageIds_)
+      return;
+   availableFluidPackageIds_ = nextIds;
+   emit availableFluidPackagesChanged();
+}
+
+void MaterialStreamState::syncSelectedFluidPackageMetadata_()
+{
+   QString nextName;
+   if (auto* fm = fluidPackageManager_())
+      nextName = fm->fluidPackageName(selectedFluidPackageId_);
+   selectedFluidPackageName_ = nextName;
+}
+
+void MaterialStreamState::syncSelectedFluidPackageFromLegacyFluid_()
+{
+   refreshAvailableFluidPackages_();
+   QString nextId;
+   if (auto* fm = fluidPackageManager_()) {
+      nextId = fm->starterPackageIdForLegacyCrudeName(selectedFluid_);
+      if (nextId.trimmed().isEmpty())
+         nextId = fm->defaultFluidPackageId();
+   }
+
+   const bool idChanged = (selectedFluidPackageId_ != nextId);
+   selectedFluidPackageId_ = nextId;
+   const QString oldName = selectedFluidPackageName_;
+   syncSelectedFluidPackageMetadata_();
+   if (idChanged || oldName != selectedFluidPackageName_)
+      emit selectedFluidPackageChanged();
+}
+
 void MaterialStreamState::refreshFluidDefinition_()
 {
-   if (auto* cm = componentManager_())
-      fluidDefinition_ = cm->buildFluidDefinition(selectedFluid_);
-   else
-      fluidDefinition_ = getFluidDefinition(selectedFluid_.toStdString());
+   FluidDefinition next;
+   if (!tryResolveFluidDefinitionFromPackage_(next)) {
+      if (auto* cm = componentManager_())
+         next = cm->buildFluidDefinition(selectedFluid_);
+      else
+         next = getFluidDefinition(selectedFluid_.toStdString());
+   }
+
+   fluidDefinition_ = std::move(next);
    emit fluidDefinitionChanged();
+}
+
+bool MaterialStreamState::tryResolveFluidDefinitionFromPackage_(FluidDefinition& out) const
+{
+   if (selectedFluidPackageId_.trimmed().isEmpty())
+      return false;
+
+   auto* fm = fluidPackageManager_();
+   if (!fm || !fm->packageExists(selectedFluidPackageId_))
+      return false;
+
+   out = fm->resolveFluidDefinitionForPackage(selectedFluidPackageId_);
+   return !out.thermo.components.empty();
+}
+
+bool MaterialStreamState::preserveCompositionAcrossFluidChange_(const FluidDefinition& previousFluid, bool previousCustomComposition)
+{
+   const auto& prevComps = previousFluid.thermo.components;
+   const auto& nextComps = fluidDefinition_.thermo.components;
+   if (prevComps.size() != nextComps.size() || composition_.size() != prevComps.size())
+      return false;
+
+   for (std::size_t i = 0; i < prevComps.size(); ++i) {
+      if (prevComps[i].name != nextComps[i].name)
+         return false;
+   }
+
+   return applyComposition_(composition_, previousCustomComposition, false);
+}
+
+QString MaterialStreamState::legacySourceFluidNameForPackage_(const QString& packageId) const
+{
+   auto* fm = fluidPackageManager_();
+   if (!fm || packageId.trimmed().isEmpty())
+      return QString{};
+
+   const QVariantMap pkgInfo = fm->describeResolvedPackage(packageId);
+   return pkgInfo.value(QStringLiteral("sourceFluidName")).toString().trimmed();
 }
 
 bool MaterialStreamState::applyComposition_(std::vector<double> value, bool customFlag, bool normalize)
@@ -854,6 +1223,11 @@ bool MaterialStreamState::setComponentPropertyByKey_(int row, const QString& fie
 ComponentManager* MaterialStreamState::componentManager_() const
 {
    return ComponentManager::instance();
+}
+
+FluidPackageManager* MaterialStreamState::fluidPackageManager_() const
+{
+   return FluidPackageManager::instance();
 }
 
 MaterialStreamState::StreamType MaterialStreamState::streamType() const
@@ -1047,7 +1421,11 @@ void MaterialStreamState::validateAndUpdateStatus_()
       break;
    }
 
-   streamSolvable_ = flowInputsSufficient_ && thermoInputsSufficient_;
+   if (baseError.isEmpty() && !packageSupportsCurrentSpecPair()) {
+      baseError = packageSupportMismatchText();
+   }
+
+   streamSolvable_ = flowInputsSufficient_ && thermoInputsSufficient_ && packageSupportsCurrentSpecPair();
 
    if (!baseError.isEmpty()) {
       specificationError_ = baseError;
@@ -1065,11 +1443,11 @@ void MaterialStreamState::validateAndUpdateStatus_()
          return;
       }
       if (flashMethod_.startsWith(QStringLiteral("PVF flash"))) {
-         specificationStatus_ = QStringLiteral("Solved using PVF flash");
+         specificationStatus_ = QStringLiteral("Solved using %1 flash").arg(inferredFlashSpecLabel());
          return;
       }
       specificationError_.clear();
-      specificationStatus_ = QStringLiteral("Ready for PVF solve");
+      specificationStatus_ = QStringLiteral("Ready for %1 solve").arg(inferredFlashSpecLabel());
       return;
    }
 
@@ -1082,18 +1460,18 @@ void MaterialStreamState::validateAndUpdateStatus_()
       }
       if (flashMethod_.startsWith(QStringLiteral("PH flash"))) {
          specificationError_.clear();
-         specificationStatus_ = QStringLiteral("Solved using PH flash");
+         specificationStatus_ = QStringLiteral("Solved using %1 flash").arg(inferredFlashSpecLabel());
          return;
       }
       specificationError_.clear();
-      specificationStatus_ = QStringLiteral("Ready for PH solve");
+      specificationStatus_ = QStringLiteral("Ready for %1 solve").arg(inferredFlashSpecLabel());
       return;
    }
 
    if (thermoSpecMode_ == ThermoSpecMode::TP) {
       if (flashMethod_.startsWith(QStringLiteral("PT flash"))) {
          specificationError_.clear();
-         specificationStatus_ = QStringLiteral("Solved using TP flash");
+         specificationStatus_ = QStringLiteral("Solved using %1 flash").arg(inferredFlashSpecLabel());
          return;
       }
       if (flashMethod_.startsWith(QStringLiteral("No flash")) ||
@@ -1105,7 +1483,7 @@ void MaterialStreamState::validateAndUpdateStatus_()
          return;
       }
       specificationError_.clear();
-      specificationStatus_ = QStringLiteral("Ready for TP solve");
+      specificationStatus_ = QStringLiteral("Ready for %1 solve").arg(inferredFlashSpecLabel());
       return;
    }
 
@@ -1118,11 +1496,11 @@ void MaterialStreamState::validateAndUpdateStatus_()
       }
       if (flashMethod_.startsWith(QStringLiteral("PS flash"))) {
          specificationError_.clear();
-         specificationStatus_ = QStringLiteral("Solved using PS flash");
+         specificationStatus_ = QStringLiteral("Solved using %1 flash").arg(inferredFlashSpecLabel());
          return;
       }
       specificationError_.clear();
-      specificationStatus_ = QStringLiteral("Ready for PS solve");
+      specificationStatus_ = QStringLiteral("Ready for %1 solve").arg(inferredFlashSpecLabel());
       return;
    }
 
@@ -1135,11 +1513,11 @@ void MaterialStreamState::validateAndUpdateStatus_()
       }
       if (flashMethod_.startsWith(QStringLiteral("TS flash"))) {
          specificationError_.clear();
-         specificationStatus_ = QStringLiteral("Solved using TS flash");
+         specificationStatus_ = QStringLiteral("Solved using %1 flash").arg(inferredFlashSpecLabel());
          return;
       }
       specificationError_.clear();
-      specificationStatus_ = QStringLiteral("Ready for TS solve");
+      specificationStatus_ = QStringLiteral("Ready for %1 solve").arg(inferredFlashSpecLabel());
       return;
    }
 
@@ -1183,6 +1561,13 @@ void MaterialStreamState::recalcFeedPhase_()
    }
 
    try {
+      // Resolve the thermo configuration from the assigned fluid package once.
+      // Every flash call below uses this instead of hardcoded "PRSV".
+      const thermo::ThermoConfig thermoConfig =
+         fluidPackageManager_()
+         ? fluidPackageManager_()->thermoConfigForPackageResolved(selectedFluidPackageId_)
+         : thermo::makeThermoConfig("PRSV");
+
       const auto satEOS = estimateBubbleDewFromEOS(pressurePa_, z, comps);
       const auto satScan = estimateBubbleDewFromPTScan(
          pressurePa_, z, comps, selectedFluid_.toStdString(), &fluidDefinition_.thermo.kij);
@@ -1207,8 +1592,7 @@ void MaterialStreamState::recalcFeedPhase_()
          in.P = pressurePa_;
          in.Tseed = std::isfinite(temperatureK_) ? temperatureK_ : (std::isfinite(bubblePointEstimateK_) ? bubblePointEstimateK_ : 500.0);
          in.components = &comps;
-         in.eosMode = "manual";
-         in.eosManual = "PRSV";
+         in.thermoConfig = thermoConfig;
          const auto ph = flashPH(in);
          if (std::isfinite(ph.T)) {
             solvedT = ph.T;
@@ -1219,7 +1603,7 @@ void MaterialStreamState::recalcFeedPhase_()
             specifiedVaporFraction_ = vaporFraction_;
             liqComposition_ = ph.x;
             vapComposition_ = ph.y;
-            method = QStringLiteral("PH flash (%1)").arg(QString::fromStdString(ph.status.empty() ? std::string("PRSV") : ph.status));
+            method = QStringLiteral("PH flash (%1)").arg(QString::fromStdString(thermoConfig.thermoMethodId.empty() ? "PRSV" : thermoConfig.thermoMethodId));
          }
          else {
             flashMethod_ = QStringLiteral("PH flash failed");
@@ -1232,7 +1616,7 @@ void MaterialStreamState::recalcFeedPhase_()
          const double targetVF = specifiedVaporFraction_;
 
          auto solveAtT = [&](double T) {
-            return flashPT(pressurePa_, T, z, &comps, -1, 32, selectedFluid_.toStdString(), &fluidDefinition_.thermo.kij, 1.0, "manual", "PRSV");
+            return flashPT(pressurePa_, T, z, thermoConfig, &comps, &fluidDefinition_.thermo.kij, 1.0, nullptr);
             };
 
          const double minTwoPhaseSpanK = 1.0;
@@ -1367,9 +1751,7 @@ void MaterialStreamState::recalcFeedPhase_()
          in.Tseed = std::isfinite(temperatureK_) ? temperatureK_ : (std::isfinite(bubblePointEstimateK_) ? bubblePointEstimateK_ : 500.0);
          in.components = &comps;
          in.kij = &fluidDefinition_.thermo.kij;
-         in.crudeName = selectedFluid_.toStdString();
-         in.eosMode = "manual";
-         in.eosManual = "PRSV";
+         in.thermoConfig = thermoConfig;
          const auto ps = flashPS(in);
          if (std::isfinite(ps.T)) {
             solvedT = ps.T;
@@ -1380,7 +1762,7 @@ void MaterialStreamState::recalcFeedPhase_()
             entropyKJkgK_ = ps.Scalc;
             liqComposition_ = ps.x;
             vapComposition_ = ps.y;
-            method = QStringLiteral("PS flash (%1)").arg(QString::fromStdString(ps.status.empty() ? std::string("PRSV") : ps.status));
+            method = QStringLiteral("PS flash (%1)").arg(QString::fromStdString(thermoConfig.thermoMethodId.empty() ? "PRSV" : thermoConfig.thermoMethodId));
          }
          else {
             flashMethod_ = QStringLiteral("PS flash failed");
@@ -1398,9 +1780,7 @@ void MaterialStreamState::recalcFeedPhase_()
             : 101325.0;
          in.components = &comps;
          in.kij = &fluidDefinition_.thermo.kij;
-         in.crudeName = selectedFluid_.toStdString();
-         in.eosMode = "manual";
-         in.eosManual = "PRSV";
+         in.thermoConfig = thermoConfig;
          const auto ts = flashTS(in);
          if (std::isfinite(ts.P) && ts.P > 0.0) {
             pressurePa_ = ts.P;
@@ -1410,7 +1790,7 @@ void MaterialStreamState::recalcFeedPhase_()
             entropyKJkgK_ = ts.Scalc;
             liqComposition_ = ts.x;
             vapComposition_ = ts.y;
-            method = QStringLiteral("TS flash (%1)").arg(QString::fromStdString(ts.status.empty() ? std::string("PRSV") : ts.status));
+            method = QStringLiteral("TS flash (%1)").arg(QString::fromStdString(thermoConfig.thermoMethodId.empty() ? "PRSV" : thermoConfig.thermoMethodId));
          }
          else {
             flashMethod_ = QStringLiteral("TS flash failed");
@@ -1420,14 +1800,15 @@ void MaterialStreamState::recalcFeedPhase_()
          }
       }
       else {
-         const auto pt = flashPT(pressurePa_, temperatureK_, z, &comps, -1, 32, selectedFluid_.toStdString(), &fluidDefinition_.thermo.kij, 1.0, "manual", "PRSV");
+         const auto pt = flashPT(pressurePa_, temperatureK_, z, thermoConfig,
+            &comps, &fluidDefinition_.thermo.kij, 1.0, nullptr);
          vaporFraction_ = std::clamp(pt.V, 0.0, 1.0);
          specifiedVaporFraction_ = vaporFraction_;
          enthalpyKJkg_ = pt.H;
          entropyKJkgK_ = pt.S;
          liqComposition_ = pt.x;
          vapComposition_ = pt.y;
-         method = QStringLiteral("PT flash (PRSV)");
+         method = QStringLiteral("PT flash (%1)").arg(QString::fromStdString(thermoConfig.thermoMethodId.empty() ? "PRSV" : thermoConfig.thermoMethodId));
       }
 
       if (thermoSpecMode_ != ThermoSpecMode::TP) {
@@ -1440,6 +1821,7 @@ void MaterialStreamState::recalcFeedPhase_()
       // Compute all derived phase properties (density, viscosity, k, Cp, etc.)
       // from the phase compositions captured above.  This runs once regardless
       // of which flash spec mode was used.
+      // thermoConfig is already resolved at the top of this try block.
       phaseProps_ = calcStreamProperties(
          temperatureK_,
          pressurePa_,
@@ -1448,7 +1830,8 @@ void MaterialStreamState::recalcFeedPhase_()
          vapComposition_,
          vaporFraction_,
          flowRateKgph_,
-         comps
+         comps,
+         thermoConfig
       );
 
       flashMethod_ = method;

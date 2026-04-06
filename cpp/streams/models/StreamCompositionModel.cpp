@@ -13,6 +13,7 @@ StreamCompositionModel::StreamCompositionModel(MaterialStreamState* stream, QObj
 {
     if (stream_) {
         connect(stream_, &MaterialStreamState::selectedFluidChanged, this, &StreamCompositionModel::reloadModel_);
+        connect(stream_, &MaterialStreamState::selectedFluidPackageChanged, this, &StreamCompositionModel::reloadModel_);
         connect(stream_, &MaterialStreamState::compositionChanged, this, &StreamCompositionModel::reloadModel_);
         connect(stream_, &MaterialStreamState::fluidDefinitionChanged, this, &StreamCompositionModel::reloadModel_);
         connect(stream_, &MaterialStreamState::componentEditingEnabledChanged, this, &StreamCompositionModel::reloadModel_);

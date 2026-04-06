@@ -82,22 +82,41 @@ static double hPhase(
    int trayIndex,
    const std::vector<Component>& comps,
    bool vapor,
+   const std::string& eosName,
    const std::function<void(const std::string&)>& log
 )
 {
    const auto& compsRef = comps;
    // EOS departure enthalpy (J/mol)
-   auto eos = solvePRSV_mixture(P, T, x, trayIndex, comps, nullptr, log);
+   const std::string selectedEos = eosName.empty() ? std::string("PRSV") : eosName;
+   double Hdep = 0.0;
+   double hdepL = 0.0;
+   double hdepV = 0.0;
+   if (selectedEos == "PR") {
+      auto eos = solvePR_mixture(P, T, x, comps, nullptr);
+      hdepL = eos.hdepL; hdepV = eos.hdepV;
+   } else if (selectedEos == "SRK") {
+      // Current SRK solver returns Z/phi data but does not yet expose
+      // departure enthalpy. Until SRK departure enthalpy is implemented,
+      // keep the SRK route compile-safe by falling back to zero departure
+      // enthalpy rather than pretending the fields exist.
+      hdepL = 0.0;
+      hdepV = 0.0;
+   } else {
+      auto eos = solvePRSV_mixture(P, T, x, trayIndex, comps, nullptr, log);
+      hdepL = eos.hdepL; hdepV = eos.hdepV;
+   }
 
-   const double Hdep = vapor ? eos.hdepV : eos.hdepL;
+   Hdep = vapor ? hdepV : hdepL;
 
    if (log) {
       std::ostringstream os;
       os.setf(std::ios::fixed); os.precision(6);
       os << "[HDEP] T=" << T << " P=" << P
-         << " hdepL=" << eos.hdepL
-         << " hdepV=" << eos.hdepV
-         << " diff=" << (eos.hdepV - eos.hdepL);
+         << " eos=" << selectedEos
+         << " hdepL=" << hdepL
+         << " hdepV=" << hdepV
+         << " diff=" << (hdepV - hdepL);
       log(os.str());
    }
 
@@ -118,7 +137,19 @@ double hVap(
    double P,
    const std::function<void(const std::string&)>& log)
 {
-   return hPhase(y, T, P, trayIndex, comps, true, log);
+   return hPhase(y, T, P, trayIndex, comps, true, "PRSV", log);
+}
+
+double hVapWithConfig(
+   const std::vector<double>& y,
+   double T,
+   const thermo::ThermoConfig& thermoConfig,
+   int trayIndex,
+   const std::vector<Component>& comps,
+   double P,
+   const std::function<void(const std::string&)>& log)
+{
+   return hPhase(y, T, P, trayIndex, comps, true, thermoConfig.eosName, log);
 }
 
 double hLiq(
@@ -129,5 +160,17 @@ double hLiq(
    double P,
    const std::function<void(const std::string&)>& log)
 {
-   return hPhase(x, T, P, trayIndex, comps, false, log);
+   return hPhase(x, T, P, trayIndex, comps, false, "PRSV", log);
+}
+
+double hLiqWithConfig(
+   const std::vector<double>& x,
+   double T,
+   const thermo::ThermoConfig& thermoConfig,
+   int trayIndex,
+   const std::vector<Component>& comps,
+   double P,
+   const std::function<void(const std::string&)>& log)
+{
+   return hPhase(x, T, P, trayIndex, comps, false, thermoConfig.eosName, log);
 }

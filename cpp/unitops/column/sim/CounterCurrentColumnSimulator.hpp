@@ -5,9 +5,13 @@
 #include <functional>
 #include <optional>
 
+// CrudeInitialSettings is retained as an optional operating-template provider
+// (legacy defaults, draw tray names). It no longer drives thermo identity.
+// MurphreeEff is defined there and re-exported via this include.
 #include "../config/CrudeInitialSettings.hpp"
 #include "../thermo/pseudocomponents/componentData.hpp"
 #include "../../../utils/LogLevel.hpp"
+#include "../../../thermo/ThermoConfig.hpp"
 
 struct ProgressEvent {
   std::string stage;          // "init", "iter", "trayStart", "trayEnd", "units", "converged", ...
@@ -147,7 +151,11 @@ struct SimulationDrawSpec {
 };
 
 struct SimulationOptions {
-  std::string crudeName; // optional label, used for special-case behavior
+  // Resolved thermo configuration from the feed stream's fluid package.
+  // When thermoMethodId is non-empty this drives EOS selection on every tray.
+  thermo::ThermoConfig thermoConfig;
+
+  std::string crudeName; // reporting/label only — no longer drives EOS selection
   const std::vector<Component>* components = nullptr;
   std::vector<double> feedZ;
   int feedTray = 1;     // 1-based
