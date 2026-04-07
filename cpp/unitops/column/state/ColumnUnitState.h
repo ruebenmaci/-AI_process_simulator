@@ -95,6 +95,7 @@ class ColumnUnitState : public ProcessUnitState {
       Q_PROPERTY(bool solved READ solved NOTIFY solvedChanged)
 
       Q_PROPERTY(TrayModel* trayModel READ trayModel CONSTANT)
+      Q_PROPERTY(QStringList componentNames READ componentNames NOTIFY componentNamesChanged)
       Q_PROPERTY(DiagnosticsModel* diagnosticsModel READ diagnosticsModel CONSTANT)
       Q_PROPERTY(RunLogModel* runLogModel READ runLogModel CONSTANT)
       Q_PROPERTY(MaterialBalanceModel* materialBalanceModel READ materialBalanceModel CONSTANT)
@@ -225,6 +226,7 @@ public:
    bool solved() const;
 
    TrayModel* trayModel();
+   QStringList componentNames() const { return componentNames_; }
    DiagnosticsModel* diagnosticsModel();
    RunLogModel* runLogModel();
    MaterialBalanceModel* materialBalanceModel();
@@ -288,6 +290,7 @@ signals:
    void tColdKChanged();
    void tHotKChanged();
    void solvedChanged();
+   void componentNamesChanged();
    void runResultsChanged();
 
 private:
@@ -385,6 +388,8 @@ private:
    void openSolverLogFile_();
    void closeSolverLogFile_();
    void writeSolverLogLine_(const QString& line);
+
+   QStringList componentNames_;
 
    TrayModel trayModel_;
    DiagnosticsModel diagnosticsModel_;

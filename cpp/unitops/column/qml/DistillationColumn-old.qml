@@ -6,8 +6,8 @@ import "../../../../qml/common" as Common
 
 Rectangle {
     id: root
-    width:  940
-    height: 760
+    width:  1340
+    height: 920
 
     property var appState: null
 
@@ -325,7 +325,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Rate"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"kg/h"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState&&appState.feedStream?String(Math.round(appState.feedStream.flowRateKgph)):""
                                     onEditingFinished:{if(appState&&appState.feedStream)appState.feedStream.flowRateKgph=Number(text)}
                                 }
@@ -336,7 +336,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Feed Temperature"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState&&appState.feedStream?fmt3(appState.feedStream.temperatureK):""
                                     onEditingFinished:{if(appState&&appState.feedStream)appState.feedStream.temperatureK=Number(text)}
                                 }
@@ -347,7 +347,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Top Pressure"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"Pa"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState?String(Math.round(appState.topPressurePa)):""
                                     onEditingFinished:{if(appState)appState.topPressurePa=Number(text)}
                                 }
@@ -358,7 +358,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"Pressure Drop/Tray"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"Pa"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState?String(Math.round(appState.dpPerTrayPa)):""
                                     onEditingFinished:{if(appState)appState.dpPerTrayPa=Number(text)}
                                 }
@@ -369,7 +369,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"T Overhead (spec)"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState?fmt3(appState.topTsetK):""
                                     onEditingFinished:{if(appState)appState.topTsetK=Number(text)}
                                 }
@@ -380,7 +380,7 @@ Rectangle {
                                 Text { x:6; anchors.verticalCenter:parent.verticalCenter; width:160; text:"T Bottoms (spec)"; font.pixelSize:fsLbl; color:textMuted }
                                 Text { anchors{right:parent.right;rightMargin:6;verticalCenter:parent.verticalCenter} text:"K"; font.pixelSize:fsSm; color:textMuted; width:32; horizontalAlignment:Text.AlignRight }
                                 CField {
-                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:120
+                                    anchors{right:parent.right;rightMargin:42;verticalCenter:parent.verticalCenter} width:parent.width-210
                                     text:appState?fmt3(appState.bottomTsetK):""
                                     onEditingFinished:{if(appState)appState.bottomTsetK=Number(text)}
                                 }
@@ -618,54 +618,38 @@ Rectangle {
                             HDivider{anchors.bottom:parent.bottom;width:parent.width}
                         }
 
-                        ListView {
-                            id: drawSpecsList
-                            anchors{left:parent.left;right:parent.right;top:drawColHdr.bottom;bottom:drawFooter2.top}
-                            clip:true
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                            model: appState ? appState.drawSpecs : []
-                            delegate: Item {
-                                width: drawSpecsList.width; height:rowH
-                                property var spec: modelData; property int rowIdx: index
-                                Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
-                                Row {
-                                    anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6}
-                                    height:parent.height; spacing:4
-                                    CField{
-                                        width: parent.width - 304
-                                        anchors.verticalCenter:parent.verticalCenter
-                                        horizontalAlignment:Text.AlignLeft
-                                        text:spec.name||""
-                                        onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].name=text;drawCard2.commitSpecs(c)}}
-                                    CSpin{width:60;anchors.verticalCenter:parent.verticalCenter;from:2;to:appState?Math.max(2,appState.trays-1):30;value:spec.tray||1
-                                        onValueModified:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].tray=value;drawCard2.commitSpecs(c)}}
-                                    CCombo{width:52;anchors.verticalCenter:parent.verticalCenter;model:["L","V"];currentIndex:(spec.phase==="V")?1:0
-                                        onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].phase=model[index];drawCard2.commitSpecs(c)}}
-                                    CCombo{width:78;anchors.verticalCenter:parent.verticalCenter;model:["feedPct","kg/h"];currentIndex:(spec.basis==="kg/h")?1:0
-                                        onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].basis=model[index];drawCard2.commitSpecs(c)}}
-                                    CField{width:68;anchors.verticalCenter:parent.verticalCenter
-                                        text:spec.value!==undefined?fmt2(Number(spec.value)):"0.00"
-                                        onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].value=Number(text);drawCard2.commitSpecs(c)}}
-                                    Rectangle{
-                                        width:26; height:rowH-4
-                                        anchors.verticalCenter:parent.verticalCenter
-                                        radius:3
-                                        color: delHover.containsMouse ? "#fde8e8" : "transparent"
-                                        border.color: delHover.containsMouse ? errorRed : "transparent"
-                                        border.width:1
-                                        Text{anchors.centerIn:parent;text:"×";font.pixelSize:13;color:errorRed;font.bold:true}
-                                        MouseArea{
-                                            id:delHover; anchors.fill:parent
-                                            hoverEnabled:true; cursorShape:Qt.PointingHandCursor
-                                            onClicked:{
-                                                var s=appState.drawSpecs;var c=[]
-                                                for(var k=0;k<s.length;k++) c.push(Object.assign({},s[k]))
-                                                c.splice(rowIdx,1);drawCard2.commitSpecs(c)
-                                            }
+                        ScrollView {
+                            anchors{left:parent.left;right:parent.right;top:drawColHdr.bottom;bottom:drawFooter2.top} clip:true
+                            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                            Column {
+                                width: parent.width; spacing:0
+                                Repeater {
+                                    model: appState?appState.drawSpecs:[]
+                                    delegate: Item {
+                                        width: parent?parent.width:0; height:rowH
+                                        property var spec: modelData; property int rowIdx: index
+                                        Rectangle{anchors.fill:parent;color:index%2===0?rowEven:rowOdd}
+                                        Row {
+                                            anchors{left:parent.left;right:parent.right;leftMargin:6;rightMargin:6}  height:parent.height; spacing:4
+                                            CField{width:parent.width-288;anchors.verticalCenter:parent.verticalCenter;horizontalAlignment:Text.AlignLeft
+                                                text:spec.name||""
+                                                onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].name=text;drawCard2.commitSpecs(c)}}
+                                            CSpin{width:60;anchors.verticalCenter:parent.verticalCenter;from:2;to:appState?Math.max(2,appState.trays-1):30;value:spec.tray||1
+                                                onValueModified:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].tray=value;drawCard2.commitSpecs(c)}}
+                                            CCombo{width:52;anchors.verticalCenter:parent.verticalCenter;model:["L","V"];currentIndex:(spec.phase==="V")?1:0
+                                                onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].phase=model[index];drawCard2.commitSpecs(c)}}
+                                            CCombo{width:78;anchors.verticalCenter:parent.verticalCenter;model:["feedPct","kg/h"];currentIndex:(spec.basis==="kg/h")?1:0
+                                                onActivated:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].basis=model[index];drawCard2.commitSpecs(c)}}
+                                            CField{width:68;anchors.verticalCenter:parent.verticalCenter
+                                                text:spec.value!==undefined?fmt2(Number(spec.value)):"0.00"
+                                                onEditingFinished:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c[rowIdx].value=Number(text);drawCard2.commitSpecs(c)}}
+                                            Rectangle{width:24;height:parent.height-4;anchors.verticalCenter:parent.verticalCenter;color:"transparent"
+                                                Text{anchors.centerIn:parent;text:"×";font.pixelSize:11;color:errorRed;font.bold:true}
+                                                MouseArea{anchors.fill:parent;onClicked:{var s=appState.drawSpecs;var c=[];for(var k=0;k<s.length;k++)c.push(Object.assign({},s[k]));c.splice(rowIdx,1);drawCard2.commitSpecs(c)}}}
                                         }
+                                        HDivider{anchors.bottom:parent.bottom;width:parent.width}
                                     }
                                 }
-                                HDivider{anchors.bottom:parent.bottom;width:parent.width}
                             }
                         }
 

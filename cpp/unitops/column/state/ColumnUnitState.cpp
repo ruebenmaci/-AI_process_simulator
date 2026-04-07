@@ -89,11 +89,11 @@ bool allowSummaryTag(const QString& s)
 
 ColumnUnitState::ColumnUnitState(QObject* parent)
    : ProcessUnitState(parent)
-     , feedStream_(this)
-     , trayModel_(this)
-     , diagnosticsModel_(this)
-     , runLogModel_(this)
-     , mbModel_(this)
+   , feedStream_(this)
+   , trayModel_(this)
+   , diagnosticsModel_(this)
+   , runLogModel_(this)
+   , mbModel_(this)
 {
    crudeNames_ = feedStream_.fluidNames();
 
@@ -103,50 +103,50 @@ ColumnUnitState::ColumnUnitState(QObject* parent)
    // --- async solve timing + completion wiring ---
    solveUiTick_.setInterval(100);
    connect(&solveUiTick_, &QTimer::timeout, this, [this]()
-   {
-      if (!solving_) return;
-      setSolveElapsedMs_(solveElapsedTimer_.elapsed());
-   });
+      {
+         if (!solving_) return;
+         setSolveElapsedMs_(solveElapsedTimer_.elapsed());
+      });
 
    // --- buffered Run Log flush (reduces queued UI invocations dramatically) ---
    logFlushTimer_.setInterval(500);
    connect(&logFlushTimer_, &QTimer::timeout, this, [this]()
-   {
-      QStringList batch;
       {
-         QMutexLocker lk(&logBufferMutex_);
-         if (logBuffer_.isEmpty()) return;
-         batch = std::move(logBuffer_);
-         logBuffer_.clear();
-      }
-      runLogModel_.appendLines(batch);
-   });
+         QStringList batch;
+         {
+            QMutexLocker lk(&logBufferMutex_);
+            if (logBuffer_.isEmpty()) return;
+            batch = std::move(logBuffer_);
+            logBuffer_.clear();
+         }
+         runLogModel_.appendLines(batch);
+      });
    logFlushTimer_.start();
 
    connect(&solveWatcher_, &QFutureWatcher<SolverOutputs>::finished, this, [this]()
-   {
-      solveUiTick_.stop();
-      setSolveElapsedMs_(solveElapsedTimer_.elapsed());
-      setSolving_(false);
-
-      // Flush any remaining buffered log lines.
       {
-         QStringList batch;
-         QMutexLocker lk(&logBufferMutex_);
-         batch = std::move(logBuffer_);
-         logBuffer_.clear();
-         if (!batch.isEmpty()) runLogModel_.appendLines(batch);
-      }
+         solveUiTick_.stop();
+         setSolveElapsedMs_(solveElapsedTimer_.elapsed());
+         setSolving_(false);
 
-      // Close the per-solve file log now that the worker is finished.
-      closeSolverLogFile_();
+         // Flush any remaining buffered log lines.
+         {
+            QStringList batch;
+            QMutexLocker lk(&logBufferMutex_);
+            batch = std::move(logBuffer_);
+            logBuffer_.clear();
+            if (!batch.isEmpty()) runLogModel_.appendLines(batch);
+         }
 
-      // Apply results on the UI thread (we are already on UI thread here).
-      const SolverOutputs out = solveWatcher_.result();
-      applySolveOutputs_(pendingSolveInputs_, out);
-      pushProductStreamScaffolding_(out);
-      clearSpecsDirty_();
-   });
+         // Close the per-solve file log now that the worker is finished.
+         closeSolverLogFile_();
+
+         // Apply results on the UI thread (we are already on UI thread here).
+         const SolverOutputs out = solveWatcher_.result();
+         applySolveOutputs_(pendingSolveInputs_, out);
+         pushProductStreamScaffolding_(out);
+         clearSpecsDirty_();
+      });
 }
 
 void ColumnUnitState::setSolving_(bool v)
@@ -242,7 +242,8 @@ void ColumnUnitState::setConnectedProductStreamUnitId(const QString& portName, c
    const QString port = portName.trimmed().toLower();
    if (port == QStringLiteral("distillate")) {
       connectedDistillateStreamUnitId_ = streamUnitId;
-   } else if (port == QStringLiteral("bottoms")) {
+   }
+   else if (port == QStringLiteral("bottoms")) {
       connectedBottomsStreamUnitId_ = streamUnitId;
    }
 }
@@ -279,32 +280,32 @@ void ColumnUnitState::attachActiveFeedStreamSignals_()
       return;
 
    activeFeedSelectedFluidConn_ = connect(stream, &MaterialStreamState::selectedFluidChanged, this, [this, stream]()
-   {
-      applyCrudeDefaults(stream->selectedFluid());
-      markSpecsDirty_();
-      emit selectedCrudeChanged();
-      emit effectiveThermoMethodChanged();
-   });
+      {
+         applyCrudeDefaults(stream->selectedFluid());
+         markSpecsDirty_();
+         emit selectedCrudeChanged();
+         emit effectiveThermoMethodChanged();
+      });
    activeFeedSelectedFluidPackageConn_ = connect(stream, &MaterialStreamState::selectedFluidPackageChanged, this, [this]()
-   {
-      markSpecsDirty_();
-      emit selectedFluidPackageChanged();
-      emit effectiveThermoMethodChanged();
-   });
+      {
+         markSpecsDirty_();
+         emit selectedFluidPackageChanged();
+         emit effectiveThermoMethodChanged();
+      });
    activeFeedFlowConn_ = connect(stream, &MaterialStreamState::flowRateKgphChanged, this, [this]()
-   {
-      markSpecsDirty_();
-      emit feedRateKgphChanged();
-   });
+      {
+         markSpecsDirty_();
+         emit feedRateKgphChanged();
+      });
    activeFeedTempConn_ = connect(stream, &MaterialStreamState::temperatureKChanged, this, [this]()
-   {
-      markSpecsDirty_();
-      emit feedTempKChanged();
-   });
+      {
+         markSpecsDirty_();
+         emit feedTempKChanged();
+      });
    activeFeedCompositionConn_ = connect(stream, &MaterialStreamState::compositionChanged, this, [this]()
-   {
-      markSpecsDirty_();
-   });
+      {
+         markSpecsDirty_();
+      });
 }
 
 void ColumnUnitState::pushProductStreamScaffolding_(const SolverOutputs& out)
@@ -313,13 +314,13 @@ void ColumnUnitState::pushProductStreamScaffolding_(const SolverOutputs& out)
       return;
 
    auto findSnapshotByName = [&out](const QString& expectedName) -> const StreamSnapshot*
-   {
-      for (const auto& snapshot : out.streams) {
-         if (QString::fromStdString(snapshot.name).compare(expectedName, Qt::CaseInsensitive) == 0)
-            return &snapshot;
-      }
-      return nullptr;
-   };
+      {
+         for (const auto& snapshot : out.streams) {
+            if (QString::fromStdString(snapshot.name).compare(expectedName, Qt::CaseInsensitive) == 0)
+               return &snapshot;
+         }
+         return nullptr;
+      };
 
    const SolverTrayOut* bottomTray = out.trays.empty() ? nullptr : &out.trays.front();
    const SolverTrayOut* topTray = out.trays.empty() ? nullptr : &out.trays.back();
@@ -329,70 +330,70 @@ void ColumnUnitState::pushProductStreamScaffolding_(const SolverOutputs& out)
       const QString& expectedName,
       double fallbackFlowKgph,
       const SolverTrayOut* fallbackTray)
-   {
-      if (streamUnitId.isEmpty())
-         return;
+      {
+         if (streamUnitId.isEmpty())
+            return;
 
-      auto* stream = flowsheetState_->findMaterialStreamByUnitId(streamUnitId);
-      if (!stream)
-         return;
+         auto* stream = flowsheetState_->findMaterialStreamByUnitId(streamUnitId);
+         if (!stream)
+            return;
 
-      const StreamSnapshot* snapshot = findSnapshotByName(expectedName);
+         const StreamSnapshot* snapshot = findSnapshotByName(expectedName);
 
-      stream->setStreamType(MaterialStreamState::StreamType::Product);
-      stream->setIsCrudeFeed(false);
-      stream->setStreamName(expectedName);
+         stream->setStreamType(MaterialStreamState::StreamType::Product);
+         stream->setIsCrudeFeed(false);
+         stream->setStreamName(expectedName);
 
-      // Product streams are fully defined by the solver: force TP spec so the
-      // UI shows T and P as the defining conditions (not editable spec fields),
-      // and MassFlow since the solver output is in kg/h.
-      stream->setThermoSpecMode(MaterialStreamState::ThermoSpecMode::TP);
-      stream->setFlowSpecMode(MaterialStreamState::FlowSpecMode::MassFlow);
+         // Product streams are fully defined by the solver: force TP spec so the
+         // UI shows T and P as the defining conditions (not editable spec fields),
+         // and MassFlow since the solver output is in kg/h.
+         stream->setThermoSpecMode(MaterialStreamState::ThermoSpecMode::TP);
+         stream->setFlowSpecMode(MaterialStreamState::FlowSpecMode::MassFlow);
 
-      if (auto* feed = activeFeedStream()) {
-         const QString basisFluid = feed->selectedFluid().trimmed();
-         if (!basisFluid.isEmpty())
-            stream->setSelectedFluid(basisFluid);
-         const QString packageId = feed->selectedFluidPackageId().trimmed();
-         if (!packageId.isEmpty())
-            stream->setSelectedFluidPackageId(packageId);
-      }
+         if (auto* feed = activeFeedStream()) {
+            const QString basisFluid = feed->selectedFluid().trimmed();
+            if (!basisFluid.isEmpty())
+               stream->setSelectedFluid(basisFluid);
+            const QString packageId = feed->selectedFluidPackageId().trimmed();
+            if (!packageId.isEmpty())
+               stream->setSelectedFluidPackageId(packageId);
+         }
 
-      if (snapshot && !snapshot->composition.empty())
-         stream->setCompositionStd(snapshot->composition);
+         if (snapshot && !snapshot->composition.empty())
+            stream->setCompositionStd(snapshot->composition);
 
-      if (snapshot && std::isfinite(snapshot->Vfrac))
-         stream->setVaporFraction(snapshot->Vfrac);
-      else
-         stream->setVaporFraction(0.0);
+         if (snapshot && std::isfinite(snapshot->Vfrac))
+            stream->setVaporFraction(snapshot->Vfrac);
+         else
+            stream->setVaporFraction(0.0);
 
-      if (snapshot && std::isfinite(snapshot->rho) && snapshot->rho > 0.0)
-         stream->setBulkDensityOverrideKgM3(snapshot->rho);
-      else
-         stream->setBulkDensityOverrideKgM3(std::numeric_limits<double>::quiet_NaN());
+         if (snapshot && std::isfinite(snapshot->rho) && snapshot->rho > 0.0)
+            stream->setBulkDensityOverrideKgM3(snapshot->rho);
+         else
+            stream->setBulkDensityOverrideKgM3(std::numeric_limits<double>::quiet_NaN());
 
-      double flowKgph = fallbackFlowKgph;
-      if (snapshot && std::isfinite(snapshot->kgph))
-         flowKgph = snapshot->kgph;
-      if (std::isfinite(flowKgph))
-         stream->setFlowRateKgph(flowKgph);
+         double flowKgph = fallbackFlowKgph;
+         if (snapshot && std::isfinite(snapshot->kgph))
+            flowKgph = snapshot->kgph;
+         if (std::isfinite(flowKgph))
+            stream->setFlowRateKgph(flowKgph);
 
-      double temperatureK = std::numeric_limits<double>::quiet_NaN();
-      if (snapshot && std::isfinite(snapshot->T))
-         temperatureK = snapshot->T;
-      else if (fallbackTray && std::isfinite(fallbackTray->tempK))
-         temperatureK = fallbackTray->tempK;
-      if (std::isfinite(temperatureK))
-         stream->setTemperatureK(temperatureK);
+         double temperatureK = std::numeric_limits<double>::quiet_NaN();
+         if (snapshot && std::isfinite(snapshot->T))
+            temperatureK = snapshot->T;
+         else if (fallbackTray && std::isfinite(fallbackTray->tempK))
+            temperatureK = fallbackTray->tempK;
+         if (std::isfinite(temperatureK))
+            stream->setTemperatureK(temperatureK);
 
-      double pressurePa = std::numeric_limits<double>::quiet_NaN();
-      if (snapshot && std::isfinite(snapshot->P))
-         pressurePa = snapshot->P;
-      else if (fallbackTray && std::isfinite(fallbackTray->pressurePa))
-         pressurePa = fallbackTray->pressurePa;
-      if (std::isfinite(pressurePa))
-         stream->setPressurePa(pressurePa);
-   };
+         double pressurePa = std::numeric_limits<double>::quiet_NaN();
+         if (snapshot && std::isfinite(snapshot->P))
+            pressurePa = snapshot->P;
+         else if (fallbackTray && std::isfinite(fallbackTray->pressurePa))
+            pressurePa = fallbackTray->pressurePa;
+         if (std::isfinite(pressurePa))
+            stream->setPressurePa(pressurePa);
+      };
 
    pushStream(connectedDistillateStreamUnitId_, QStringLiteral("Distillate"), out.energy.D_kgph, topTray);
    pushStream(connectedBottomsStreamUnitId_, QStringLiteral("Bottoms"), out.energy.B_kgph, bottomTray);
@@ -822,7 +823,7 @@ double ColumnUnitState::boilupRatio() const { return boilupRatio_; }
 
 void ColumnUnitState::setBoilupRatio(double v)
 {
-   if (qFuzzyCompare(boilupRatio_, v)) 
+   if (qFuzzyCompare(boilupRatio_, v))
       return;
    boilupRatio_ = v;
    markSpecsDirty_();
@@ -930,16 +931,16 @@ void ColumnUnitState::resetDrawSpecsToDefaults()
 
       auto it = nameMap.find(tray1);
       const QString label = (it != nameMap.end())
-                               ? QString::fromStdString(it->second)
-                               : QString("Draw [Tray %1]").arg(tray1);
+         ? QString::fromStdString(it->second)
+         : QString("Draw [Tray %1]").arg(tray1);
 
-      tmp.push_back(Row{tray1, fracOfFeed * 100.0, label});
+      tmp.push_back(Row{ tray1, fracOfFeed * 100.0, label });
    }
 
    std::sort(tmp.begin(), tmp.end(), [](const Row& a, const Row& b)
-   {
-      return a.tray1 > b.tray1; // top (32) first
-   });
+      {
+         return a.tray1 > b.tray1; // top (32) first
+      });
 
    const int cap = maxSideDraws();
    int added = 0;
@@ -978,11 +979,12 @@ void ColumnUnitState::solve()
    // The solve proceeds using legacy crude-based thermo in this case.
    if (feed->selectedFluidPackageId().trimmed().isEmpty()) {
       qWarning() << "[ColumnUnitState] Feed stream has no fluid package assigned."
-                 << "Solver will use legacy crude-string EOS selection.";
-   } else if (!feed->fluidPackageValid()) {
+         << "Solver will use legacy crude-string EOS selection.";
+   }
+   else if (!feed->fluidPackageValid()) {
       qWarning() << "[ColumnUnitState] Feed stream fluid package is invalid or unresolvable:"
-                 << feed->selectedFluidPackageId()
-                 << "— Solver will fall back to legacy EOS selection.";
+         << feed->selectedFluidPackageId()
+         << "— Solver will fall back to legacy EOS selection.";
    }
 
    in.fluidName = feed->selectedFluid().toStdString();
@@ -1012,10 +1014,11 @@ void ColumnUnitState::solve()
       auto* fpm = FluidPackageManager::instance();
       if (fpm)
          in.thermoConfig = fpm->thermoConfigForPackageResolved(pkgId);
-      in.eosMode   = "manual";
+      in.eosMode = "manual";
       in.eosManual = packageThermoMethod.toStdString();
-   } else {
-      in.eosMode   = eosMode_.toStdString();
+   }
+   else {
+      in.eosMode = eosMode_.toStdString();
       in.eosManual = eosManual_.toStdString();
    }
    in.condenserType = condenserType_.toStdString();
@@ -1099,203 +1102,203 @@ void ColumnUnitState::solve()
       qDebug() << "[DrawSpecs Solver] entries=0";
    }
    runLogModel_.append(QString("Solve: fluid=%1 package=%2 thermo=%3 trays=%4 feed=%5 kg/h feedTray=%6")
-                       .arg(feed->selectedFluid())
-                       .arg(feed->selectedFluidPackageName().isEmpty() ? QStringLiteral("(legacy)") : feed->selectedFluidPackageName())
-                       .arg(effectiveThermoMethod())
-                       .arg(in.trays)
-                       .arg(feedRateKgph(), 0, 'f', 0)
-                       .arg(in.feedTray));
+      .arg(feed->selectedFluid())
+      .arg(feed->selectedFluidPackageName().isEmpty() ? QStringLiteral("(legacy)") : feed->selectedFluidPackageName())
+      .arg(effectiveThermoMethod())
+      .arg(in.trays)
+      .arg(feedRateKgph(), 0, 'f', 0)
+      .arg(in.feedTray));
    // Open per-solve full-fidelity log file (disk) before launching worker.
    openSolverLogFile_();
 
    // --- thread-safe buffered log capture (solver thread -> UI thread flush timer) ---
    QPointer<ColumnUnitState> self(this);
    auto bufferLine = [self, uiLogLevel](const QString& s)
-   {
-      if (!self || s.isEmpty())
-         return;
-
-      // UI verbosity OFF: still keep full-fidelity file logging, but do not
-      // append anything to the UI RunLogModel.
-      if (uiLogLevel <= 0)
-         return;
-
-      QMutexLocker lk(&self->logBufferMutex_);
-      self->logBuffer_.append(s);
-
-      // prevent huge burst batches (especially if flush interval is large)
-      if (self->logBuffer_.size() > MAX_LOG_BUFFER_LINES)
       {
-         const int overflow = self->logBuffer_.size() - MAX_LOG_BUFFER_LINES;
-         self->logBuffer_.erase(self->logBuffer_.begin(),
-                                self->logBuffer_.begin() + overflow);
-         // optional: add a marker line once
-         // self->logBuffer_.prepend(QString("[LOG] dropped %1 lines").arg(overflow));
-      }
-   };
+         if (!self || s.isEmpty())
+            return;
 
-   std::function<void(const std::string&)> onLog = [bufferLine, self, uiLogLevel](const std::string& line)
-   {
-      const QString q = QString::fromStdString(line);
+         // UI verbosity OFF: still keep full-fidelity file logging, but do not
+         // append anything to the UI RunLogModel.
+         if (uiLogLevel <= 0)
+            return;
 
-      // Centralized filtering decision (Summary mode only).
-      const bool passSummary = (uiLogLevel != 1) || allowSummaryTag(q);
+         QMutexLocker lk(&self->logBufferMutex_);
+         self->logBuffer_.append(s);
 
-      // File logging (filtered in Summary mode too).
-      if (self && passSummary)
-         self->writeSolverLogLine_(q);
-
-      // UI off
-      if (uiLogLevel <= 0)
-         return;
-
-      if (!passSummary)
-         return;
-
-      bufferLine(q);
-   };
-
-   std::function<void(const ProgressEvent&)> onProgress = [bufferLine, self, uiLogLevel](const ProgressEvent& ev)
-   {
-      if (!self)
-         return;
-
-      // Always write progress markers to the per-solve disk log (even if UI verbosity is OFF).
-      // Detailed thermo/PH diagnostics are emitted via onLog; these are coarse markers.
-      auto fileLine = [&](const QString& s)
-      {
-         self->writeSolverLogLine_(s);
+         // prevent huge burst batches (especially if flush interval is large)
+         if (self->logBuffer_.size() > MAX_LOG_BUFFER_LINES)
+         {
+            const int overflow = self->logBuffer_.size() - MAX_LOG_BUFFER_LINES;
+            self->logBuffer_.erase(self->logBuffer_.begin(),
+               self->logBuffer_.begin() + overflow);
+            // optional: add a marker line once
+            // self->logBuffer_.prepend(QString("[LOG] dropped %1 lines").arg(overflow));
+         }
       };
 
-      // Keep progress logs coarse, similar to the React onProgress messages.
-      if (ev.stage == "init")
+   std::function<void(const std::string&)> onLog = [bufferLine, self, uiLogLevel](const std::string& line)
       {
-         fileLine(QStringLiteral("Solving..."));
-         if (uiLogLevel > 0)
-            bufferLine(QStringLiteral("Solving..."));
-      }
-      else if (ev.stage == "iter")
+         const QString q = QString::fromStdString(line);
+
+         // Centralized filtering decision (Summary mode only).
+         const bool passSummary = (uiLogLevel != 1) || allowSummaryTag(q);
+
+         // File logging (filtered in Summary mode too).
+         if (self && passSummary)
+            self->writeSolverLogLine_(q);
+
+         // UI off
+         if (uiLogLevel <= 0)
+            return;
+
+         if (!passSummary)
+            return;
+
+         bufferLine(q);
+      };
+
+   std::function<void(const ProgressEvent&)> onProgress = [bufferLine, self, uiLogLevel](const ProgressEvent& ev)
       {
-         const QString s = QString("iter=%1  Ttop=%2  Tbot=%3")
-                           .arg(ev.iter)
-                           .arg(ev.Ttop, 0, 'f', 2)
-                           .arg(ev.Tbot, 0, 'f', 2);
-         fileLine(s);
-         if (uiLogLevel > 0)
-            bufferLine(s);
-      }
-      else if (ev.stage == "trayStart")
-      {
-         // Force-flush any pending coalesced thermo logs so "(repeated N times)"
-         // summaries land at the correct tray boundary (instead of drifting into
-         // the next tray and appearing to "recycle" tray numbers).
-         {
-            // Flush to disk log
-            const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
+         if (!self)
+            return;
+
+         // Always write progress markers to the per-solve disk log (even if UI verbosity is OFF).
+         // Detailed thermo/PH diagnostics are emitted via onLog; these are coarse markers.
+         auto fileLine = [&](const QString& s)
             {
-               const QString q = QString::fromStdString(s);
-               if (uiLogLevel == 1 && !allowSummaryTag(q))
-                  return;
-               fileLine(QString::fromStdString(s));
+               self->writeSolverLogLine_(s);
             };
-            flushEOSKCoalescer(thermoLoggerFile);
-            flushPRSVCoalescer(thermoLoggerFile);
 
-            // Flush to UI only when verbosity > 0
-            if (uiLogLevel > 0)
-            {
-               const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
-               {
-                  const QString q = QString::fromStdString(s);
-                  if (uiLogLevel == 1 && !allowSummaryTag(q))
-                     return;
-                  bufferLine(QString::fromStdString(s));
-               };
-               flushEOSKCoalescer(thermoLoggerUi);
-               flushPRSVCoalescer(thermoLoggerUi);
-            }
-         }
-
-         const QString endTag =
-            (ev.tray == 1) ? " (Reboiler)" : (ev.tray == ev.trays) ? " (Condenser)" : "";
-         const QString s = QString("trayStart tray=%1 idx0=%2 /%3 %4")
-                           .arg(ev.tray)
-                           .arg(ev.tray - 1)
-                           .arg(ev.trays)
-                           .arg(endTag);
-         fileLine(s);
-         if (uiLogLevel > 0)
-            bufferLine(s);
-      }
-      else if (ev.stage == "trayEnd")
-      {
-         // Flush at tray end as well so any repeated thermo logs are attributed
-         // to the tray that produced them.
+         // Keep progress logs coarse, similar to the React onProgress messages.
+         if (ev.stage == "init")
          {
-            // Flush to disk log
-            const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
-            {
-               const QString q = QString::fromStdString(s);
-               if (uiLogLevel == 1 && !allowSummaryTag(q))
-                  return;
-               fileLine(QString::fromStdString(s));
-            };
-            flushEOSKCoalescer(thermoLoggerFile);
-            flushPRSVCoalescer(thermoLoggerFile);
-
-            // Flush to UI only when verbosity > 0
+            fileLine(QStringLiteral("Solving..."));
             if (uiLogLevel > 0)
-            {
-               const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
-               {
-                  const QString q = QString::fromStdString(s);
-                  if (uiLogLevel == 1 && !allowSummaryTag(q))
-                     return;
-                  bufferLine(QString::fromStdString(s));
-               };
-               flushEOSKCoalescer(thermoLoggerUi);
-               flushPRSVCoalescer(thermoLoggerUi);
-            }
+               bufferLine(QStringLiteral("Solving..."));
          }
+         else if (ev.stage == "iter")
+         {
+            const QString s = QString("iter=%1  Ttop=%2  Tbot=%3")
+               .arg(ev.iter)
+               .arg(ev.Ttop, 0, 'f', 2)
+               .arg(ev.Tbot, 0, 'f', 2);
+            fileLine(s);
+            if (uiLogLevel > 0)
+               bufferLine(s);
+         }
+         else if (ev.stage == "trayStart")
+         {
+            // Force-flush any pending coalesced thermo logs so "(repeated N times)"
+            // summaries land at the correct tray boundary (instead of drifting into
+            // the next tray and appearing to "recycle" tray numbers).
+            {
+               // Flush to disk log
+               const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
+                  {
+                     const QString q = QString::fromStdString(s);
+                     if (uiLogLevel == 1 && !allowSummaryTag(q))
+                        return;
+                     fileLine(QString::fromStdString(s));
+                  };
+               flushEOSKCoalescer(thermoLoggerFile);
+               flushPRSVCoalescer(thermoLoggerFile);
 
-         const QString endTag =
-            (ev.tray == 1) ? " (Reboiler)" : (ev.tray == ev.trays) ? " (Condenser)" : "";
-         const QString s = QString("trayEnd tray=%1 idx0=%2 /%3 %4")
-                           .arg(ev.tray)
-                           .arg(ev.tray - 1)
-                           .arg(ev.trays)
-                           .arg(endTag);
-         fileLine(s);
-         if (uiLogLevel > 0)
-            bufferLine(s);
-      }
-      else if (ev.stage == "converged")
-      {
-         const QString s = QString("[CONVERGED] iter=%1 resid=%2 dT=%3")
-                           .arg(ev.iter)
-                           .arg(ev.resid, 0, 'e', 3)
-                           .arg(ev.dT, 0, 'e', 3);
-         fileLine(s);
-         if (uiLogLevel > 0)
-            bufferLine(s);
-      }
-      else if (ev.stage == "failed")
-      {
-         const QString s = QString("[FAILED] iter=%1 resid=%2 dT=%3")
-                           .arg(ev.iter)
-                           .arg(ev.resid, 0, 'e', 3)
-                           .arg(ev.dT, 0, 'e', 3);
-         fileLine(s);
-         if (uiLogLevel > 0)
-            bufferLine(s);
-      }
-      else if (ev.stage == "done")
-      {
-         fileLine(QStringLiteral("Done."));
-         if (uiLogLevel > 0)
-            bufferLine(QStringLiteral("Done."));
-      }
-   };
+               // Flush to UI only when verbosity > 0
+               if (uiLogLevel > 0)
+               {
+                  const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
+                     {
+                        const QString q = QString::fromStdString(s);
+                        if (uiLogLevel == 1 && !allowSummaryTag(q))
+                           return;
+                        bufferLine(QString::fromStdString(s));
+                     };
+                  flushEOSKCoalescer(thermoLoggerUi);
+                  flushPRSVCoalescer(thermoLoggerUi);
+               }
+            }
+
+            const QString endTag =
+               (ev.tray == 1) ? " (Reboiler)" : (ev.tray == ev.trays) ? " (Condenser)" : "";
+            const QString s = QString("trayStart tray=%1 idx0=%2 /%3 %4")
+               .arg(ev.tray)
+               .arg(ev.tray - 1)
+               .arg(ev.trays)
+               .arg(endTag);
+            fileLine(s);
+            if (uiLogLevel > 0)
+               bufferLine(s);
+         }
+         else if (ev.stage == "trayEnd")
+         {
+            // Flush at tray end as well so any repeated thermo logs are attributed
+            // to the tray that produced them.
+            {
+               // Flush to disk log
+               const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
+                  {
+                     const QString q = QString::fromStdString(s);
+                     if (uiLogLevel == 1 && !allowSummaryTag(q))
+                        return;
+                     fileLine(QString::fromStdString(s));
+                  };
+               flushEOSKCoalescer(thermoLoggerFile);
+               flushPRSVCoalescer(thermoLoggerFile);
+
+               // Flush to UI only when verbosity > 0
+               if (uiLogLevel > 0)
+               {
+                  const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
+                     {
+                        const QString q = QString::fromStdString(s);
+                        if (uiLogLevel == 1 && !allowSummaryTag(q))
+                           return;
+                        bufferLine(QString::fromStdString(s));
+                     };
+                  flushEOSKCoalescer(thermoLoggerUi);
+                  flushPRSVCoalescer(thermoLoggerUi);
+               }
+            }
+
+            const QString endTag =
+               (ev.tray == 1) ? " (Reboiler)" : (ev.tray == ev.trays) ? " (Condenser)" : "";
+            const QString s = QString("trayEnd tray=%1 idx0=%2 /%3 %4")
+               .arg(ev.tray)
+               .arg(ev.tray - 1)
+               .arg(ev.trays)
+               .arg(endTag);
+            fileLine(s);
+            if (uiLogLevel > 0)
+               bufferLine(s);
+         }
+         else if (ev.stage == "converged")
+         {
+            const QString s = QString("[CONVERGED] iter=%1 resid=%2 dT=%3")
+               .arg(ev.iter)
+               .arg(ev.resid, 0, 'e', 3)
+               .arg(ev.dT, 0, 'e', 3);
+            fileLine(s);
+            if (uiLogLevel > 0)
+               bufferLine(s);
+         }
+         else if (ev.stage == "failed")
+         {
+            const QString s = QString("[FAILED] iter=%1 resid=%2 dT=%3")
+               .arg(ev.iter)
+               .arg(ev.resid, 0, 'e', 3)
+               .arg(ev.dT, 0, 'e', 3);
+            fileLine(s);
+            if (uiLogLevel > 0)
+               bufferLine(s);
+         }
+         else if (ev.stage == "done")
+         {
+            fileLine(QStringLiteral("Done."));
+            if (uiLogLevel > 0)
+               bufferLine(QStringLiteral("Done."));
+         }
+      };
 
    // --- start live timer + dispatch solve on worker thread ---
    pendingSolveInputs_ = in;
@@ -1305,9 +1308,9 @@ void ColumnUnitState::solve()
    solveUiTick_.start();
 
    auto future = QtConcurrent::run([in, onLog, onProgress]() -> SolverOutputs
-   {
-      return solveColumn(in, onLog, onProgress);
-   });
+      {
+         return solveColumn(in, onLog, onProgress);
+      });
    solveWatcher_.setFuture(future);
 }
 
@@ -1377,9 +1380,31 @@ void ColumnUnitState::applySolveOutputs_(const SolverInputs& in, const SolverOut
             }
             hasDraw = true;
          }
-         trayModel_.setTray(i, t.tempK, t.vFrac, t.V_kgph, t.L_kgph, hasDraw, /*unused*/ false, drawLabel, /*unused*/
-                            false);
+         TrayRow row;
+         row.trayNumber = i + 1;
+         row.tempK = t.tempK;
+         row.vaporFrac = t.vFrac;
+         row.vaporFlow = t.V_kgph;
+         row.liquidFlow = t.L_kgph;
+         row.hasDraw = hasDraw;
+         row.drawLabel = drawLabel;
+         row.xLiq = t.xLiq;
+         row.yVap = t.yVap;
+         trayModel_.setRow(i, row);
       }
+   }
+
+   // Forward component names to TrayModel and expose as Q_PROPERTY
+   {
+      QStringList compNames;
+      compNames.reserve(static_cast<int>(out.componentNames.size()));
+      for (const auto& name : out.componentNames)
+         compNames.append(QString::fromStdString(name));
+      if (componentNames_ != compNames) {
+         componentNames_ = compNames;
+         emit componentNamesChanged();
+      }
+      trayModel_.setComponentNames(compNames);
    }
 
    // Derived values shown in the "Column" panel. Keep them simple for now.
@@ -1463,113 +1488,113 @@ void ColumnUnitState::applySolveOutputs_(const SolverInputs& in, const SolverOut
    };
 
    auto analyzeTemperatureSpikes = [&](const SolverOutputs& r) -> SpikeFlags
-   {
-      SpikeFlags f;
-      const int N = static_cast<int>(r.trays.size());
-      constexpr double spikeTol = 60.0;
-      constexpr double monoTol = 25.0;
-      constexpr double btmTol = 60.0;
-      constexpr double topTol = 40.0;
-      if (N <= 0)
-         return f;
-
-      const double TbottomTray = r.trays.front().tempK;
-      const double TtopTray = r.trays.back().tempK;
-      const double Treb = r.Treb_K;
-      const double Tcond = r.Tcond_K;
-
-      const std::string condType = r.condenserType;
-
-      // A) Boundary agreement
-      if (std::isfinite(Treb) && std::isfinite(TbottomTray))
       {
-         const double d = std::abs(Treb - TbottomTray);
-         if (d > btmTol)
-         {
-            std::ostringstream oss;
-            oss.setf(std::ios::fixed);
-            oss.precision(1);
-            oss << "Warning: bottom tray T (" << TbottomTray
-               << " K) differs from reboiler T_hot (" << Treb
-               << " K) by " << d << " K.";
-            f.notes.push_back(oss.str());
-            f.spikeTrays.push_back(1);
-         }
-      }
-      if (std::isfinite(Tcond) && std::isfinite(TtopTray))
-      {
-         const double d = std::abs(Tcond - TtopTray);
-         if (d > topTol)
-         {
-            const std::string lvl = (condType == "total") ? "Info" : "Warning";
-            std::ostringstream oss;
-            oss.setf(std::ios::fixed);
-            oss.precision(1);
-            oss << lvl << ": top tray T (" << TtopTray
-               << " K) differs from condenser T_cold (" << Tcond
-               << " K) by " << d << " K.";
-            f.notes.push_back(oss.str());
-            f.spikeTrays.push_back(N);
-         }
-      }
+         SpikeFlags f;
+         const int N = static_cast<int>(r.trays.size());
+         constexpr double spikeTol = 60.0;
+         constexpr double monoTol = 25.0;
+         constexpr double btmTol = 60.0;
+         constexpr double topTol = 40.0;
+         if (N <= 0)
+            return f;
 
-      // B) Monotonicity & C) Local spikes
-      for (int i = 0; i < N; ++i)
-      {
-         const double Ti = r.trays[static_cast<size_t>(i)].tempK;
-         if (!std::isfinite(Ti))
-            continue;
+         const double TbottomTray = r.trays.front().tempK;
+         const double TtopTray = r.trays.back().tempK;
+         const double Treb = r.Treb_K;
+         const double Tcond = r.Tcond_K;
 
-         if (i < N - 1)
+         const std::string condType = r.condenserType;
+
+         // A) Boundary agreement
+         if (std::isfinite(Treb) && std::isfinite(TbottomTray))
          {
-            const double Tnext = r.trays[static_cast<size_t>(i + 1)].tempK;
-            if (std::isfinite(Tnext) && (Tnext - Ti) > monoTol)
+            const double d = std::abs(Treb - TbottomTray);
+            if (d > btmTol)
             {
                std::ostringstream oss;
                oss.setf(std::ios::fixed);
                oss.precision(1);
-               oss << "Warning: non-monotonic rise between Tray " << (i + 1)
-                  << " (" << Ti << " K) and Tray " << (i + 2)
-                  << " (" << Tnext << " K), Δ=" << (Tnext - Ti) << " K.";
+               oss << "Warning: bottom tray T (" << TbottomTray
+                  << " K) differs from reboiler T_hot (" << Treb
+                  << " K) by " << d << " K.";
                f.notes.push_back(oss.str());
-               f.spikeTrays.push_back(i + 2);
+               f.spikeTrays.push_back(1);
+            }
+         }
+         if (std::isfinite(Tcond) && std::isfinite(TtopTray))
+         {
+            const double d = std::abs(Tcond - TtopTray);
+            if (d > topTol)
+            {
+               const std::string lvl = (condType == "total") ? "Info" : "Warning";
+               std::ostringstream oss;
+               oss.setf(std::ios::fixed);
+               oss.precision(1);
+               oss << lvl << ": top tray T (" << TtopTray
+                  << " K) differs from condenser T_cold (" << Tcond
+                  << " K) by " << d << " K.";
+               f.notes.push_back(oss.str());
+               f.spikeTrays.push_back(N);
             }
          }
 
-         if (i > 0 && i < N - 1)
+         // B) Monotonicity & C) Local spikes
+         for (int i = 0; i < N; ++i)
          {
-            const double Tm1 = r.trays[static_cast<size_t>(i - 1)].tempK;
-            const double Tp1 = r.trays[static_cast<size_t>(i + 1)].tempK;
-            if (std::isfinite(Tm1) && std::isfinite(Tp1))
+            const double Ti = r.trays[static_cast<size_t>(i)].tempK;
+            if (!std::isfinite(Ti))
+               continue;
+
+            if (i < N - 1)
             {
-               const double m = 0.5 * (Tm1 + Tp1);
-               const double d = std::abs(Ti - m);
-               if (d > spikeTol)
+               const double Tnext = r.trays[static_cast<size_t>(i + 1)].tempK;
+               if (std::isfinite(Tnext) && (Tnext - Ti) > monoTol)
                {
                   std::ostringstream oss;
                   oss.setf(std::ios::fixed);
                   oss.precision(1);
-                  oss << "Warning: local spike at Tray " << (i + 1)
-                     << ": T=" << Ti << " K deviates " << d
-                     << " K from neighbors’ mean " << m << " K.";
+                  oss << "Warning: non-monotonic rise between Tray " << (i + 1)
+                     << " (" << Ti << " K) and Tray " << (i + 2)
+                     << " (" << Tnext << " K), Δ=" << (Tnext - Ti) << " K.";
                   f.notes.push_back(oss.str());
-                  f.spikeTrays.push_back(i + 1);
+                  f.spikeTrays.push_back(i + 2);
+               }
+            }
+
+            if (i > 0 && i < N - 1)
+            {
+               const double Tm1 = r.trays[static_cast<size_t>(i - 1)].tempK;
+               const double Tp1 = r.trays[static_cast<size_t>(i + 1)].tempK;
+               if (std::isfinite(Tm1) && std::isfinite(Tp1))
+               {
+                  const double m = 0.5 * (Tm1 + Tp1);
+                  const double d = std::abs(Ti - m);
+                  if (d > spikeTol)
+                  {
+                     std::ostringstream oss;
+                     oss.setf(std::ios::fixed);
+                     oss.precision(1);
+                     oss << "Warning: local spike at Tray " << (i + 1)
+                        << ": T=" << Ti << " K deviates " << d
+                        << " K from neighbors’ mean " << m << " K.";
+                     f.notes.push_back(oss.str());
+                     f.spikeTrays.push_back(i + 1);
+                  }
                }
             }
          }
-      }
 
-      // unique + sort
-      std::sort(f.spikeTrays.begin(), f.spikeTrays.end());
-      f.spikeTrays.erase(std::unique(f.spikeTrays.begin(), f.spikeTrays.end()), f.spikeTrays.end());
-      return f;
-   };
+         // unique + sort
+         std::sort(f.spikeTrays.begin(), f.spikeTrays.end());
+         f.spikeTrays.erase(std::unique(f.spikeTrays.begin(), f.spikeTrays.end()), f.spikeTrays.end());
+         return f;
+      };
 
    // Attach solver diagnostics + spike notes to the Diagnostics panel
    auto addDiag = [&](const QString& level, const QString& message)
-   {
-      diagnosticsModel_.append(level, message);
-   };
+      {
+         diagnosticsModel_.append(level, message);
+      };
 
    // 1) Diagnostics returned by the solver (ported from JS diagnostics.push/addDiag).
    for (const auto& d : out.diagnostics)
@@ -1611,8 +1636,8 @@ void ColumnUnitState::applySolveOutputs_(const SolverInputs& in, const SolverOut
       const double dT = (std::isfinite(Tcold) && std::isfinite(Ttop)) ? std::abs(Ttop - Tcold) : NAN;
 
       QString msg = QString("Temperature 'spike' at Tray %1 is usually expected for a TOTAL condenser: "
-            "Tray %1 is a condenser boundary (V forced to 0) and may report an equilibrium / inlet temperature "
-            "that won't follow the internal tray profile. ")
+         "Tray %1 is a condenser boundary (V forced to 0) and may report an equilibrium / inlet temperature "
+         "that won't follow the internal tray profile. ")
          .arg(Ntrays);
 
       if (std::isfinite(dT))
@@ -1716,16 +1741,16 @@ void ColumnUnitState::applyCrudeDefaults(const QString& crude)
 
          auto it = nameMap.find(tray1);
          const QString label = (it != nameMap.end())
-                                  ? QString::fromStdString(it->second)
-                                  : QString("Draw [Tray %1]").arg(tray1);
+            ? QString::fromStdString(it->second)
+            : QString("Draw [Tray %1]").arg(tray1);
 
-         tmp.push_back(Row{tray1, fracOfFeed * 100.0, label});
+         tmp.push_back(Row{ tray1, fracOfFeed * 100.0, label });
       }
 
       std::sort(tmp.begin(), tmp.end(), [](const Row& a, const Row& b)
-      {
-         return a.tray1 > b.tray1; // top (32) first
-      });
+         {
+            return a.tray1 > b.tray1; // top (32) first
+         });
 
       for (const auto& r : tmp)
       {
@@ -1833,8 +1858,8 @@ void ColumnUnitState::openSolverLogFile_()
 
    // Header line for context.
    solverLogStream_ << QString("[LOG] %1  projectRoot=%2\n")
-                       .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
-                       .arg(projectRoot.isEmpty() ? QString("<fallback>") : projectRoot);
+      .arg(QDateTime::currentDateTime().toString(Qt::ISODate))
+      .arg(projectRoot.isEmpty() ? QString("<fallback>") : projectRoot);
    solverLogStream_.flush();
 }
 

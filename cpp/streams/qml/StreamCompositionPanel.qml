@@ -439,9 +439,15 @@ Item {
 
                                     TextField {
                                         id: fracField
-                                        text: root.fractionDisplayValue(fraction, moleFraction).toFixed(6)
                                         enabled: true
                                         readOnly: !editable || !root.fractionEditable()
+                                        // Update text only when not focused — prevents clearing on click
+                                        // and avoids simultaneous re-evaluation of all delegates
+                                        text: root.fractionDisplayValue(fraction, moleFraction).toFixed(6)
+                                        onFocusChanged: {
+                                            if (!focus)
+                                                text = root.fractionDisplayValue(fraction, moleFraction).toFixed(6)
+                                        }
                                         width: root.colFractionW
                                         height: 24
                                         anchors.verticalCenter: parent.verticalCenter
@@ -453,8 +459,8 @@ Item {
                                         onEditingFinished: { 
                                             if (editable && root.fractionEditable() && root.streamObject && root.streamObject.compositionModel) { 
                                                 root.streamObject.compositionModel.setFraction(index, Number(text)) 
-                                            } else { 
-                                                text = root.fractionDisplayValue(fraction, moleFraction).toFixed(6) 
+                                            } else {
+                                                text = root.fractionDisplayValue(fraction, moleFraction).toFixed(6)
                                             } 
                                         }
             

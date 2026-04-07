@@ -7,6 +7,7 @@
 #include <vector>
 #include <optional>
 #include <QVariantList>
+#include <QDate>
 
 #include "flowsheet/UnitNode.h"
 #include "flowsheet/state/ProcessUnitState.h"
@@ -24,6 +25,14 @@ class FlowsheetState : public QObject
       Q_PROPERTY(QObject* selectedUnit READ selectedUnitObject NOTIFY selectedUnitChanged)
       Q_PROPERTY(QVariantList materialConnections READ materialConnectionsVariant NOTIFY materialConnectionsChanged)
       Q_PROPERTY(QString lastOperationMessage READ lastOperationMessage NOTIFY lastOperationMessageChanged)
+
+      // ── Drawing metadata ─────────────────────────────────────────────────
+      Q_PROPERTY(QString drawingTitle  READ drawingTitle  WRITE setDrawingTitle  NOTIFY drawingMetaChanged)
+      Q_PROPERTY(QString drawingNumber READ drawingNumber WRITE setDrawingNumber NOTIFY drawingMetaChanged)
+      Q_PROPERTY(QString drawnBy       READ drawnBy       WRITE setDrawnBy       NOTIFY drawingMetaChanged)
+      Q_PROPERTY(int     revision      READ revision      NOTIFY drawingMetaChanged)
+      Q_PROPERTY(QString revisionDate  READ revisionDate  NOTIFY drawingMetaChanged)
+      Q_PROPERTY(bool    isDirty       READ isDirty       NOTIFY isDirtyChanged)
 
 public:
    struct MaterialConnection
@@ -79,6 +88,19 @@ public:
 
    QString lastOperationMessage() const { return lastOperationMessage_; }
 
+   // Drawing metadata
+   QString drawingTitle()  const { return drawingTitle_; }
+   QString drawingNumber() const { return drawingNumber_; }
+   QString drawnBy()       const { return drawnBy_; }
+   int     revision()      const { return revision_; }
+   QString revisionDate()  const { return revisionDate_; }
+   bool    isDirty()       const { return isDirty_; }
+
+   void setDrawingTitle(const QString& v);
+   void setDrawingNumber(const QString& v);
+   void setDrawnBy(const QString& v);
+   Q_INVOKABLE void stampRevision();   // advances rev, clears dirty, stamps date
+
    QVariantList materialConnectionsVariant() const;
    MaterialStreamState* findMaterialStreamByUnitId(const QString& unitId) const;
    StreamUnitState* findStreamUnitById(const QString& unitId) const;
@@ -92,6 +114,8 @@ signals:
    void selectedUnitChanged();
    void materialConnectionsChanged();
    void lastOperationMessageChanged();
+   void drawingMetaChanged();
+   void isDirtyChanged();
 
 private:
    QString addColumnInternal(double x, double y);
@@ -115,4 +139,14 @@ private:
    QString selectedUnitId_;
    std::vector<MaterialConnection> materialConnections_;
    QString lastOperationMessage_;
+
+   // Drawing metadata members
+   QString drawingTitle_;
+   QString drawingNumber_ = QStringLiteral("PFD-001");
+   QString drawnBy_;
+   int     revision_ = 0;
+   QString revisionDate_;
+   bool    isDirty_ = false;
+
+   void markDirty_();
 };

@@ -6,6 +6,7 @@
 #include <memory>
 #include <QVariantMap>
 #include <QRegularExpression>
+#include <QDate>
 #include <QStringList>
 #include <QSet>
 
@@ -92,6 +93,7 @@ bool FlowsheetState::setUnitName(const QString& unitId, const QString& proposedN
    if (auto* unit = findUnitById(unitId)) {
       const QString unique = makeUniqueUnitName_(proposedName, unit->type(), unitId);
       unit->setName(unique);
+      markDirty_();
       return true;
    }
    return false;
@@ -103,6 +105,48 @@ void FlowsheetState::setLastOperationMessage_(const QString& message)
       return;
    lastOperationMessage_ = message;
    emit lastOperationMessageChanged();
+}
+
+// ── Drawing metadata ──────────────────────────────────────────────────────
+
+void FlowsheetState::markDirty_()
+{
+   if (isDirty_) return;
+   isDirty_ = true;
+   emit isDirtyChanged();
+}
+
+void FlowsheetState::setDrawingTitle(const QString& v)
+{
+   if (drawingTitle_ == v) return;
+   drawingTitle_ = v;
+   emit drawingMetaChanged();
+   markDirty_();
+}
+
+void FlowsheetState::setDrawingNumber(const QString& v)
+{
+   if (drawingNumber_ == v) return;
+   drawingNumber_ = v;
+   emit drawingMetaChanged();
+   markDirty_();
+}
+
+void FlowsheetState::setDrawnBy(const QString& v)
+{
+   if (drawnBy_ == v) return;
+   drawnBy_ = v;
+   emit drawingMetaChanged();
+   // drawnBy change does NOT mark the flowsheet dirty — it is user preference
+}
+
+void FlowsheetState::stampRevision()
+{
+   ++revision_;
+   revisionDate_ = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+   isDirty_ = false;
+   emit drawingMetaChanged();
+   emit isDirtyChanged();
 }
 
 namespace {
@@ -254,6 +298,7 @@ QString FlowsheetState::addColumnInternal(double x, double y)
       if (const int idx = findNodeIndexById(id); idx >= 0) {
          nodes_[idx].displayName = unique;
          unitModel_.updateName(id, unique);
+         markDirty_();
       }
       });
    column->setType("column");
@@ -268,6 +313,7 @@ QString FlowsheetState::addColumnInternal(double x, double y)
       emit selectedUnitChanged();
    }
 
+   markDirty_();
    emit unitCountChanged();
    return id;
 }
@@ -313,6 +359,7 @@ QString FlowsheetState::addStreamInternal(double x, double y)
       if (const int idx = findNodeIndexById(id); idx >= 0) {
          nodes_[idx].displayName = unique;
          unitModel_.updateName(id, unique);
+         markDirty_();
       }
       });
    units_.push_back(std::move(stream));
@@ -440,6 +487,7 @@ bool FlowsheetState::bindColumnFeedStream(const QString& columnUnitId, const QSt
 
    column->setConnectedFeedStreamUnitId(streamUnitId);
    setStreamConnectionDirection(streamUnitId, QStringLiteral("inlet"));
+   markDirty_();
    setLastOperationMessage_(QString{});
    emit materialConnectionsChanged();
    return true;
@@ -472,6 +520,7 @@ bool FlowsheetState::bindColumnProductStream(const QString& columnUnitId, const 
 
    column->setConnectedProductStreamUnitId(normalizedPort, streamUnitId);
    setStreamConnectionDirection(streamUnitId, QStringLiteral("outlet"));
+   markDirty_();
    setLastOperationMessage_(QString{});
    emit materialConnectionsChanged();
    return true;
@@ -484,6 +533,7 @@ bool FlowsheetState::disconnectMaterialStream(const QString& streamUnitId)
    relabelStreamFromBindings_(streamUnitId);
    const bool changed = before != materialConnections_.size();
    if (changed) {
+      markDirty_();
       emit materialConnectionsChanged();
       setLastOperationMessage_(QString{});
    }
@@ -522,6 +572,7 @@ bool FlowsheetState::deleteUnit(const QString& unitId)
    nodes_.removeAt(nodeIdx);
    removeConnectionsForStream_(unitId);
    refreshUnitModel_();
+   markDirty_();
    emit unitCountChanged();
 
    if (selectedUnitId_ == unitId) {

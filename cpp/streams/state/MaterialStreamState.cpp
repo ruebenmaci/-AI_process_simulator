@@ -439,7 +439,11 @@ void MaterialStreamState::setIsCrudeFeed(bool value)
 
 bool MaterialStreamState::componentEditingEnabled() const
 {
-   return isCrudeFeed_ && m_streamType != StreamType::Product;
+   // Allow composition editing on any feed or standalone stream that has
+   // components loaded — isCrudeFeed_ is never set in the active code path
+   // so we check directly for non-product + has components
+   if (m_streamType == StreamType::Product) return false;
+   return !fluidDefinition_.thermo.components.empty();
 }
 
 double MaterialStreamState::massFractionSum() const

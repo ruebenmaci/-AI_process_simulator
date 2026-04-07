@@ -400,6 +400,43 @@ FluidDefinition FluidPackageManager::resolveFluidDefinitionForPackage(const QStr
    return def;
 }
 
+QVariantList FluidPackageManager::packageComposition(const QString& packageId) const
+{
+   QVariantList out;
+   const FluidDefinition def = resolveFluidDefinitionForPackage(packageId);
+   const auto& comps = def.thermo.components;
+   const auto& zDef = def.thermo.zDefault;   // mass fractions, normalized to sum=1
+
+   const std::size_t n = comps.size();
+   if (n == 0) return out;
+
+   // Build mass fractions — use zDefault if present and correct size, else equal split
+   std::vector<double> massFrac(n, 1.0 / static_cast<double>(n));
+   if (zDef.size() == n) massFrac = zDef;
+
+   // Convert mass fractions to mole fractions: xi_mole = (xi_mass/MWi) / sum(xj_mass/MWj)
+   std::vector<double> moleFrac(n, 0.0);
+   double moleSum = 0.0;
+   for (std::size_t i = 0; i < n; ++i) {
+      const double mw = comps[i].MW > 0.0 ? comps[i].MW : 1.0;
+      moleFrac[i] = massFrac[i] / mw;
+      moleSum += moleFrac[i];
+   }
+   if (moleSum > 0.0)
+      for (double& v : moleFrac) v /= moleSum;
+
+   for (std::size_t i = 0; i < n; ++i) {
+      QVariantMap row;
+      row.insert(QStringLiteral("id"), QString::fromStdString(comps[i].name));
+      row.insert(QStringLiteral("name"), QString::fromStdString(comps[i].name));
+      row.insert(QStringLiteral("massFrac"), massFrac[i]);
+      row.insert(QStringLiteral("moleFrac"), moleFrac[i]);
+      row.insert(QStringLiteral("mw"), comps[i].MW);
+      out.append(row);
+   }
+   return out;
+}
+
 void FluidPackageManager::syncModel_()
 {
    if (model_) model_->refresh();

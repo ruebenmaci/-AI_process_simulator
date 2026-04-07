@@ -6,6 +6,8 @@
 #include <QSettings>
 #include <QObject>
 #include <QStringList>
+#include <QStandardPaths>
+#include <QDir>
 
 #include <QDebug>
 #include <windows.h>
@@ -127,12 +129,66 @@ int main(int argc, char* argv[]) {
    qDebug() << "[FluidPackageManager]" << fluidPackageManager.lastStatus();
    engine.rootContext()->setContextProperty("gFluidPackageManager", &fluidPackageManager);
 
+   // ── Persistence: resolve writable app-data directory ──────────────────────
+   // Both managers auto-save on every change signal so the user never needs
+   // to click a "Save" button on the manager windows themselves.
+   const QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+   QDir().mkpath(appDataDir);
+
+   const QString componentListsPath = appDataDir + QStringLiteral("/user_component_lists.json");
+   const QString fluidPackagesPath = appDataDir + QStringLiteral("/fluid_packages.json");
+
+   // Merge saved user component lists on startup. The starter seed (components
+   // + starter lists) is already loaded by the ComponentManager constructor;
+   // this overlays only the user-created lists on top without touching the seed.
+   if (QFile::exists(componentListsPath)) {
+      if (!componentManager.mergeUserListsFromJsonFile(componentListsPath))
+         qWarning() << "[ComponentManager] Failed to load user lists from" << componentListsPath;
+      else
+         qDebug() << "[ComponentManager] Loaded user lists from" << componentListsPath;
+   }
+
+   // Load saved fluid packages on startup; if none exist yet, starters are
+   // already present from FluidPackageManager construction.
+   if (QFile::exists(fluidPackagesPath)) {
+      if (!fluidPackageManager.loadFromJsonFile(fluidPackagesPath))
+         qWarning() << "[FluidPackageManager] Failed to load packages from" << fluidPackagesPath;
+      else
+         qDebug() << "[FluidPackageManager] Loaded packages from" << fluidPackagesPath;
+   }
+
+   // Auto-save user component lists whenever lists change.
+   // Uses saveUserListsToJsonFile so starter lists are never written to the
+   // user file — they are always reconstructed from the embedded seed.
+   QObject::connect(&componentManager, &ComponentManager::componentListsChanged,
+      [&componentManager, componentListsPath]() {
+         if (!componentManager.saveUserListsToJsonFile(componentListsPath))
+            qWarning() << "[ComponentManager] Auto-save failed:" << componentListsPath;
+      });
+
+   // Auto-save FluidPackageManager whenever packages change.
+   QObject::connect(&fluidPackageManager, &FluidPackageManager::fluidPackagesChanged,
+      [&fluidPackageManager, fluidPackagesPath]() {
+         if (!fluidPackageManager.saveToJsonFile(fluidPackagesPath))
+            qWarning() << "[FluidPackageManager] Auto-save failed:" << fluidPackagesPath;
+      });
+
    ColumnUnitState state;
    engine.rootContext()->setContextProperty("appState", &state);
    engine.rootContext()->setContextProperty("gAppState", &state);
 
    FlowsheetState flowsheet;
    engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
+
+   // When any fluid package property changes (thermo method, component list
+   // assignment, name) OR when a component list's membership changes,
+   // FluidPackageManager re-emits fluidPackagesChanged. So one connection
+   // here covers both cases — refresh all streams so they immediately pick up
+   // the new EOS, component set, and flash results.
+   QObject::connect(&fluidPackageManager, &FluidPackageManager::fluidPackagesChanged,
+      [&flowsheet]() {
+         flowsheet.refreshStreamsForPackage(QString());
+      });
 
    const QUrl url(QStringLiteral("qrc:/qt/qml/chatgpt5_qt_adt_simulator/qml/Main.qml"));
    QObject::connect(
