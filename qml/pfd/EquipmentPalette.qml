@@ -2,23 +2,56 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
-// Floating, draggable HYSYS-style Equipment Palette.
-// Emits placementRequested(type) when the user clicks a palette icon.
-// The parent (PfdCanvas) is responsible for entering placement mode.
-
 Item {
     id: root
 
-    property Item boundsItem: parent   // item used to clamp drag position
+    property Item boundsItem: parent
 
-    signal placementRequested(string unitType)  // "column" or "stream"
+    signal placementRequested(string unitType)
 
     visible: false
-
-    width:  palettePanel.width
+    width: palettePanel.width
     height: palettePanel.height
 
-    // Keep inside boundsItem when it resizes
+    readonly property var paletteItems: [
+        { iconId: "dist_column", label: "Dist. Column", unitType: "column", enabled: true },
+        { iconId: "stream_material",      label: "Stream", unitType: "stream", enabled: true },
+        { iconId: "absorber",             label: "Absorber", unitType: "absorber", enabled: false },
+        { iconId: "adsorber",             label: "Adsorber", unitType: "adsorber", enabled: false },
+        { iconId: "batch_reactor",        label: "Batch Reactor", unitType: "batch_reactor", enabled: false },
+        { iconId: "centrifuge",           label: "Centrifuge", unitType: "centrifuge", enabled: false },
+        { iconId: "column",          label: "Column", unitType: "dist_column", enabled: false },
+        
+        { iconId: "compressor",           label: "Compressor", unitType: "compressor", enabled: false },
+        { iconId: "condenser",            label: "Condenser", unitType: "condenser", enabled: false },
+        { iconId: "cooler",               label: "Cooler", unitType: "cooler", enabled: false },
+        { iconId: "cstr",                 label: "CSTR", unitType: "cstr", enabled: false },
+        { iconId: "cyclone",              label: "Cyclone", unitType: "cyclone", enabled: false },
+        { iconId: "expander",             label: "Expander", unitType: "expander", enabled: false },
+        { iconId: "filter",               label: "Filter", unitType: "filter", enabled: false },
+        { iconId: "fired_heater",         label: "Fired Heater", unitType: "fired_heater", enabled: false },
+        { iconId: "flash_drum",           label: "Flash Drum", unitType: "flash_drum", enabled: false },
+        
+        { iconId: "heat_exchanger",       label: "Heat Exchanger", unitType: "heat_exchanger", enabled: false },
+        { iconId: "heater",               label: "Heater", unitType: "heater", enabled: false },
+        { iconId: "hen",                  label: "HEN", unitType: "hen", enabled: false },
+        { iconId: "kettle_vaporizer",     label: "Kettle Vaporizer", unitType: "kettle_vaporizer", enabled: false },
+        { iconId: "mixer",                label: "Mixer", unitType: "mixer", enabled: false },
+        { iconId: "pid_controller",       label: "PID Controller", unitType: "pid_controller", enabled: false },
+        { iconId: "pipe_segment",         label: "Pipe Segment", unitType: "pipe_segment", enabled: false },
+        { iconId: "plate_heat_exchanger", label: "Plate HX", unitType: "plate_heat_exchanger", enabled: false },
+        { iconId: "pump",                 label: "Pump", unitType: "pump", enabled: false },
+        { iconId: "reboiler",             label: "Reboiler", unitType: "reboiler", enabled: false },
+        { iconId: "recycle",              label: "Recycle", unitType: "recycle", enabled: false },
+        { iconId: "sensor",               label: "Sensor", unitType: "sensor", enabled: false },
+        { iconId: "shortcut_column",      label: "Shortcut Column", unitType: "shortcut_column", enabled: false },
+        { iconId: "stream_energy",        label: "Energy Stream", unitType: "stream_energy", enabled: false },
+        { iconId: "stripper",             label: "Stripper", unitType: "stripper", enabled: false },
+        { iconId: "tee_splitter",         label: "Tee Splitter", unitType: "tee_splitter", enabled: false },
+        { iconId: "three_phase_flash",    label: "3-Phase Flash", unitType: "three_phase_flash", enabled: false },
+        { iconId: "valve",                label: "Valve", unitType: "valve", enabled: false }
+    ]
+
     onVisibleChanged: {
         if (visible) {
             x = Math.min(x, (boundsItem ? boundsItem.width  : 800) - width  - 8)
@@ -26,55 +59,49 @@ Item {
         }
     }
 
-    // ── Panel shell ──────────────────────────────────────────────────────────
     Rectangle {
         id: palettePanel
-        width:  174
-        height: titleBar.height + bodyColumn.implicitHeight + 14
+        width: 236
+        height: 560
         radius: 7
-        color:  "#eef2f4"
-        border.color: "#9aaab5"
+        color: gAppTheme.palettePanelBg
+        border.color: gAppTheme.palettePanelBorder
         border.width: 1
 
-        layer.enabled: true
-        layer.effect: null          // shadow via drop-shadow if desired
-
-        // ── Title bar (drag handle) ───────────────────────────────────────
         Rectangle {
             id: titleBar
-            anchors.top:   parent.top
-            anchors.left:  parent.left
+            anchors.top: parent.top
+            anchors.left: parent.left
             anchors.right: parent.right
             height: 28
             radius: 7
-            color:  "#2a3b49"
+            color: gAppTheme.paletteTitleBg
 
-            // Clip the bottom corners so they sit flush with the panel body
             Rectangle {
                 anchors.bottom: parent.bottom
-                anchors.left:   parent.left
-                anchors.right:  parent.right
+                anchors.left: parent.left
+                anchors.right: parent.right
                 height: parent.radius
-                color:  parent.color
+                color: parent.color
             }
 
             Label {
-                anchors.left:           parent.left
-                anchors.leftMargin:     10
+                anchors.left: parent.left
+                anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                text:  "Equipment Palette"
-                color: "#dce8f1"
+                text: "Equipment Palette"
+                color: gAppTheme.paletteTitleText
                 font.pixelSize: 12
                 font.bold: true
             }
 
-            // Close button
             Rectangle {
                 id: closeBtn
-                anchors.right:          parent.right
-                anchors.rightMargin:    6
+                anchors.right: parent.right
+                anchors.rightMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18; height: 18
+                width: 18
+                height: 18
                 radius: 9
                 color: closeMa.containsMouse ? "#c0392b" : "#4a5f6e"
 
@@ -93,11 +120,10 @@ Item {
                 }
             }
 
-            // Drag the whole palette via the title bar
             MouseArea {
-                anchors.left:   parent.left
-                anchors.right:  closeBtn.left
-                anchors.top:    parent.top
+                anchors.left: parent.left
+                anchors.right: closeBtn.left
+                anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 anchors.rightMargin: 4
                 cursorShape: pressed ? Qt.ClosedHandCursor : Qt.SizeAllCursor
@@ -120,140 +146,99 @@ Item {
             }
         }
 
-        // ── Icon grid ─────────────────────────────────────────────────────
         ColumnLayout {
-            id: bodyColumn
-            anchors.top:        titleBar.bottom
-            anchors.left:       parent.left
-            anchors.right:      parent.right
-            anchors.margins:    10
-            anchors.topMargin:  10
-            spacing: 8
+            anchors.top: titleBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 8
+            anchors.topMargin: 6
+            spacing: 4
 
-            // Section label
-            Label {
-                text: "Unit Operations"
-                font.pixelSize: 10
-                color: "#5f6d78"
-                font.bold: true
+            Item {
                 Layout.fillWidth: true
-            }
+                Layout.fillHeight: true
+                clip: true
 
-            // Icon row — Column and Stream side by side
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
+                GridLayout {
+                    anchors.fill: parent
+                    columns: 4
+                    columnSpacing: 4
+                    rowSpacing: 4
 
-                PaletteIconButton {
-                    iconSource:  Qt.resolvedUrl("../../icons/svg/Equip_Palette/Distillation_Column.svg")
-                    label:       "Column"
-                    onActivated: root.placementRequested("column")
-                }
+                    Repeater {
+                        model: root.paletteItems
 
-                PaletteIconButton {
-                    iconSource:  Qt.resolvedUrl("../../icons/svg/Equip_Palette/Material_Stream.svg")
-                    label:       "Stream"
-                    onActivated: root.placementRequested("stream")
-                }
-            }
-
-            // Divider
-            Rectangle {
-                Layout.fillWidth: true
-                height: 1
-                color:  "#c6d0d7"
-            }
-
-            // Future equipment (greyed out)
-            Label {
-                text: "Planned"
-                font.pixelSize: 10
-                color: "#8a9aa5"
-                font.bold: true
-                Layout.fillWidth: true
-            }
-
-            GridLayout {
-                columns: 2
-                columnSpacing: 6
-                rowSpacing: 4
-                Layout.fillWidth: true
-
-                Repeater {
-                    model: ["Pump", "HX", "Sep.", "Valve", "Comp.", "Mixer"]
-                    delegate: Rectangle {
-                        implicitWidth:  72
-                        implicitHeight: 22
-                        radius: 4
-                        color:  "#f0f3f4"
-                        border.color: "#d2d8dc"
-                        Label {
-                            anchors.centerIn: parent
-                            text: modelData
-                            font.pixelSize: 10
-                            color: "#9daab2"
+                        delegate: PaletteIconButton {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.preferredWidth: 50
+                            Layout.preferredHeight: 50
+                            iconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath(modelData.iconId))
+                            label: modelData.label
+                            enabled: modelData.enabled
+                            onActivated: root.placementRequested(modelData.unitType)
                         }
                     }
                 }
             }
-
-            Item { implicitHeight: 2 }   // bottom padding
         }
     }
 
-    // ── Inline sub-component: individual draggable palette button ─────────
     component PaletteIconButton: Item {
         id: btn
-        implicitWidth:  68
-        implicitHeight: 74
+        implicitWidth: 50
+        implicitHeight: 50
 
-        property url    iconSource: ""
-        property string label:      ""
+        property url iconSource: ""
+        property string label: ""
+        property bool enabled: true
 
         signal activated()
 
         Rectangle {
             anchors.fill: parent
             radius: 6
-            color:  ma.pressed       ? "#c8d8e8"
-                  : ma.containsMouse ? "#dde8f0"
-                  : "#f4f7f9"
-            border.color: ma.containsMouse ? "#7aaac8" : "#c6d0d7"
+            color: !btn.enabled ? gAppTheme.palettePlannedBg
+                 : hoverHandler.hovered ? gAppTheme.paletteItemBgHover
+                 : gAppTheme.paletteItemBg
+            border.color: !btn.enabled ? gAppTheme.palettePlannedBorder : gAppTheme.paletteItemBorder
             border.width: 1
+            opacity: btn.enabled ? 1.0 : 0.68
 
-            ColumnLayout {
+            Image {
                 anchors.centerIn: parent
-                spacing: 4
-
-                Image {
-                    source: btn.iconSource
-                    Layout.preferredWidth:  42
-                    Layout.preferredHeight: 42
-                    Layout.alignment: Qt.AlignHCenter
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    mipmap: true
-                }
-
-                Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text:  btn.label
-                    font.pixelSize: 10
-                    color: "#31404a"
-                }
+                source: btn.iconSource
+                width: 24
+                height: 24
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                opacity: btn.enabled ? 1.0 : 0.72
             }
+        }
 
-            MouseArea {
-                id: ma
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape:  Qt.PointingHandCursor
-                onClicked:    btn.activated()
+        HoverHandler {
+            id: hoverHandler
+        }
 
-                ToolTip.visible: containsMouse
-                ToolTip.delay:   600
-                ToolTip.text:    "Click to place a " + btn.label + " on the PFD"
+        ToolTip {
+            visible: hoverHandler.hovered
+            delay: 250
+            timeout: 3000
+            text: btn.label
+
+            contentItem: Text {
+                text: btn.label
+                font.pixelSize: 10
+                color: "#111111"
             }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: btn.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+            onClicked: if (btn.enabled) btn.activated()
         }
     }
 }

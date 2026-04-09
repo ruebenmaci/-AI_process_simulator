@@ -2,11 +2,11 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Window 2.15
+import QtQuick.Dialogs
 
 import ChatGPT5.ADT 1.0
 import "../../cpp/unitops/column/qml"
 import "."
-import "../spreadsheet"
 
 Item {
     id: root
@@ -20,8 +20,6 @@ Item {
     property bool fluidManagerVisible: false
     property point fluidManagerPos: Qt.point(120, 120)
     property int topPanelZ: 100
-    property bool spreadsheetVisible: false
-    property point spreadsheetPos: Qt.point(160, 160)
     property var activePanel: null
 
     function raisePanel(panel) {
@@ -29,6 +27,20 @@ Item {
         topPanelZ += 1
         panel.panelZ = topPanelZ
         activePanel = panel
+    }
+
+    function defaultSaveFileName() {
+        // Build a filename from the drawing title + timestamp, no spaces
+        const title = root.flowsheet ? root.flowsheet.drawingTitle : "simulation"
+        const safe  = (title || "simulation").replace(/\s+/g, "_").replace(/[^A-Za-z0-9_\-]/g, "")
+        const now   = new Date()
+        const pad   = n => String(n).padStart(2, "0")
+        const stamp = String(now.getFullYear()) +
+                      pad(now.getMonth() + 1) +
+                      pad(now.getDate()) + "_" +
+                      pad(now.getHours()) +
+                      pad(now.getMinutes())
+        return safe + "_" + stamp   // e.g. AI_Process_sim-001_20260407_1432
     }
 
     implicitWidth: 1200
@@ -52,6 +64,66 @@ Item {
         }
     }
 
+    function newFlowsheet() {
+        if (root.flowsheet) root.flowsheet.newFlowsheet()
+    }
+
+    function openFlowsheet() {
+        openDialog.open()
+    }
+
+    function saveFlowsheet() {
+        if (!root.flowsheet) return
+        if (root.flowsheet.currentFilePath !== "")
+            root.flowsheet.saveToFile(root.flowsheet.currentFilePath)
+        else {
+            saveDialog.selectedFile = ""
+            saveDialog.currentFile  = (typeof gSavesPath !== "undefined" ? gSavesPath : "") + "/" + root.defaultSaveFileName() + ".sim"
+            saveDialog.open()
+        }
+    }
+
+    function saveFlowsheetAs() {
+        saveDialog.currentFile = (typeof gSavesPath !== "undefined" ? gSavesPath : "") + "/" + root.defaultSaveFileName() + ".sim"
+        saveDialog.open()
+    }
+
+    function toggleComponentManager() {
+        root.componentManagerVisible = !root.componentManagerVisible
+        if (root.componentManagerVisible) root.raisePanel(componentManagerPanel)
+    }
+
+    function toggleFluidManager() {
+        root.fluidManagerVisible = !root.fluidManagerVisible
+        if (root.fluidManagerVisible) root.raisePanel(fluidManagerPanel)
+    }
+
+    function toggleEquipmentPalette() {
+        if (equipmentPalette.visible) {
+            equipmentPalette.visible = false
+        } else {
+            const rightMargin = 60
+            const topMargin = 40
+            equipmentPalette.x = Math.max(8, root.width - equipmentPalette.width - rightMargin)
+            equipmentPalette.y = topMargin
+            equipmentPalette.visible = true
+        }
+    }
+
+    function openDisplaySettings() {
+        displaySettingsPopup.visible = true
+    }
+
+    function setTheme(themeKey) {
+        gAppTheme.currentTheme = themeKey
+        pfdCanvas.requestPaint()
+    }
+
+    function showAbout() {
+        aboutDialog.visible = true
+        aboutDialog.forceActiveFocus()
+    }
+
     function workspaceTitle() {
         if (!root.activeUnit || !root.flowsheet || root.flowsheet.selectedUnitId === "")
             return "Workspace"
@@ -69,88 +141,7 @@ Item {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
-        spacing: 10
-
-        Frame {
-            Layout.fillWidth: true
-            background: Rectangle {
-                color: "#0f1720"
-                border.color: "#2a3b49"
-                radius: 10
-            }
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 10
-                spacing: 10
-
-                Item { Layout.fillWidth: true }
-
-                ClassicButton { text: "New"; enabled: false }
-                ClassicButton { text: "Open"; enabled: false }
-                ClassicButton { text: "Save"; enabled: false }
-
-                ClassicButton {
-                    text: "Components"
-                    checkable: true
-                    checked: root.componentManagerVisible
-                    onClicked: {
-                        root.componentManagerVisible = !root.componentManagerVisible
-                        if (root.componentManagerVisible) root.raisePanel(componentManagerPanel)
-                    }
-                }
-
-                ClassicButton {
-                    text: "Fluid Packages"
-                    checkable: true
-                    checked: root.fluidManagerVisible
-                    onClicked: {
-                        root.fluidManagerVisible = !root.fluidManagerVisible
-                        if (root.fluidManagerVisible) root.raisePanel(fluidManagerPanel)
-                    }
-                }
-
-                ClassicButton {
-                    text: "Equipment Palette"
-                    checkable: true
-                    checked: equipmentPalette.visible
-                    onClicked: {
-                        if (equipmentPalette.visible) {
-                            equipmentPalette.visible = false
-                        } else {
-                            // Default position: near top-left of PFD canvas area
-                            equipmentPalette.x = 16
-                            equipmentPalette.y = 16
-                            equipmentPalette.visible = true
-                        }
-                    }
-                }
-
-                ClassicButton {
-                    text: "Spreadsheet"
-                    checkable: true
-                    checked: root.spreadsheetVisible
-                    onClicked: {
-                        root.spreadsheetVisible = !root.spreadsheetVisible
-                        if (root.spreadsheetVisible) root.raisePanel(spreadsheetPanel)
-                    }
-                }
-
-                ClassicButton {
-                    text: "Clear Worksheet"
-                    enabled: root.flowsheet && root.flowsheet.unitCount > 0
-                    onClicked: if (root.flowsheet) root.flowsheet.clear()
-                }
-
-                ClassicButton {
-                    id: displayBtn
-                    text: "Display"
-                    checkable: true
-                    checked: displaySettingsPopup.visible
-                    onClicked: displaySettingsPopup.visible = !displaySettingsPopup.visible
-                }
-            }
-        }
+        spacing: 0
 
         // PFD area — full width now that the left sidebar is removed
         Item {
@@ -288,6 +279,7 @@ Item {
         visible: root.componentManagerVisible
         onVisibleChanged: if (visible) root.raisePanel(componentManagerPanel)
         panelTitle: "Component Manager"
+        panelIconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("component_list"))
         boundsItem: root
         minPanelWidth: 860
         minPanelHeight: 560
@@ -319,6 +311,7 @@ Item {
         visible: root.fluidManagerVisible
         onVisibleChanged: if (visible) root.raisePanel(fluidManagerPanel)
         panelTitle: "Fluid Package Manager"
+        panelIconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("fluid_package"))
         boundsItem: root
         minPanelWidth: 1040
         minPanelHeight: 720
@@ -350,6 +343,9 @@ Item {
         visible: root.floatingWorkspaceVisible && !!root.activeUnit
         onVisibleChanged: if (visible) root.raisePanel(floatingWorkspace)
         panelTitle: root.workspaceTitle()
+        panelIconSource: root.activeUnit && root.activeUnit.type === "stream"
+                         ? Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
+                         : Qt.resolvedUrl(gAppTheme.iconPath("dist_column"))
         boundsItem: root
         x: Math.min(root.floatingWorkspacePos.x, Math.max(0, root.width - width))
         y: Math.min(root.floatingWorkspacePos.y, Math.max(0, root.height - height))
@@ -372,8 +368,8 @@ Item {
             ignoreUnknownSignals: true
         }
 
-        readonly property int columnNormalWidth: 1320
-        readonly property int columnNormalHeight: 860
+        readonly property int columnNormalWidth: 960
+        readonly property int columnNormalHeight: 780
         readonly property int streamWidth: 924
         readonly property int streamHeight: 652
         readonly property bool streamMode: !!root.activeUnit && root.activeUnit.type === "stream"
@@ -416,34 +412,6 @@ Item {
         }
     }
 
-    FloatingPanel {
-        id: spreadsheetPanel
-        visible: root.spreadsheetVisible
-        onVisibleChanged: if (visible) root.raisePanel(spreadsheetPanel)
-        panelTitle: "Spreadsheet"
-        boundsItem: root
-        minPanelWidth: 800
-        minPanelHeight: 500
-        width: Math.min(1200, Math.max(800, root.width - 120))
-        height: Math.min(700, Math.max(500, root.height - 160))
-        x: Math.min(root.spreadsheetPos.x, Math.max(0, root.width - width))
-        y: Math.min(root.spreadsheetPos.y, Math.max(0, root.height - height))
-        active: visible && root.activePanel === spreadsheetPanel
-
-        onXChanged: root.spreadsheetPos = Qt.point(x, y)
-        onYChanged: root.spreadsheetPos = Qt.point(x, y)
-        onActivated: root.raisePanel(spreadsheetPanel)
-        onCloseRequested: {
-            root.spreadsheetVisible = false
-            if (root.activePanel === spreadsheetPanel) root.activePanel = null
-        }
-
-        contentItem: [
-            SpreadsheetWorkspaceWindow {
-                anchors.fill: parent
-            }
-        ]
-    }
 
     // ── Display Settings popup ─────────────────────────────────────
     Rectangle {
@@ -527,6 +495,135 @@ Item {
                     x: 6; y: 5; width: parent.width - 12
                     text: "Scale change takes effect after restarting the app."
                     font.pixelSize: 9; color: "#526571"; wrapMode: Text.WordWrap
+                }
+            }
+        }
+    }
+
+
+    Item {
+        id: aboutDialog
+        visible: false
+        z: 550
+        width: 520
+        height: aboutColumn.implicitHeight + 18
+        x: Math.max(24, Math.min(root.width - width - 24, (root.width - width) / 2))
+        y: Math.max(24, Math.min(root.height - height - 24, (root.height - height) / 2))
+
+        function close() {
+            visible = false
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: "#eef3f6"
+            border.color: "#7f8f9b"
+            border.width: 1
+        }
+
+        ColumnLayout {
+            id: aboutColumn
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 36
+                radius: 6
+                color: "#d8e1e7"
+                border.color: "#93a3ae"
+
+                Label {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "About AI Process Simulator"
+                    font.pixelSize: 13
+                    font.bold: true
+                    color: "#17212b"
+                }
+
+                ClassicButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "OK"
+                    onClicked: aboutDialog.close()
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "AI Process Simulator\n\nA desktop process simulation workbench for building and testing flowsheets, material streams, fluid packages, and distillation column models.\n\nCurrent workspace features include:\n• Flowsheet editing with drag-and-drop equipment placement\n• Material stream and distillation column workspaces\n• Component and fluid package management\n• Theme and display customization\n\nThis About dialog can be expanded later with version, build date, author, and license details."
+                color: "#17212b"
+                font.pixelSize: 12
+            }
+        }
+
+        Keys.onEscapePressed: aboutDialog.close()
+    }
+
+    // ── File dialogs ───────────────────────────────────────────────────────
+    FileDialog {
+        id: openDialog
+        title: "Open Simulation File"
+        nameFilters: ["Simulation files (*.sim)", "All files (*)"]
+        fileMode: FileDialog.OpenFile
+        currentFolder: typeof gSavesPath !== "undefined" ? gSavesPath : ""
+        onAccepted: {
+            if (root.flowsheet) {
+                const path = selectedFile.toString().replace(/^file:\/\/\//, "")
+                const ok = root.flowsheet.loadFromFile(path)
+                if (!ok) errorDialog.open()
+            }
+        }
+    }
+
+    FileDialog {
+        id: saveDialog
+        title: "Save Simulation File"
+        nameFilters: ["Simulation files (*.sim)", "All files (*)"]
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "sim"
+        currentFolder: typeof gSavesPath !== "undefined" ? gSavesPath : ""
+        onAccepted: {
+            if (root.flowsheet) {
+                const path = selectedFile.toString().replace(/^file:\/\/\//, "")
+                const ok = root.flowsheet.saveToFile(path)
+                if (!ok) errorDialog.open()
+            }
+        }
+    }
+
+    // Error dialog for save/load failures
+    Item {
+        id: errorDialog
+        visible: false
+        z: 300
+        width: 400; height: 120
+        x: (root.width - width) / 2
+        y: (root.height - height) / 2
+        function open() { visible = true }
+        Rectangle {
+            anchors.fill: parent; radius: 6
+            color: "#eef3f6"; border.color: "#7f8f9b"; border.width: 1
+            Column {
+                anchors.fill: parent; anchors.margins: 12; spacing: 10
+                Text {
+                    text: "File Error"
+                    font.pixelSize: 13; font.bold: true; color: "#17212b"
+                }
+                Text {
+                    width: parent.width
+                    text: root.flowsheet ? (root.flowsheet.lastSaveError() || "Unknown error") : ""
+                    wrapMode: Text.WordWrap; font.pixelSize: 11; color: "#5a2020"
+                }
+                ClassicButton {
+                    text: "OK"
+                    onClicked: errorDialog.visible = false
                 }
             }
         }

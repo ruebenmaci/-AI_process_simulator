@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="psg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9090a8"/>
+      <stop offset="40%" stop-color="#606078"/>
+      <stop offset="100%" stop-color="#303048"/>
+    </linearGradient>
+    <linearGradient id="psfl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6090c8"/>
+      <stop offset="100%" stop-color="#1850a0"/>
+    </linearGradient>
+  </defs>
+  <!-- flanges -->
+  <rect x="3" y="16" width="5" height="16" rx="2" fill="#505068" stroke="#303048" stroke-width="1.5"/>
+  <rect x="40" y="16" width="5" height="16" rx="2" fill="#505068" stroke="#303048" stroke-width="1.5"/>
+  <!-- pipe body -->
+  <rect x="8" y="19" width="32" height="10" fill="url(#psg)" stroke="#303048" stroke-width="1.5"/>
+  <!-- inner fluid glow -->
+  <rect x="9" y="20" width="30" height="8" fill="url(#psfl)" opacity="0.35"/>
+  <!-- highlight top -->
+  <rect x="9" y="20" width="30" height="2.5" rx="1" fill="white" opacity="0.2"/>
+  <!-- flow arrows -->
+  <polygon points="22,24 17,21.5 17,26.5" fill="white" opacity="0.4"/>
+  <polygon points="31,24 26,21.5 26,26.5" fill="white" opacity="0.4"/>
+</svg>

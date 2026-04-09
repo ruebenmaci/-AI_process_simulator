@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="fhg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#808890"/>
+      <stop offset="100%" stop-color="#404850"/>
+    </linearGradient>
+  </defs>
+  <!-- furnace box -->
+  <rect x="6" y="10" width="36" height="30" rx="3" fill="url(#fhg)" stroke="#303840" stroke-width="1.5"/>
+  <rect x="8" y="11" width="32" height="8" rx="2" fill="white" opacity="0.12"/>
+  <!-- stack -->
+  <rect x="19" y="2" width="10" height="10" rx="2" fill="#606870" stroke="#303840" stroke-width="1.2"/>
+  <rect x="20" y="3" width="4" height="8" rx="1" fill="#404850" opacity="0.5"/>
+  <!-- radiant tube coils -->
+  <path d="M10,24 Q24,19 38,24" fill="none" stroke="#a0b0c0" stroke-width="2" stroke-linecap="round"/>
+  <path d="M10,29 Q24,24 38,29" fill="none" stroke="#a0b0c0" stroke-width="2" stroke-linecap="round"/>
+  <!-- flames (orange/red) -->
+  <path d="M12,38 Q10,32 14,29 Q12,34 17,31 Q15,37 12,38Z" fill="#ff8000" opacity="0.9"/>
+  <path d="M19,38 Q18,33 22,30 Q20,35 24,32 Q22,38 19,38Z" fill="#ff3300" opacity="0.9"/>
+  <path d="M28,38 Q27,33 31,30 Q29,35 32,32 Q30,38 28,38Z" fill="#ff8000" opacity="0.85"/>
+  <!-- burner line -->
+  <line x1="8" y1="38" x2="40" y2="38" stroke="#606870" stroke-width="1.5"/>
+  <!-- process inlet/outlet -->
+  <rect x="2" y="22" width="6" height="4" rx="2" fill="#8090a0" stroke="#303840" stroke-width="1"/>
+  <rect x="40" y="22" width="6" height="4" rx="2" fill="#8090a0" stroke="#303840" stroke-width="1"/>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- U-tube shell -->
+  <rect x="8" y="14" width="32" height="20" rx="8" fill="#2a3548" stroke="#b0c4de" stroke-width="2"/>
+  <!-- U-tube internal -->
+  <path d="M14,14 L14,28 Q14,34 20,34 Q26,34 26,28 L26,14" fill="none" stroke="#e8a020" stroke-width="1.5"/>
+  <!-- steam arrows in -->
+  <line x1="34" y1="9" x2="34" y2="14" stroke="#e8a020" stroke-width="2" stroke-dasharray="3,2"/>
+  <polygon points="34,14 31,10 37,10" fill="#e8a020"/>
+  <!-- condensate out -->
+  <line x1="26" y1="9" x2="26" y2="14" stroke="#3a8fd1" stroke-width="2" stroke-dasharray="3,2"/>
+  <polygon points="26,9 23,13 29,13" fill="#3a8fd1"/>
+  <!-- process inlet/outlet -->
+  <line x1="3" y1="24" x2="8" y2="24" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="8,24 5,22 5,26" fill="#3a8fd1"/>
+  <line x1="40" y1="24" x2="45" y2="24" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="45,24 42,22 42,26" fill="#3a8fd1"/>
+  <!-- label -->
+  <text x="36" y="28" font-size="7" fill="#b0c4de" font-family="monospace">RB</text>
+</svg>

@@ -75,6 +75,7 @@ qt_add_executable(appChatGPT5_ADT
     cpp/flowsheet/models/FlowsheetUnitModel.h
     cpp/flowsheet/models/FlowsheetUnitModel.cpp
     cpp/flowsheet/state/FlowsheetState.h
+    cpp/AppTheme.h
     cpp/flowsheet/state/FlowsheetState.cpp
     cpp/flowsheet/state/ProcessUnitState.h
     cpp/flowsheet/state/ProcessUnitState.cpp
@@ -124,8 +125,48 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/spreadsheet/SpreadsheetView.qml
         qml/spreadsheet/SpreadsheetWorkspaceWindow.qml
     RESOURCES
-        icons/svg/Equip_Palette/Distillation_Column.svg
-        icons/svg/Equip_Palette/Material_Stream.svg
+        icons/svg/Equip_Palette/Default/Distillation_Column.svg
+        icons/svg/Equip_Palette/Default/Material_Stream.svg
+        icons/svg/Equip_Palette/HYSYS/Distillation_Column.svg
+        icons/svg/Equip_Palette/HYSYS/Material_Stream.svg
+        icons/svg/Equip_Palette/AspenPlus/Distillation_Column.svg
+        icons/svg/Equip_Palette/AspenPlus/Material_Stream.svg
+        icons/svg/2D_Light_Icons/absorber.svg
+        icons/svg/2D_Light_Icons/adsorber.svg
+        icons/svg/2D_Light_Icons/batch_reactor.svg
+        icons/svg/2D_Light_Icons/centrifuge.svg
+        icons/svg/2D_Light_Icons/dist_column.svg
+        icons/svg/2D_Light_Icons/component_list.svg
+        icons/svg/2D_Light_Icons/compressor.svg
+        icons/svg/2D_Light_Icons/condenser.svg
+        icons/svg/2D_Light_Icons/cooler.svg
+        icons/svg/2D_Light_Icons/cstr.svg
+        icons/svg/2D_Light_Icons/cyclone.svg
+        icons/svg/2D_Light_Icons/column.svg
+        icons/svg/2D_Light_Icons/expander.svg
+        icons/svg/2D_Light_Icons/filter.svg
+        icons/svg/2D_Light_Icons/fired_heater.svg
+        icons/svg/2D_Light_Icons/flash_drum.svg
+        icons/svg/2D_Light_Icons/fluid_package.svg
+        icons/svg/2D_Light_Icons/heat_exchanger.svg
+        icons/svg/2D_Light_Icons/heater.svg
+        icons/svg/2D_Light_Icons/hen.svg
+        icons/svg/2D_Light_Icons/kettle_vaporizer.svg
+        icons/svg/2D_Light_Icons/mixer.svg
+        icons/svg/2D_Light_Icons/pid_controller.svg
+        icons/svg/2D_Light_Icons/pipe_segment.svg
+        icons/svg/2D_Light_Icons/plate_heat_exchanger.svg
+        icons/svg/2D_Light_Icons/pump.svg
+        icons/svg/2D_Light_Icons/reboiler.svg
+        icons/svg/2D_Light_Icons/recycle.svg
+        icons/svg/2D_Light_Icons/sensor.svg
+        icons/svg/2D_Light_Icons/shortcut_column.svg
+        icons/svg/2D_Light_Icons/stream_energy.svg
+        icons/svg/2D_Light_Icons/stream_material.svg
+        icons/svg/2D_Light_Icons/stripper.svg
+        icons/svg/2D_Light_Icons/tee_splitter.svg
+        icons/svg/2D_Light_Icons/three_phase_flash.svg
+        icons/svg/2D_Light_Icons/valve.svg
         cpp/components/data/hydrocarbon_starter_components.json
 )
 # Link core into the Qt app (no Qt linkage needed in adt_core unless you use Qt types inside solver sources)
@@ -135,6 +176,7 @@ target_link_libraries(appChatGPT5_ADT
         Qt6::QuickControls2
         Qt6::Concurrent
         adt_core
+        dwmapi
 )
 
 # Keep these if app includes headers by short name; harmless because adt_core exports them too.

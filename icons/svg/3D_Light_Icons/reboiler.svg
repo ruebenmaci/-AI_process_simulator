@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="rbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffc080"/>
+      <stop offset="50%" stop-color="#d06020"/>
+      <stop offset="100%" stop-color="#802000"/>
+    </linearGradient>
+    <linearGradient id="rbsg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b0d4f0"/>
+      <stop offset="100%" stop-color="#2060a0"/>
+    </linearGradient>
+  </defs>
+  <!-- shell -->
+  <ellipse cx="10" cy="24" rx="4" ry="12" fill="#1050a0" stroke="#083070" stroke-width="1.2"/>
+  <rect x="10" y="12" width="28" height="24" fill="url(#rbsg)" stroke="#083070" stroke-width="1.5"/>
+  <ellipse cx="38" cy="24" rx="4" ry="12" fill="url(#rbsg)" stroke="#083070" stroke-width="1.2"/>
+  <rect x="11" y="13" width="26" height="6" rx="0" fill="white" opacity="0.18"/>
+  <!-- hot tube bundle (orange/red) -->
+  <rect x="10" y="20" width="28" height="8" fill="url(#rbg)" opacity="0.8"/>
+  <rect x="11" y="21" width="26" height="2" fill="white" opacity="0.15"/>
+  <!-- U-tube ends (left endplate) -->
+  <path d="M14,20 L14,28" stroke="#802000" stroke-width="1.5" fill="none"/>
+  <path d="M19,20 L19,28" stroke="#802000" stroke-width="1.5" fill="none"/>
+  <path d="M24,20 L24,28" stroke="#802000" stroke-width="1.5" fill="none"/>
+  <!-- nozzles -->
+  <rect x="2" y="19" width="8" height="4" rx="2" fill="#5090c0" stroke="#083070" stroke-width="1"/>
+  <rect x="38" y="25" width="8" height="4" rx="2" fill="#5090c0" stroke="#083070" stroke-width="1"/>
+  <!-- steam in / condensate out top -->
+  <rect x="19" y="4" width="5" height="8" rx="2.5" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+  <rect x="26" y="4" width="5" height="8" rx="2.5" fill="#3070b0" stroke="#083070" stroke-width="1"/>
+</svg>

@@ -6,6 +6,7 @@ Item {
     id: root
 
     property alias panelTitle: titleLabel.text
+    property url panelIconSource: ""
     property bool closable: true
     property bool resizable: false
     property real minPanelWidth: 900
@@ -85,14 +86,29 @@ Item {
             }
 
             // App icon
-            Rectangle {
+            Item {
                 id: appIcon
                 anchors.left: parent.left
                 anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: 16; height: 16
-                color: "#0078d4"
-                radius: 2
+                width: 16
+                height: 16
+
+                Rectangle {
+                    anchors.fill: parent
+                    visible: !root.panelIconSource || root.panelIconSource === ""
+                    color: "#0078d4"
+                    radius: 2
+                }
+
+                Image {
+                    anchors.fill: parent
+                    visible: !!root.panelIconSource && root.panelIconSource !== ""
+                    source: root.panelIconSource
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
             }
 
             // Title text

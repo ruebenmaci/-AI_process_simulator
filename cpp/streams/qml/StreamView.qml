@@ -28,9 +28,21 @@ Item {
             x: 0; y: 0; width: parent.width; height: 40
             color: cmdBar; border.color: borderIn; border.width: 1
 
+            Image {
+                id: streamIcon
+                x: 8
+                y: Math.round((parent.height - height) / 2)
+                width: 16
+                height: 16
+                source: Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+            }
+
             Common.ClassicTabs {
                 id: streamTabs
-                x: 8; y: 6
+                x: streamIcon.x + streamIcon.width + 8; y: 6
                 tabs: [
                     { text: "Conditions",  width: 92 },
                     { text: "Composition", width: 96 },

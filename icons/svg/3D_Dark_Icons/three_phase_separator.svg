@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="tpg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4090d0"/>
+      <stop offset="50%" stop-color="#80c0f0"/>
+      <stop offset="100%" stop-color="#1060a0"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="11" cy="24" rx="5" ry="14" fill="#1a5a90" stroke="#0d3a60" stroke-width="1.5"/>
+  <rect x="11" y="10" width="26" height="28" fill="url(#tpg)" stroke="#0d3a60" stroke-width="1.5"/>
+  <ellipse cx="37" cy="24" rx="5" ry="14" fill="url(#tpg)" stroke="#0d3a60" stroke-width="1.5"/>
+  <rect x="12" y="11" width="22" height="6" rx="0" fill="white" opacity="0.2"/>
+  <!-- 3 phase layers -->
+  <rect x="11" y="27" width="26" height="5" fill="#d08030" opacity="0.7"/>
+  <rect x="11" y="32" width="26" height="6" fill="#1a3a70" opacity="0.85"/>
+  <line x1="11" y1="27" x2="37" y2="27" stroke="white" stroke-width="0.8" opacity="0.6"/>
+  <line x1="11" y1="32" x2="37" y2="32" stroke="white" stroke-width="0.8" opacity="0.6"/>
+  <!-- nozzles -->
+  <rect x="2" y="21" width="9" height="6" rx="3" fill="#4a90c0" stroke="#0d3a60" stroke-width="1"/>
+  <rect x="20" y="2" width="6" height="8" rx="3" fill="#5cb85c" stroke="#2a7a2a" stroke-width="1"/>
+  <rect x="37" y="19" width="9" height="4" rx="2" fill="#d08030" stroke="#804010" stroke-width="1"/>
+  <rect x="37" y="29" width="9" height="4" rx="2" fill="#3070b0" stroke="#0d3a60" stroke-width="1"/>
+</svg>

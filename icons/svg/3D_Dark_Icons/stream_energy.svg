@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="eg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd060"/>
+      <stop offset="50%" stop-color="#f07820"/>
+      <stop offset="100%" stop-color="#c04010"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="21" width="34" height="6" rx="3" fill="url(#eg)" stroke="#a03010" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <rect x="6" y="22" width="28" height="2" rx="1" fill="white" opacity="0.25"/>
+  <polygon points="44,24 36,19.5 36,28.5" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+  <!-- bolt icon -->
+  <path d="M21,14 L17,24 L22,24 L18,34" stroke="#f07820" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- horizontal pipe -->
+  <rect x="4" y="19" width="40" height="10" rx="5" fill="#f0f4fa" stroke="#2a4060" stroke-width="2"/>
+  <!-- pipe highlight -->
+  <rect x="6" y="20" width="36" height="3" rx="2" fill="#b8c8d8" opacity="0.6"/>
+  <!-- flow arrows inside -->
+  <polygon points="22,24 17,21.5 17,26.5" fill="#3a8fd1" opacity="0.7"/>
+  <polygon points="31,24 26,21.5 26,26.5" fill="#3a8fd1" opacity="0.7"/>
+  <!-- flange left -->
+  <rect x="3" y="17" width="4" height="14" rx="1" fill="#b8c8d8" stroke="#2a4060" stroke-width="1.5"/>
+  <!-- flange right -->
+  <rect x="41" y="17" width="4" height="14" rx="1" fill="#b8c8d8" stroke="#2a4060" stroke-width="1.5"/>
+</svg>

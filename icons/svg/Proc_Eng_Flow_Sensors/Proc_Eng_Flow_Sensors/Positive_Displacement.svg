@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="-3.000 -3.000 56.000 36.000"
-     width="96" height="96">
-  <rect x="0.0000" y="0.0000" width="50.0000" height="30.0000" fill="white" stroke="#141414" stroke-width="2.00"/>
-  <ellipse cx="12.5000" cy="15.0000" rx="12.5000" ry="12.5000" stroke="#141414" stroke-width="2.00" fill="none"/>
-  <ellipse cx="37.5000" cy="15.0000" rx="12.5000" ry="12.5000" stroke="#141414" stroke-width="2.00" fill="none"/>
-</svg>

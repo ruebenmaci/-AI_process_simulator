@@ -4,12 +4,14 @@ import QtQuick.Controls 2.15
 Item {
     id: root
     property real canvasScale: 1.0
-    property real iconBaseWidth: unitType === "stream" ? 50 : 100
-    property real iconBaseHeight: unitType === "stream" ? 50 : 100
-    property real labelAreaHeight: unitType === "stream" ? Math.max(22, Math.round(24 * Math.min(canvasScale, 1.35))) : Math.max(18, Math.round(18 * Math.min(canvasScale, 1.35)))
-    property real labelPreferredWidth: unitType === "stream" ? Math.max(width, Math.round(50 * Math.max(6.0, tagLabel.font.pixelSize * 0.62))) : width
-    width: Math.max(24, Math.round(iconBaseWidth * canvasScale))
-    height: Math.max(24, Math.round(iconBaseHeight * canvasScale) + labelAreaHeight)
+
+    property int iconNodeBoxSize: 50
+    property int droppedIconSize: 42
+    property real labelAreaHeight: Math.max(18, Math.round(18 * Math.min(canvasScale, 1.35)))
+    property real labelPreferredWidth: Math.max(iconNodeBoxSize, Math.min(260, Math.ceil(tagLabel.contentWidth) + 12))
+
+    width: Math.max(iconNodeBoxSize, labelPreferredWidth)
+    height: iconNodeBoxSize + labelAreaHeight + 4
 
     property string unitId: ""
     property string name: ""
@@ -114,30 +116,32 @@ Item {
 
     Item {
         id: visualContainer
-        anchors.left: parent.left
-        anchors.right: parent.right
+        width: root.iconNodeBoxSize
+        height: root.iconNodeBoxSize
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: labelAreaHeight + 4
 
         Rectangle {
             anchors.fill: parent
             color: "transparent"
             border.width: selected ? 2 : 0
-            border.color: "#2f6fa3"
+            border.color: gAppTheme.nodeSelectionBorder
             radius: 4
         }
 
         Loader {
-            anchors.fill: parent
-            anchors.margins: selected ? 2 : 0
+            anchors.centerIn: parent
+            width: root.droppedIconSize
+            height: root.droppedIconSize
             sourceComponent: root.unitType === "stream" ? streamIconComponent : columnIconComponent
         }
 
         Component {
             id: columnIconComponent
             Image {
-                source: Qt.resolvedUrl("../../icons/svg/Equip_Palette/Distillation_Column.svg")
+                width: root.droppedIconSize
+                height: root.droppedIconSize
+                source: Qt.resolvedUrl(gAppTheme.iconPath("dist_column"))
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 mipmap: true
@@ -147,10 +151,10 @@ Item {
         Component {
             id: streamIconComponent
             Image {
-                source: Qt.resolvedUrl("../../icons/svg/Equip_Palette/Material_Stream.svg")
+                width: root.droppedIconSize
+                height: root.droppedIconSize
+                source: Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
                 fillMode: Image.PreserveAspectFit
-                width: root.unitType === "stream" ? Math.round(40 * root.canvasScale) : Math.round(64 * root.canvasScale)
-                height: root.unitType === "stream" ? Math.round(40 * root.canvasScale) : Math.round(64 * root.canvasScale)
                 smooth: true
                 mipmap: true
             }
@@ -165,13 +169,10 @@ Item {
         height: root.labelAreaHeight
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignTop
-        wrapMode: Text.WrapAnywhere
-        maximumLineCount: 2
-        elide: Text.ElideRight
+        wrapMode: Text.NoWrap
+        elide: Text.ElideNone
         font.pixelSize: Math.max(9, Math.round(11 * Math.min(root.canvasScale, 1.35)))
-        lineHeight: 1.0
-        lineHeightMode: Text.ProportionalHeight
-        color: "#31404a"
+        color: gAppTheme.nodeLabelColor
         text: (name && name !== "") ? name : unitId
     }
 

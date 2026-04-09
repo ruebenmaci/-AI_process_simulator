@@ -238,6 +238,11 @@ public:
    void clearRunOutputs_();
 
    Q_INVOKABLE void solve();
+   Q_INVOKABLE void restoreSolveScalars(double tColdK, double tHotK,
+      double qcCalcKW, double qrCalcKW,
+      double refluxFraction, double boilupFraction,
+      qint64 elapsedMs,
+      const QStringList& componentNames);
    Q_INVOKABLE void reset();
    Q_INVOKABLE void resetDrawSpecsToDefaults();
 

@@ -132,22 +132,38 @@ Pane {
         const port = (portName || "").toLowerCase()
 
         if (type === "column") {
+            const iconH = item.height - item.labelAreaHeight - 4
+            // visualContainer is horizontally centered in item; icon (42px) centered in 50px box
+            const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
+            const boxW    = item.iconNodeBoxSize
             if (port === "feed")
-                return { x: item.x + Math.max(6, item.width * 0.12), y: item.y + item.height * 0.50 }
+                return { x: boxLeft,                   y: item.y + iconH * 0.542 }
             if (port === "distillate")
-                return { x: item.x + item.width * 0.50, y: item.y + Math.max(4, item.height * 0.06) }
+                return { x: boxLeft + boxW * 0.917,    y: item.y + iconH * 0.146 }
             if (port === "bottoms")
-                return { x: item.x + item.width * 0.50, y: item.y + item.height * 0.86 }
+                return { x: boxLeft + boxW * 0.917,    y: item.y + iconH * 0.896 }
         }
 
-        return { x: c.x, y: c.y }
+        if (type === "stream") {
+            // visualContainer (50px) is horizontally centered; icon (42px) centered inside it
+            const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
+            const iconY   = item.y + item.iconNodeBoxSize / 2
+            if (port === "tip")   // outgoing: right edge of icon box
+                return { x: boxLeft + item.iconNodeBoxSize, y: iconY }
+            if (port === "tail")  // incoming: left edge of icon box
+                return { x: boxLeft,                        y: iconY }
+            return { x: item.x + item.width / 2, y: iconY }
+        }
     }
 
     function drawConnectionLine(ctx, x1, y1, x2, y2) {
+        // Orthogonal routing: horizontal leg then vertical leg (engineering P&ID style)
         const midX = (x1 + x2) / 2
         ctx.beginPath()
         ctx.moveTo(x1, y1)
-        ctx.bezierCurveTo(midX, y1, midX, y2, x2, y2)
+        ctx.lineTo(midX, y1)   // horizontal leg
+        ctx.lineTo(midX, y2)   // vertical leg
+        ctx.lineTo(x2, y2)     // final horizontal to target
         ctx.stroke()
     }
 
@@ -298,16 +314,18 @@ Pane {
     // Port positions on a column item (mirrors itemPortPoint logic)
     function columnPortPoint(colItem, port) {
         if (!colItem) return null
-        const iconH = colItem.height - colItem.labelAreaHeight - 4
+        const iconH   = colItem.height - colItem.labelAreaHeight - 4
+        const boxLeft = colItem.x + (colItem.width - colItem.iconNodeBoxSize) / 2
+        const boxW    = colItem.iconNodeBoxSize
         if (port === "feed")
-            return Qt.point(colItem.x,
-                            colItem.y + iconH * 0.50)
+            return Qt.point(boxLeft,
+                            colItem.y + iconH * 0.542)
         if (port === "distillate")
-            return Qt.point(colItem.x + colItem.width * 0.50,
-                            colItem.y)
+            return Qt.point(boxLeft + boxW * 0.917,
+                            colItem.y + iconH * 0.146)
         if (port === "bottoms")
-            return Qt.point(colItem.x + colItem.width * 0.50,
-                            colItem.y + iconH * 0.90)
+            return Qt.point(boxLeft + boxW * 0.917,
+                            colItem.y + iconH * 0.896)
         return null
     }
 
@@ -412,8 +430,8 @@ Pane {
     padding: 12
 
     background: Rectangle {
-        color: "#d8e0e5"
-        border.color: "#b9c5cc"
+        color: gAppTheme.canvasBg
+        border.color: gAppTheme.toolbarBorder
         radius: 10
     }
 
@@ -424,10 +442,10 @@ Pane {
             id: sheet
             anchors.fill: parent
             anchors.margins: 6
-            color: "white"
-            border.color: "#8f989f"
+            color: gAppTheme.sheetBg
+            border.color: gAppTheme.sheetBorder
             border.width: 1
-            radius: 2
+            radius: 0
 
             MouseArea {
                 id: mouseTracker
@@ -479,8 +497,50 @@ Pane {
                 width: sheet.width - 20
                 height: sheet.height - 20
                 color: "transparent"
-                border.color: "#7f8890"
-                border.width: 1
+                border.color: gAppTheme.titleBlockBorder
+                border.width: 2
+            }
+
+
+            // ── Engineering drawing dot grid ─────────────────────────────
+            Canvas {
+                id: gridCanvas
+                anchors.fill: drawingBorder
+                z: -1
+
+                onPaint: {
+                    const ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+
+                    const minorSpacing = 20
+                    const majorSpacing = 100
+
+                    // Major grid lines (light)
+                    ctx.strokeStyle = gAppTheme.gridLineColor
+                    ctx.lineWidth = 0.5
+                    ctx.setLineDash([])
+                    for (let x = majorSpacing; x < width; x += majorSpacing) {
+                        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke()
+                    }
+                    for (let y = majorSpacing; y < height; y += majorSpacing) {
+                        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke()
+                    }
+
+                    // Minor dots
+                    ctx.fillStyle = gAppTheme.gridDotColor
+                    for (let gx = minorSpacing; gx < width; gx += minorSpacing) {
+                        for (let gy = minorSpacing; gy < height; gy += minorSpacing) {
+                            if (gx % majorSpacing === 0 && gy % majorSpacing === 0) continue
+                            ctx.beginPath()
+                            ctx.arc(gx, gy, 0.9, 0, Math.PI * 2)
+                            ctx.fill()
+                        }
+                    }
+                }
+
+                Component.onCompleted: requestPaint()
+                onWidthChanged: requestPaint()
+                onHeightChanged: requestPaint()
             }
 
             Canvas {
@@ -497,8 +557,8 @@ Pane {
                         return
 
                     const connections = root.flowsheet.materialConnections
-                    ctx.lineWidth = 2
-                    ctx.strokeStyle = "#3e78a8"
+                    ctx.lineWidth = 1.5
+                    ctx.strokeStyle = gAppTheme.materialStreamColor
 
                     for (let i = 0; i < connections.length; ++i) {
                         const c = connections[i]
@@ -511,11 +571,13 @@ Pane {
                         let p1 = null
                         let p2 = null
                         if (targetUnitId !== "") {
-                            p1 = root.itemPortPoint(streamId, "")
+                            // Stream feeds into a column: line starts at stream arrow tip
+                            p1 = root.itemPortPoint(streamId, "tip")
                             p2 = root.itemPortPoint(targetUnitId, targetPort)
                         } else if (sourceUnitId !== "") {
+                            // Column feeds into stream: line ends at stream tail (left end)
                             p1 = root.itemPortPoint(sourceUnitId, sourcePort)
-                            p2 = root.itemPortPoint(streamId, "")
+                            p2 = root.itemPortPoint(streamId, "tail")
                         }
 
                         if (!p1 || !p2)
@@ -530,7 +592,7 @@ Pane {
                             ctx.beginPath()
                             ctx.setLineDash([5, 5])
                             ctx.arc(pending.x - drawingBorder.x, pending.y - drawingBorder.y, 12, 0, Math.PI * 2)
-                            ctx.strokeStyle = "#cc7a00"
+                            ctx.strokeStyle = gAppTheme.energyStreamColor
                             ctx.stroke()
                             ctx.setLineDash([])
                         }
@@ -676,74 +738,153 @@ Pane {
                 function onSelectedUnitChanged() { connectionOverlay.requestPaint() }
             }
 
+            // ── Coordinate readout — engineering drawing style ────────
             Rectangle {
                 id: mouseDebugBox
                 anchors.left: drawingBorder.left
                 anchors.bottom: drawingBorder.bottom
-                anchors.margins: 6
-                width: 150
-                height: 30
-                color: "white"
-                border.color: "#7f8890"
+                width: 104
+                height: 22
+                color: gAppTheme.titleBlockBg
+                border.color: gAppTheme.titleBlockBorder
                 border.width: 1
 
-                Label {
-                    anchors.centerIn: parent
-                    font.pixelSize: 12
-                    color: "#31404a"
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 6
+                    font.family: "Consolas"
+                    font.pixelSize: 10
+                    color: gAppTheme.titleBlockText
                     text: root.mouseSheetX >= 0
-                          ? "Mouse: " + Math.round(root.mouseSheetX) + ", " + Math.round(root.mouseSheetY)
-                          : "Mouse: -, -"
+                          ? "X: " + Math.round(root.mouseSheetX) + "   Y: " + Math.round(root.mouseSheetY)
+                          : "X: —   Y: —"
                 }
             }
 
+            // ── Engineering drawing title block ───────────────────────
             Rectangle {
                 id: titleBlock
                 anchors.right: drawingBorder.right
                 anchors.bottom: drawingBorder.bottom
-                width: 220
-                height: 82
-                color: "white"
-                border.color: "#7f8890"
+                width: 280
+                height: 100
+                color: gAppTheme.sheetBg
+                border.color: gAppTheme.titleBlockBorder
                 border.width: 1
+                clip: true
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    spacing: 2
+                readonly property int lblW: 72
+                readonly property int rowH: 20
+                readonly property string monoFont: "Consolas"
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Label {
-                            text: "Title"
-                            font.bold: true
-                            color: "#2f3b44"
-                            Layout.preferredWidth: 56
+                // Vertical divider label | value
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    anchors.leftMargin: titleBlock.lblW
+                    width: 1; color: gAppTheme.titleBlockBorder
+                }
+
+                Column {
+                    id: tbRows
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+
+                    // ── TITLE row ──
+                    Rectangle {
+                        width: parent.width; height: titleBlock.rowH; color: "transparent"
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#2a2a2a"; opacity: 0.45 }
+                        Text {
+                            x: 4; anchors.verticalCenter: parent.verticalCenter; width: titleBlock.lblW - 6
+                            text: "TITLE"; font.family: titleBlock.monoFont; font.pixelSize: 9; font.bold: true; color: gAppTheme.titleBlockLabel
                         }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "transparent" }
+                        TextInput {
+                            anchors.left: parent.left; anchors.leftMargin: titleBlock.lblW + 4
+                            anchors.right: parent.right; anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.flowsheet ? root.flowsheet.drawingTitle : ""
+                            font.family: titleBlock.monoFont; font.pixelSize: 9; color: gAppTheme.titleBlockText
+                            clip: true; selectByMouse: true
+                            onEditingFinished: if (root.flowsheet) root.flowsheet.drawingTitle = text
+                        }
                     }
-                    Rectangle { Layout.fillWidth: true; height: 1; color: "#b7bfc5" }
 
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Label { text: "Date"; font.bold: true; color: "#51616c"; Layout.preferredWidth: 56 }
-                        Label { text: Qt.formatDate(new Date(), "yyyy-MM-dd"); color: "#31404a"; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+                    // ── DRAWING NUMBER row ──
+                    Rectangle {
+                        width: parent.width; height: titleBlock.rowH; color: "transparent"
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#2a2a2a"; opacity: 0.45 }
+                        Text {
+                            x: 4; anchors.verticalCenter: parent.verticalCenter; width: titleBlock.lblW - 6
+                            text: "DRAWING"; font.family: titleBlock.monoFont; font.pixelSize: 9; font.bold: true; color: gAppTheme.titleBlockLabel
+                        }
+                        TextInput {
+                            anchors.left: parent.left; anchors.leftMargin: titleBlock.lblW + 4
+                            anchors.right: parent.right; anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.flowsheet ? root.flowsheet.drawingNumber : "PFD-001"
+                            font.family: titleBlock.monoFont; font.pixelSize: 9; color: gAppTheme.titleBlockText
+                            clip: true; selectByMouse: true
+                            onEditingFinished: if (root.flowsheet) root.flowsheet.drawingNumber = text
+                        }
                     }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Label { text: "Rev"; font.bold: true; color: "#51616c"; Layout.preferredWidth: 56 }
-                        Label { text: "0"; color: "#31404a"; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+
+                    // ── DATE row (read-only — set by stamp) ──
+                    Rectangle {
+                        width: parent.width; height: titleBlock.rowH; color: "transparent"
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#2a2a2a"; opacity: 0.45 }
+                        Text {
+                            x: 4; anchors.verticalCenter: parent.verticalCenter; width: titleBlock.lblW - 6
+                            text: "DATE"; font.family: titleBlock.monoFont; font.pixelSize: 9; font.bold: true; color: gAppTheme.titleBlockLabel
+                        }
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: titleBlock.lblW + 4
+                            anchors.right: parent.right; anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.flowsheet ? (root.flowsheet.revisionDate || "—") : "—"
+                            font.family: titleBlock.monoFont; font.pixelSize: 9; color: gAppTheme.titleBlockText
+                        }
                     }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Label { text: "Drawn By"; font.bold: true; color: "#51616c"; Layout.preferredWidth: 56 }
-                        Label { text: ""; color: "#31404a"; Layout.fillWidth: true; horizontalAlignment: Text.AlignRight }
+
+                    // ── REV row (read-only — set by stamp) ──
+                    Rectangle {
+                        width: parent.width; height: titleBlock.rowH; color: "transparent"
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#2a2a2a"; opacity: 0.45 }
+                        Text {
+                            x: 4; anchors.verticalCenter: parent.verticalCenter; width: titleBlock.lblW - 6
+                            text: "REV"; font.family: titleBlock.monoFont; font.pixelSize: 9; font.bold: true; color: gAppTheme.titleBlockLabel
+                        }
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: titleBlock.lblW + 4
+                            anchors.right: parent.right; anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.flowsheet ? String(root.flowsheet.revision) : "0"
+                            font.family: titleBlock.monoFont; font.pixelSize: 9; color: gAppTheme.titleBlockText
+                        }
+                    }
+
+                    // ── DRN BY row ──
+                    Rectangle {
+                        width: parent.width; height: titleBlock.rowH; color: "transparent"
+                        Text {
+                            x: 4; anchors.verticalCenter: parent.verticalCenter; width: titleBlock.lblW - 6
+                            text: "DRN BY"; font.family: titleBlock.monoFont; font.pixelSize: 9; font.bold: true; color: gAppTheme.titleBlockLabel
+                        }
+                        TextInput {
+                            anchors.left: parent.left; anchors.leftMargin: titleBlock.lblW + 4
+                            anchors.right: parent.right; anchors.rightMargin: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.flowsheet ? root.flowsheet.drawnBy : ""
+                            font.family: titleBlock.monoFont; font.pixelSize: 9; color: gAppTheme.titleBlockText
+                            clip: true; selectByMouse: true
+                            onEditingFinished: if (root.flowsheet) root.flowsheet.drawnBy = text
+                        }
                     }
                 }
+
             }
 
             // ── Placement ghost icon ──────────────────────────────────────
@@ -753,8 +894,8 @@ Pane {
                 id: placementGhost
                 visible: root.inPlacementMode && root.mouseSheetX >= 0
                 z: 20
-                width:  root.placementType === "column" ? 100 : 50
-                height: root.placementType === "column" ? 100 : 50
+                width: 50
+                height: 50
                 x: root.mouseSheetX - width  / 2
                 y: root.mouseSheetY - height / 2
 
@@ -764,7 +905,7 @@ Pane {
                     anchors.fill: parent
                     radius: 4
                     color:       "transparent"
-                    border.color: "#2f6fa3"
+                    border.color: gAppTheme.nodeSelectionBorder
                     border.width: 2
                 }
 
@@ -772,8 +913,8 @@ Pane {
                     anchors.fill: parent
                     anchors.margins: 3
                     source: root.placementType === "column"
-                            ? Qt.resolvedUrl("../../icons/svg/Equip_Palette/Distillation_Column.svg")
-                            : Qt.resolvedUrl("../../icons/svg/Equip_Palette/Material_Stream.svg")
+                            ? Qt.resolvedUrl(gAppTheme.iconPath("column_full"))
+                            : Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
                     fillMode: Image.PreserveAspectFit
                     smooth: true
                     mipmap: true

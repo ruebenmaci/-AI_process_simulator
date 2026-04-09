@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- column body -->
+  <rect x="17" y="10" width="14" height="30" rx="3" fill="#2a3548" stroke="#b0c4de" stroke-width="2"/>
+  <!-- tray lines -->
+  <line x1="17" y1="17" x2="31" y2="17" stroke="#6e7a90" stroke-width="1"/>
+  <line x1="17" y1="23" x2="31" y2="23" stroke="#6e7a90" stroke-width="1"/>
+  <line x1="17" y1="29" x2="31" y2="29" stroke="#6e7a90" stroke-width="1"/>
+  <line x1="17" y1="35" x2="31" y2="35" stroke="#6e7a90" stroke-width="1"/>
+  <!-- condenser at top (small box) -->
+  <rect x="19" y="4" width="10" height="6" rx="2" fill="#1e2d40" stroke="#5aafe8" stroke-width="1.5"/>
+  <text x="24" y="9" text-anchor="middle" font-size="5" fill="#5aafe8" font-family="monospace">C</text>
+  <line x1="24" y1="10" x2="24" y2="10" stroke="#5aafe8" stroke-width="1"/>
+  <!-- reboiler at bottom (small box) -->
+  <rect x="19" y="40" width="10" height="6" rx="2" fill="#1e2d40" stroke="#e8a020" stroke-width="1.5"/>
+  <text x="24" y="45" text-anchor="middle" font-size="5" fill="#e8a020" font-family="monospace">R</text>
+  <!-- overhead product -->
+  <line x1="24" y1="4" x2="24" y2="2" stroke="#3a8fd1" stroke-width="1.5"/>
+  <polygon points="24,2 22,5 26,5" fill="#3a8fd1"/>
+  <line x1="29" y1="7" x2="44" y2="7" stroke="#3a8fd1" stroke-width="1.5"/>
+  <polygon points="44,7 40,5.5 40,8.5" fill="#3a8fd1"/>
+  <!-- bottoms -->
+  <line x1="24" y1="46" x2="24" y2="48" stroke="#3a8fd1" stroke-width="1.5"/>
+  <line x1="29" y1="43" x2="44" y2="43" stroke="#3a8fd1" stroke-width="1.5"/>
+  <polygon points="44,43 40,41.5 40,44.5" fill="#3a8fd1"/>
+  <!-- feed -->
+  <line x1="3" y1="26" x2="17" y2="26" stroke="#3a8fd1" stroke-width="1.5"/>
+  <polygon points="17,26 14,24.5 14,27.5" fill="#3a8fd1"/>
+</svg>

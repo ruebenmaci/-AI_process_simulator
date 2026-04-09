@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="hvg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b0d4f0"/>
+      <stop offset="100%" stop-color="#2060a0"/>
+    </linearGradient>
+  </defs>
+  <!-- vessel -->
+  <rect x="8" y="10" width="32" height="28" rx="5" fill="url(#hvg)" stroke="#154080" stroke-width="1.5"/>
+  <rect x="10" y="11" width="28" height="7" rx="3" fill="white" opacity="0.2"/>
+  <!-- flame -->
+  <path d="M18,34 Q16,26 21,22 Q19,28 24,25 Q22,31 26,28 Q24,34 18,34Z" fill="#ff8c00"/>
+  <path d="M23,34 Q22,28 26,24 Q24,30 28,27 Q26,34 23,34Z" fill="#ff3300" opacity="0.9"/>
+  <path d="M19,34 Q18,29 21,27" stroke="#ffd060" stroke-width="1" fill="none"/>
+  <!-- inlet/outlet stubs -->
+  <rect x="2" y="22" width="8" height="4" rx="2" fill="#5090c0" stroke="#154080" stroke-width="1"/>
+  <rect x="38" y="22" width="8" height="4" rx="2" fill="#5090c0" stroke="#154080" stroke-width="1"/>
+  <!-- energy stub (bottom) -->
+  <rect x="21" y="38" width="6" height="6" rx="2" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+</svg>

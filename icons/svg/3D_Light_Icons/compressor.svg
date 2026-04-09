@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="cmpg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#c0c8d8"/>
+      <stop offset="50%" stop-color="#6878a0"/>
+      <stop offset="100%" stop-color="#303858"/>
+    </linearGradient>
+  </defs>
+  <!-- HYSYS-style: forward-pointing triangle with rounded back -->
+  <path d="M6,38 Q6,10 6,10 L38,24 Z" fill="url(#cmpg)" stroke="#303858" stroke-width="1.8" stroke-linejoin="round"/>
+  <!-- sheen on top face -->
+  <path d="M6,10 L38,24 L22,17 Z" fill="white" opacity="0.15"/>
+  <!-- spin lines inside -->
+  <line x1="12" y1="24" x2="24" y2="24" stroke="white" stroke-width="1.2" opacity="0.5"/>
+  <line x1="14" y1="18" x2="22" y2="24" stroke="white" stroke-width="1.2" opacity="0.5"/>
+  <line x1="14" y1="30" x2="22" y2="24" stroke="white" stroke-width="1.2" opacity="0.5"/>
+  <!-- inlet stub -->
+  <rect x="2" y="21" width="6" height="6" rx="3" fill="#7080a0" stroke="#303858" stroke-width="1"/>
+  <!-- outlet stub -->
+  <rect x="38" y="21" width="8" height="6" rx="3" fill="#7080a0" stroke="#303858" stroke-width="1"/>
+  <!-- shaft/energy -->
+  <rect x="19" y="40" width="6" height="6" rx="2" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+</svg>

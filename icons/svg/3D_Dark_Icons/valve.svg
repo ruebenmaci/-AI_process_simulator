@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="vg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a0b8d0"/>
+      <stop offset="100%" stop-color="#405870"/>
+    </linearGradient>
+  </defs>
+  <!-- left triangle -->
+  <polygon points="4,15 4,33 22,24" fill="url(#vg)" stroke="#304858" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- right triangle -->
+  <polygon points="44,15 44,33 26,24" fill="url(#vg)" stroke="#304858" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- highlights -->
+  <polygon points="4,15 22,24 13,15" fill="white" opacity="0.2"/>
+  <polygon points="44,15 26,24 35,15" fill="white" opacity="0.2"/>
+  <!-- stem -->
+  <rect x="22" y="14" width="4" height="10" fill="#607888" stroke="#304858" stroke-width="1"/>
+  <!-- handwheel -->
+  <ellipse cx="24" cy="12" rx="7" ry="3" fill="#6090b0" stroke="#304858" stroke-width="1.5"/>
+  <line x1="17" y1="12" x2="31" y2="12" stroke="#304858" stroke-width="1.2"/>
+  <line x1="24" y1="9" x2="24" y2="15" stroke="#304858" stroke-width="1.2"/>
+</svg>

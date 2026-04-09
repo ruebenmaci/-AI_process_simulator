@@ -1,5 +1,7 @@
 #include "flowsheet/state/FlowsheetState.h"
 #include "unitops/column/state/ColumnUnitState.h"
+#include "unitops/column/models/TrayModel.h"
+#include "unitops/column/models/MaterialBalanceModel.h"
 #include "streams/state/StreamUnitState.h"
 #include "fluid/FluidPackageManager.h"
 
@@ -7,8 +9,14 @@
 #include <QVariantMap>
 #include <QRegularExpression>
 #include <QDate>
+#include <QDateTime>
 #include <QStringList>
 #include <QSet>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFileInfo>
 
 namespace {
    double clampCoord(double v, double minV, double maxV)
@@ -22,6 +30,8 @@ namespace {
 FlowsheetState::FlowsheetState(QObject* parent)
    : QObject(parent)
 {
+   drawingTitle_ = QStringLiteral("AI Process sim - 001");
+   revisionDate_ = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
    refreshUnitModel_();
 }
 
@@ -52,7 +62,7 @@ QString FlowsheetState::makeUniqueUnitName_(const QString& proposedName, const Q
 {
    QString base = sanitizeUnitName(proposedName);
    if (base.isEmpty())
-      base = type == QStringLiteral("column") ? QStringLiteral("column") : QStringLiteral("stream");
+      base = type == QStringLiteral("column") ? QStringLiteral("dist_column") : QStringLiteral("stream");
 
    auto exists = [&](const QString& candidate) {
       for (const auto& unit : units_) {
@@ -143,10 +153,22 @@ void FlowsheetState::setDrawnBy(const QString& v)
 void FlowsheetState::stampRevision()
 {
    ++revision_;
-   revisionDate_ = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-   isDirty_ = false;
+   revisionDate_ = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
    emit drawingMetaChanged();
+}
+
+void FlowsheetState::clearDirty_()
+{
+   if (!isDirty_) return;
+   isDirty_ = false;
    emit isDirtyChanged();
+}
+
+void FlowsheetState::setCurrentFilePath_(const QString& path)
+{
+   if (currentFilePath_ == path) return;
+   currentFilePath_ = path;
+   emit currentFilePathChanged();
 }
 
 namespace {
@@ -279,7 +301,7 @@ QString FlowsheetState::addColumnInternal(double x, double y)
    UnitNode node;
    node.unitId = id;
    node.type = "column";
-   node.displayName = makeUniqueUnitName_(id, QStringLiteral("column"));
+   node.displayName = makeUniqueUnitName_(nextAvailableUnitId_(QStringLiteral("dist_column")), QStringLiteral("column"));
    node.x = clampCoord(x, 42.0, 980.0);
    node.y = clampCoord(y, 90.0, 620.0);
 
@@ -794,4 +816,421 @@ void FlowsheetState::refreshStreamsForPackage(const QString& packageId)
 
       stream->reloadFluidDefinition();
    }
+}
+// ── Persistence ───────────────────────────────────────────────────────────────
+
+void FlowsheetState::newFlowsheet()
+{
+   clear();
+   drawingTitle_ = QStringLiteral("AI Process sim - 001");
+   drawingNumber_ = QStringLiteral("PFD-001");
+   drawnBy_.clear();
+   revision_ = 0;
+   revisionDate_ = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
+   setCurrentFilePath_(QString{});
+   clearDirty_();
+   emit drawingMetaChanged();
+}
+
+bool FlowsheetState::saveToFile(const QString& filePath)
+{
+   // ── Drawing metadata ──────────────────────────────────────────────────
+   QJsonObject root;
+   root[QStringLiteral("fileVersion")] = 1;
+   root[QStringLiteral("drawingTitle")] = drawingTitle_;
+   root[QStringLiteral("drawingNumber")] = drawingNumber_;
+   root[QStringLiteral("drawnBy")] = drawnBy_;
+   root[QStringLiteral("revision")] = revision_;
+   // stamp date on save
+   const QString today = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
+   revisionDate_ = today;
+   root[QStringLiteral("revisionDate")] = revisionDate_;
+
+   // ── Units (nodes + state) ─────────────────────────────────────────────
+   QJsonArray units;
+   for (const auto& node : nodes_) {
+      QJsonObject u;
+      u[QStringLiteral("id")] = node.unitId;
+      u[QStringLiteral("type")] = node.type;
+      u[QStringLiteral("name")] = node.displayName;
+      u[QStringLiteral("x")] = node.x;
+      u[QStringLiteral("y")] = node.y;
+
+      // per-type state
+      if (node.type == QStringLiteral("stream")) {
+         auto* su = dynamic_cast<StreamUnitState*>(findUnitById(node.unitId));
+         auto* ms = su ? su->streamState() : nullptr;
+         if (ms) {
+            QJsonObject s;
+            s[QStringLiteral("fluidPackageId")] = ms->selectedFluidPackageId();
+            s[QStringLiteral("flowRateKgph")] = ms->flowRateKgph();
+            s[QStringLiteral("temperatureK")] = ms->temperatureK();
+            s[QStringLiteral("pressurePa")] = ms->pressurePa();
+            s[QStringLiteral("flowSpecMode")] = static_cast<int>(ms->flowSpecMode());
+            s[QStringLiteral("thermoSpecMode")] = static_cast<int>(ms->thermoSpecMode());
+            // composition (mass fractions)
+            if (ms->hasCustomComposition()) {
+               QJsonArray comp;
+               for (double v : ms->compositionStd()) comp.append(v);
+               s[QStringLiteral("customComposition")] = comp;
+            }
+            u[QStringLiteral("streamState")] = s;
+         }
+      }
+      else if (node.type == QStringLiteral("column")) {
+         auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(node.unitId));
+         if (col) {
+            QJsonObject c;
+            c[QStringLiteral("trays")] = col->trays();
+            c[QStringLiteral("feedTray")] = col->feedTray();
+            c[QStringLiteral("feedRateKgph")] = col->feedRateKgph();
+            c[QStringLiteral("feedTempK")] = col->feedTempK();
+            c[QStringLiteral("topPressurePa")] = col->topPressurePa();
+            c[QStringLiteral("dpPerTrayPa")] = col->dpPerTrayPa();
+            c[QStringLiteral("condenserType")] = col->condenserType();
+            c[QStringLiteral("condenserSpec")] = col->condenserSpec();
+            c[QStringLiteral("reboilerType")] = col->reboilerType();
+            c[QStringLiteral("reboilerSpec")] = col->reboilerSpec();
+            c[QStringLiteral("refluxRatio")] = col->refluxRatio();
+            c[QStringLiteral("boilupRatio")] = col->boilupRatio();
+            c[QStringLiteral("qcKW")] = col->qcKW();
+            c[QStringLiteral("qrKW")] = col->qrKW();
+            c[QStringLiteral("topTsetK")] = col->topTsetK();
+            c[QStringLiteral("bottomTsetK")] = col->bottomTsetK();
+            c[QStringLiteral("eosMode")] = col->eosMode();
+            c[QStringLiteral("eosManual")] = col->eosManual();
+            c[QStringLiteral("etaVTop")] = col->etaVTop();
+            c[QStringLiteral("etaVMid")] = col->etaVMid();
+            c[QStringLiteral("etaVBot")] = col->etaVBot();
+            c[QStringLiteral("enableEtaL")] = col->enableEtaL();
+            // drawSpecs
+            QJsonArray draws;
+            for (const QVariant& dv : col->drawSpecs()) {
+               const QVariantMap dm = dv.toMap();
+               QJsonObject d;
+               d[QStringLiteral("name")] = dm.value(QStringLiteral("name")).toString();
+               d[QStringLiteral("tray")] = dm.value(QStringLiteral("tray")).toInt();
+               d[QStringLiteral("phase")] = dm.value(QStringLiteral("phase")).toString();
+               d[QStringLiteral("basis")] = dm.value(QStringLiteral("basis")).toString();
+               d[QStringLiteral("value")] = dm.value(QStringLiteral("value")).toDouble();
+               draws.append(d);
+            }
+            c[QStringLiteral("drawSpecs")] = draws;
+
+            // ── Solver results ─────────────────────────────────────────────
+            if (col->solved()) {
+               QJsonObject sr;
+               sr[QStringLiteral("solved")] = true;
+               sr[QStringLiteral("tColdK")] = col->tColdK();
+               sr[QStringLiteral("tHotK")] = col->tHotK();
+               sr[QStringLiteral("qcCalcKW")] = col->qcCalcKW();
+               sr[QStringLiteral("qrCalcKW")] = col->qrCalcKW();
+               sr[QStringLiteral("refluxFraction")] = col->refluxFraction();
+               sr[QStringLiteral("boilupFraction")] = col->boilupFraction();
+               sr[QStringLiteral("solveElapsedMs")] = col->solveElapsedMs();
+
+               // Component names
+               QJsonArray cnames;
+               for (const QString& n : col->componentNames()) cnames.append(n);
+               sr[QStringLiteral("componentNames")] = cnames;
+
+               // Tray table
+               TrayModel* tm = col->trayModel();
+               const int nTrays = tm ? tm->rowCountQml() : 0;
+               QJsonArray trays;
+               for (int ti = 0; ti < nTrays; ++ti) {
+                  const QVariantMap row = tm->get(ti);
+                  QJsonObject tr;
+                  tr[QStringLiteral("trayNumber")] = row.value(QStringLiteral("trayNumber")).toInt();
+                  tr[QStringLiteral("tempK")] = row.value(QStringLiteral("tempK")).toDouble();
+                  tr[QStringLiteral("vaporFrac")] = row.value(QStringLiteral("vaporFrac")).toDouble();
+                  tr[QStringLiteral("vaporFlow")] = row.value(QStringLiteral("vaporFlow")).toDouble();
+                  tr[QStringLiteral("liquidFlow")] = row.value(QStringLiteral("liquidFlow")).toDouble();
+                  tr[QStringLiteral("hasDraw")] = row.value(QStringLiteral("hasDraw")).toBool();
+                  tr[QStringLiteral("drawLabel")] = row.value(QStringLiteral("drawLabel")).toString();
+                  // x/y compositions
+                  QJsonArray xArr, yArr;
+                  const QVariantList xl = row.value(QStringLiteral("xLiq")).toList();
+                  const QVariantList yl = row.value(QStringLiteral("yVap")).toList();
+                  for (const QVariant& v : xl) xArr.append(v.toDouble());
+                  for (const QVariant& v : yl) yArr.append(v.toDouble());
+                  tr[QStringLiteral("xLiq")] = xArr;
+                  tr[QStringLiteral("yVap")] = yArr;
+                  trays.append(tr);
+               }
+               sr[QStringLiteral("trays")] = trays;
+
+               // Material balance
+               MaterialBalanceModel* mb = col->materialBalanceModel();
+               QJsonObject mbal;
+               mbal[QStringLiteral("feedKgph")] = mb->feedKgph();
+               mbal[QStringLiteral("totalProductsKgph")] = mb->totalProductsKgph();
+               mbal[QStringLiteral("balanceErrKgph")] = mb->balanceErrKgph();
+               QJsonArray lines;
+               for (int li = 0; li < mb->rowCount(); ++li) {
+                  const QModelIndex idx = mb->index(li, 0);
+                  QJsonObject line;
+                  line[QStringLiteral("name")] = mb->data(idx, MaterialBalanceModel::NameRole).toString();
+                  line[QStringLiteral("kgph")] = mb->data(idx, MaterialBalanceModel::KgphRole).toDouble();
+                  line[QStringLiteral("frac")] = mb->data(idx, MaterialBalanceModel::FracRole).toDouble();
+                  lines.append(line);
+               }
+               mbal[QStringLiteral("lines")] = lines;
+               sr[QStringLiteral("materialBalance")] = mbal;
+
+               c[QStringLiteral("solverResults")] = sr;
+            }
+
+            u[QStringLiteral("columnState")] = c;
+         }
+      }
+      units.append(u);
+   }
+   root[QStringLiteral("units")] = units;
+
+   // ── Connections ───────────────────────────────────────────────────────
+   QJsonArray conns;
+   for (const auto& mc : materialConnections_) {
+      QJsonObject co;
+      co[QStringLiteral("streamUnitId")] = mc.streamUnitId;
+      co[QStringLiteral("sourceUnitId")] = mc.sourceUnitId;
+      co[QStringLiteral("sourcePort")] = mc.sourcePort;
+      co[QStringLiteral("targetUnitId")] = mc.targetUnitId;
+      co[QStringLiteral("targetPort")] = mc.targetPort;
+      conns.append(co);
+   }
+   root[QStringLiteral("connections")] = conns;
+
+   // ── Write file ────────────────────────────────────────────────────────
+   QFile f(filePath);
+   if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      lastSaveError_ = QStringLiteral("Cannot open file for writing: ") + filePath;
+      return false;
+   }
+   f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+   f.close();
+
+   setCurrentFilePath_(filePath);
+   clearDirty_();
+   emit drawingMetaChanged();   // update DATE in title block
+   lastSaveError_.clear();
+   return true;
+}
+
+bool FlowsheetState::loadFromFile(const QString& filePath)
+{
+   QFile f(filePath);
+   if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      lastSaveError_ = QStringLiteral("Cannot open file: ") + filePath;
+      return false;
+   }
+   const QByteArray data = f.readAll();
+   f.close();
+
+   QJsonParseError err;
+   const QJsonDocument doc = QJsonDocument::fromJson(data, &err);
+   if (doc.isNull()) {
+      lastSaveError_ = QStringLiteral("JSON parse error: ") + err.errorString();
+      return false;
+   }
+
+   const QJsonObject root = doc.object();
+
+   // Clear existing flowsheet first
+   clear();
+
+   // ── Drawing metadata ──────────────────────────────────────────────────
+   drawingTitle_ = root[QStringLiteral("drawingTitle")].toString();
+   drawingNumber_ = root[QStringLiteral("drawingNumber")].toString(QStringLiteral("PFD-001"));
+   drawnBy_ = root[QStringLiteral("drawnBy")].toString();
+   revision_ = root[QStringLiteral("revision")].toInt(0);
+   revisionDate_ = root[QStringLiteral("revisionDate")].toString();
+   emit drawingMetaChanged();
+
+   // ── Units ─────────────────────────────────────────────────────────────
+   // Pass 1: create all units at saved positions with saved names
+   const QJsonArray units = root[QStringLiteral("units")].toArray();
+   for (const QJsonValue& uv : units) {
+      const QJsonObject u = uv.toObject();
+      const QString type = u[QStringLiteral("type")].toString();
+      const QString id = u[QStringLiteral("id")].toString();
+      const QString name = u[QStringLiteral("name")].toString();
+      const double  x = u[QStringLiteral("x")].toDouble(100.0);
+      const double  y = u[QStringLiteral("y")].toDouble(100.0);
+
+      if (type == QStringLiteral("stream")) {
+         addStreamInternal(x, y);
+      }
+      else if (type == QStringLiteral("column")) {
+         addColumnInternal(x, y);
+      }
+      else {
+         continue;
+      }
+
+      // Rename the newly created unit to match saved name
+      if (!nodes_.isEmpty()) {
+         const QString newId = nodes_.back().unitId;
+         setUnitName(newId, name);
+
+         // Restore per-type state
+         if (type == QStringLiteral("stream")) {
+            const QJsonObject ss = u[QStringLiteral("streamState")].toObject();
+            if (!ss.isEmpty()) {
+               auto* su = dynamic_cast<StreamUnitState*>(findUnitById(newId));
+               auto* ms = su ? su->streamState() : nullptr;
+               if (ms) {
+                  const QString pkgId = ss[QStringLiteral("fluidPackageId")].toString();
+                  if (!pkgId.isEmpty()) ms->setSelectedFluidPackageId(pkgId);
+                  ms->setFlowRateKgph(ss[QStringLiteral("flowRateKgph")].toDouble());
+                  ms->setTemperatureK(ss[QStringLiteral("temperatureK")].toDouble());
+                  ms->setPressurePa(ss[QStringLiteral("pressurePa")].toDouble());
+                  // restore custom composition if present
+                  const QJsonArray compArr = ss[QStringLiteral("customComposition")].toArray();
+                  if (!compArr.isEmpty()) {
+                     std::vector<double> comp;
+                     comp.reserve(compArr.size());
+                     for (const QJsonValue& cv : compArr) comp.push_back(cv.toDouble());
+                     ms->setCompositionStd(comp);
+                  }
+               }
+            }
+         }
+         else if (type == QStringLiteral("column")) {
+            const QJsonObject cs = u[QStringLiteral("columnState")].toObject();
+            if (!cs.isEmpty()) {
+               auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(newId));
+               if (col) {
+                  col->setTrays(cs[QStringLiteral("trays")].toInt(20));
+                  col->setFeedTray(cs[QStringLiteral("feedTray")].toInt(10));
+                  col->setFeedRateKgph(cs[QStringLiteral("feedRateKgph")].toDouble());
+                  col->setFeedTempK(cs[QStringLiteral("feedTempK")].toDouble());
+                  col->setTopPressurePa(cs[QStringLiteral("topPressurePa")].toDouble());
+                  col->setDpPerTrayPa(cs[QStringLiteral("dpPerTrayPa")].toDouble());
+                  col->setCondenserType(cs[QStringLiteral("condenserType")].toString());
+                  col->setCondenserSpec(cs[QStringLiteral("condenserSpec")].toString());
+                  col->setReboilerType(cs[QStringLiteral("reboilerType")].toString());
+                  col->setReboilerSpec(cs[QStringLiteral("reboilerSpec")].toString());
+                  col->setRefluxRatio(cs[QStringLiteral("refluxRatio")].toDouble());
+                  col->setBoilupRatio(cs[QStringLiteral("boilupRatio")].toDouble());
+                  col->setQcKW(cs[QStringLiteral("qcKW")].toDouble());
+                  col->setQrKW(cs[QStringLiteral("qrKW")].toDouble());
+                  col->setTopTsetK(cs[QStringLiteral("topTsetK")].toDouble());
+                  col->setBottomTsetK(cs[QStringLiteral("bottomTsetK")].toDouble());
+                  col->setEosMode(cs[QStringLiteral("eosMode")].toString());
+                  col->setEosManual(cs[QStringLiteral("eosManual")].toString());
+                  col->setEtaVTop(cs[QStringLiteral("etaVTop")].toDouble(1.0));
+                  col->setEtaVMid(cs[QStringLiteral("etaVMid")].toDouble(1.0));
+                  col->setEtaVBot(cs[QStringLiteral("etaVBot")].toDouble(1.0));
+                  col->setEnableEtaL(cs[QStringLiteral("enableEtaL")].toBool(false));
+                  // drawSpecs
+                  const QJsonArray draws = cs[QStringLiteral("drawSpecs")].toArray();
+                  QVariantList dsList;
+                  for (const QJsonValue& dv : draws) {
+                     const QJsonObject d = dv.toObject();
+                     QVariantMap dm;
+                     dm[QStringLiteral("name")] = d[QStringLiteral("name")].toString();
+                     dm[QStringLiteral("tray")] = d[QStringLiteral("tray")].toInt();
+                     dm[QStringLiteral("phase")] = d[QStringLiteral("phase")].toString();
+                     dm[QStringLiteral("basis")] = d[QStringLiteral("basis")].toString();
+                     dm[QStringLiteral("value")] = d[QStringLiteral("value")].toDouble();
+                     dsList.append(dm);
+                  }
+                  col->setDrawSpecs(dsList);
+
+                  // ── Restore solver results ──────────────────────────────
+                  const QJsonObject sr = cs[QStringLiteral("solverResults")].toObject();
+                  if (!sr.isEmpty() && sr[QStringLiteral("solved")].toBool()) {
+                     // Restore tray table
+                     const QJsonArray trays = sr[QStringLiteral("trays")].toArray();
+                     TrayModel* tm = col->trayModel();
+                     if (tm && !trays.isEmpty()) {
+                        tm->resetToDefaults(trays.size());
+                        // Set component names first
+                        const QJsonArray cnames = sr[QStringLiteral("componentNames")].toArray();
+                        QStringList cnameList;
+                        for (const QJsonValue& v : cnames) cnameList.append(v.toString());
+                        tm->setComponentNames(cnameList);
+                        // Restore each tray
+                        for (int ti = 0; ti < trays.size(); ++ti) {
+                           const QJsonObject tr = trays[ti].toObject();
+                           TrayRow row;
+                           row.trayNumber = tr[QStringLiteral("trayNumber")].toInt();
+                           row.tempK = tr[QStringLiteral("tempK")].toDouble();
+                           row.vaporFrac = tr[QStringLiteral("vaporFrac")].toDouble();
+                           row.vaporFlow = tr[QStringLiteral("vaporFlow")].toDouble();
+                           row.liquidFlow = tr[QStringLiteral("liquidFlow")].toDouble();
+                           row.hasDraw = tr[QStringLiteral("hasDraw")].toBool();
+                           row.drawLabel = tr[QStringLiteral("drawLabel")].toString();
+                           const QJsonArray xl = tr[QStringLiteral("xLiq")].toArray();
+                           const QJsonArray yl = tr[QStringLiteral("yVap")].toArray();
+                           for (const QJsonValue& v : xl) row.xLiq.push_back(v.toDouble());
+                           for (const QJsonValue& v : yl) row.yVap.push_back(v.toDouble());
+                           tm->setRow(ti, row);
+                        }
+                     }
+
+                     // Restore material balance
+                     const QJsonObject mbal = sr[QStringLiteral("materialBalance")].toObject();
+                     if (!mbal.isEmpty()) {
+                        MaterialBalanceModel* mb = col->materialBalanceModel();
+                        mb->reset();
+                        mb->setFeedKg(mbal[QStringLiteral("feedKgph")].toDouble());
+                        const QJsonArray lines = mbal[QStringLiteral("lines")].toArray();
+                        for (const QJsonValue& lv : lines) {
+                           const QJsonObject line = lv.toObject();
+                           mb->setDraw(line[QStringLiteral("name")].toString(),
+                              line[QStringLiteral("kgph")].toDouble());
+                        }
+                        mb->finalize();
+                     }
+
+                     // Restore scalar results + component names via the new Q_INVOKABLE
+                     const QJsonArray cnamesArr = sr[QStringLiteral("componentNames")].toArray();
+                     QStringList cnameList;
+                     for (const QJsonValue& v : cnamesArr) cnameList.append(v.toString());
+
+                     col->restoreSolveScalars(
+                        sr[QStringLiteral("tColdK")].toDouble(),
+                        sr[QStringLiteral("tHotK")].toDouble(),
+                        sr[QStringLiteral("qcCalcKW")].toDouble(),
+                        sr[QStringLiteral("qrCalcKW")].toDouble(),
+                        sr[QStringLiteral("refluxFraction")].toDouble(),
+                        sr[QStringLiteral("boilupFraction")].toDouble(),
+                        static_cast<qint64>(sr[QStringLiteral("solveElapsedMs")].toDouble()),
+                        cnameList
+                     );
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   // Pass 2: restore connections
+   // Build a mapping from saved id → new id (they should match since addStreamInternal
+   // uses sequential ids, but we track by order)
+   // Since we add units in order with the same prefix, ids should match.
+   // Restore connections using the ids from file directly.
+   const QJsonArray conns = root[QStringLiteral("connections")].toArray();
+   for (const QJsonValue& cv : conns) {
+      const QJsonObject co = cv.toObject();
+      const QString streamId = co[QStringLiteral("streamUnitId")].toString();
+      const QString sourceId = co[QStringLiteral("sourceUnitId")].toString();
+      const QString sourcePort = co[QStringLiteral("sourcePort")].toString();
+      const QString targetId = co[QStringLiteral("targetUnitId")].toString();
+      const QString targetPort = co[QStringLiteral("targetPort")].toString();
+
+      if (!targetId.isEmpty() && targetPort == QStringLiteral("feed")) {
+         bindColumnFeedStream(targetId, streamId);
+      }
+      else if (!sourceId.isEmpty()) {
+         bindColumnProductStream(sourceId, sourcePort, streamId);
+      }
+   }
+
+   setCurrentFilePath_(filePath);
+   clearDirty_();
+   lastSaveError_.clear();
+   return true;
 }

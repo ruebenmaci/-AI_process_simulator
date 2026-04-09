@@ -8,14 +8,19 @@
 #include <QStringList>
 #include <QStandardPaths>
 #include <QDir>
+#include <QUrl>
 
 #include <QDebug>
 #include <windows.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+#include <QWindow>
 
 #include "unitops/column/state/ColumnUnitState.h"
 #include "flowsheet/state/FlowsheetState.h"
 #include "components/ComponentManager.h"
 #include "fluid/FluidPackageManager.h"
+#include "AppTheme.h"
 
 # define QT_QML_DEBUG
 
@@ -88,6 +93,18 @@ static void vsMessageHandler(QtMsgType type,
    fprintf(stderr, "%s", out.toLocal8Bit().constData());
 }
 
+// ── Set OS title bar color to match window background (#dde4e8) ──────────────
+static void applyTitleBarColor(QWindow* window)
+{
+   if (!window) return;
+   const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+   if (!hwnd) return;
+   // #dde4e8 = R=221 G=228 B=232  (COLORREF is 0x00BBGGRR)
+   const COLORREF captionColor = RGB(221, 228, 232);
+   DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR,
+      &captionColor, sizeof(captionColor));
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
    qInstallMessageHandler(vsMessageHandler);
@@ -114,6 +131,9 @@ int main(int argc, char* argv[]) {
    // Expose display settings to QML
    DisplaySettings displaySettings;
    engine.rootContext()->setContextProperty("gDisplaySettings", &displaySettings);
+
+   AppTheme appTheme;
+   engine.rootContext()->setContextProperty("gAppTheme", &appTheme);
 
    ComponentManager componentManager;
    QObject::connect(&componentManager, &ComponentManager::errorOccurred, [](const QString& msg) {
@@ -180,6 +200,15 @@ int main(int argc, char* argv[]) {
    FlowsheetState flowsheet;
    engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
 
+   // ── Saves folder: <project root>/saves ───────────────────────────────────
+   // Exe lives at <root>/out/build/x64-release/ — walk up 3 levels to get root.
+   // Falls back to exe dir if the walk-up path doesn't look right.
+   const QDir exeDir(QCoreApplication::applicationDirPath());
+   const QString projectRoot = QDir::cleanPath(exeDir.absoluteFilePath(QStringLiteral("../../..")));
+   const QString savesDir = projectRoot + QStringLiteral("/saves");
+   QDir().mkpath(savesDir);
+   engine.rootContext()->setContextProperty("gSavesPath", QUrl::fromLocalFile(savesDir));
+
    // When any fluid package property changes (thermo method, component list
    // assignment, name) OR when a component list's membership changes,
    // FluidPackageManager re-emits fluidPackagesChanged. So one connection
@@ -194,8 +223,15 @@ int main(int argc, char* argv[]) {
    QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreated, &app,
       [url](QObject* obj, const QUrl& objUrl) {
-         if (!obj && url == objUrl)
+         if (!obj && url == objUrl) {
             QCoreApplication::exit(-1);
+            return;
+         }
+         // Apply custom title bar color once the window is created
+         if (obj && url == objUrl) {
+            if (auto* win = qobject_cast<QWindow*>(obj))
+               applyTitleBarColor(win);
+         }
       },
       Qt::QueuedConnection);
 

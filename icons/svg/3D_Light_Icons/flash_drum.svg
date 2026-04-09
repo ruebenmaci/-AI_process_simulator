@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="fdg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4090d0"/>
+      <stop offset="50%" stop-color="#80c0f0"/>
+      <stop offset="100%" stop-color="#1060a0"/>
+    </linearGradient>
+    <linearGradient id="fdl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2060a0"/>
+      <stop offset="100%" stop-color="#0a3060"/>
+    </linearGradient>
+  </defs>
+  <!-- horizontal vessel -->
+  <ellipse cx="12" cy="24" rx="5" ry="14" fill="#1a5a90" stroke="#0d3a60" stroke-width="1.5"/>
+  <rect x="12" y="10" width="24" height="28" fill="url(#fdg)" stroke="#0d3a60" stroke-width="1.5"/>
+  <ellipse cx="36" cy="24" rx="5" ry="14" fill="url(#fdg)" stroke="#0d3a60" stroke-width="1.5"/>
+  <!-- highlight -->
+  <rect x="13" y="11" width="22" height="6" rx="0" fill="white" opacity="0.2"/>
+  <!-- liquid level -->
+  <rect x="12" y="30" width="24" height="7" fill="url(#fdl)" opacity="0.85"/>
+  <line x1="12" y1="30" x2="36" y2="30" stroke="#5090c8" stroke-width="1" stroke-dasharray="3,2"/>
+  <!-- nozzles -->
+  <rect x="2" y="21" width="10" height="6" rx="3" fill="#4a90c0" stroke="#0d3a60" stroke-width="1"/>
+  <!-- vapor top -->
+  <rect x="21" y="2" width="6" height="8" rx="3" fill="#5cb85c" stroke="#2a7a2a" stroke-width="1"/>
+  <!-- liquid bottom -->
+  <rect x="21" y="38" width="6" height="8" rx="3" fill="#3070b0" stroke="#0d3a60" stroke-width="1"/>
+</svg>

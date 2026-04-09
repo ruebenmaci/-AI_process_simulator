@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- kettle vessel (wider than normal HX) -->
+  <rect x="6" y="18" width="36" height="20" rx="6" fill="#f0f4fa" stroke="#2a4060" stroke-width="2"/>
+  <!-- tube bundle inside -->
+  <rect x="10" y="22" width="20" height="12" rx="3" fill="#dce8f5" stroke="#e8a020" stroke-width="1.5"/>
+  <!-- small tubes in bundle -->
+  <circle cx="14" cy="26" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <circle cx="19" cy="26" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <circle cx="24" cy="26" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <circle cx="14" cy="31" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <circle cx="19" cy="31" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <circle cx="24" cy="31" r="1.5" fill="none" stroke="#e8a020" stroke-width="1"/>
+  <!-- vapor out top (big) -->
+  <line x1="20" y1="18" x2="20" y2="10" stroke="#5cb85c" stroke-width="2.5"/>
+  <polygon points="20,10 17,14 23,14" fill="#5cb85c"/>
+  <!-- liquid in / out -->
+  <line x1="3" y1="28" x2="6" y2="28" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="6,28 3,26 3,30" fill="#3a8fd1"/>
+  <line x1="42" y1="28" x2="45" y2="28" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="45,28 42,26 42,30" fill="#3a8fd1"/>
+  <!-- heating medium (steam) in/out top -->
+  <line x1="32" y1="18" x2="32" y2="12" stroke="#e8a020" stroke-width="2" stroke-dasharray="3,2"/>
+  <polygon points="32,18 29,14 35,14" fill="#e8a020"/>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="cfg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4090d0"/>
+      <stop offset="40%" stop-color="#70b8f0"/>
+      <stop offset="100%" stop-color="#1060a0"/>
+    </linearGradient>
+    <linearGradient id="cfcg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#80c8f8"/>
+      <stop offset="100%" stop-color="#2060a0"/>
+    </linearGradient>
+    <linearGradient id="cfrg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f09040"/>
+      <stop offset="100%" stop-color="#a03010"/>
+    </linearGradient>
+  </defs>
+  <!-- column body -->
+  <ellipse cx="24" cy="11" rx="8" ry="3" fill="#3080c8" stroke="#1060a0" stroke-width="1.2"/>
+  <rect x="16" y="11" width="16" height="28" fill="url(#cfg)" stroke="#1060a0" stroke-width="1.5"/>
+  <ellipse cx="24" cy="39" rx="8" ry="3" fill="#1a60a8" stroke="#1060a0" stroke-width="1.2"/>
+  <rect x="17" y="12" width="5" height="26" rx="2.5" fill="white" opacity="0.12"/>
+  <!-- trays -->
+  <line x1="16" y1="18" x2="32" y2="18" stroke="white" stroke-width="1" opacity="0.45"/>
+  <line x1="16" y1="24" x2="32" y2="24" stroke="white" stroke-width="1" opacity="0.45"/>
+  <line x1="16" y1="30" x2="32" y2="30" stroke="white" stroke-width="1" opacity="0.45"/>
+  <!-- condenser (small blue box top) -->
+  <rect x="18" y="4" width="12" height="7" rx="2" fill="url(#cfcg)" stroke="#1060a0" stroke-width="1"/>
+  <rect x="19" y="5" width="8" height="2.5" rx="1" fill="white" opacity="0.25"/>
+  <!-- reboiler (small orange box bottom) -->
+  <rect x="18" y="39" width="12" height="7" rx="2" fill="url(#cfrg)" stroke="#802010" stroke-width="1"/>
+  <rect x="19" y="40" width="8" height="2" rx="1" fill="white" opacity="0.2"/>
+  <!-- overhead product -->
+  <rect x="30" y="5" width="8" height="4" rx="2" fill="#5aafe8" stroke="#1060a0" stroke-width="1"/>
+  <!-- bottoms product -->
+  <rect x="30" y="41" width="8" height="4" rx="2" fill="#5aafe8" stroke="#1060a0" stroke-width="1"/>
+  <!-- feed -->
+  <rect x="4" y="22" width="12" height="4" rx="2" fill="#5aafe8" stroke="#1060a0" stroke-width="1"/>
+</svg>

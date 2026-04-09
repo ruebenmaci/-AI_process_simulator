@@ -14,6 +14,7 @@ Item {
     property var selectedPackage: ({})
     property string selectedListId: ""
     property var resolvedCache: []
+    property var compositionCache: []  // [{id,massFrac,moleFrac,mw}] parallel to resolvedCache
     property string selectedResolvedId: ""
     property var packageSummary: ({})
     property int componentListVersion: 0   // bumped on componentListsChanged to force combo re-eval
@@ -62,6 +63,7 @@ Item {
             return
         }
         resolvedCache = componentManager.resolvedComponentsForList(selectedListId)
+        compositionCache = (fluidManager && selectedPackageId !== "") ? fluidManager.packageComposition(selectedPackageId) : []
         resolvedCountLabel.text = resolvedCache.length + " components"
         if (resolvedCache.length > 0) {
             selectedResolvedId = resolvedCache[0].id
@@ -103,6 +105,7 @@ Item {
 
         selectedListId = fmt(pkg.componentListId)
         refreshResolvedComponents()
+        compositionCache = (fluidManager && selectedPackageId !== "") ? fluidManager.packageComposition(selectedPackageId) : []
         refreshPackageSummary()
     }
 
@@ -168,9 +171,22 @@ Item {
 
     function loadComponentDetail(c) {
         c = c || {}
+
+        // Find this component in compositionCache (matched by id/name)
+        let massFrac = NaN, moleFrac = NaN
+        for (let ci = 0; ci < compositionCache.length; ++ci) {
+            const cc = compositionCache[ci]
+            if (cc.id === (c.id || c.name) || cc.name === (c.name || c.id)) {
+                massFrac = cc.massFrac
+                moleFrac = cc.moleFrac
+                break
+            }
+        }
+
         const labels = ["Name","ID","Family","Type","Formula",
                         "MW","Tb (K)","Tc (K)","Pc (Pa)","Omega",
-                        "SG @60F","Vol. shift","Source"]
+                        "SG @60F","Vol. shift","Source",
+                        "Mass fraction","Mole fraction"]
         const values = [
             fmt(c.name || c.id), fmt(c.id), fmt(c.family),
             fmt(c.componentType), fmt(c.formula),
@@ -181,13 +197,37 @@ Item {
             fmtNum(c.acentricFactor || c.omega, 6),
             fmtNum(c.specificGravity60F || c.SG, 4),
             fmtNum(c.volumeShiftDelta || c.delta, 6),
-            fmt(c.source)
+            fmt(c.source),
+            isFinite(massFrac) ? fmtNum(massFrac, 6) : "—",
+            isFinite(moleFrac) ? fmtNum(moleFrac, 6) : "—"
         ]
         detailSheet.clearAll()
         detailSheet.rowLabels = labels
         detailSheet.colLabels = ["Value"]
         for (let i = 0; i < values.length; ++i)
             detailSheet.setCell(i, 0, values[i])
+    }
+
+    // Recompute mole fractions from current compositionCache mass fractions
+    function _recomputeMoleFracs() {
+        if (compositionCache.length === 0) return
+        var nc = compositionCache.slice()
+        var moleSum = 0
+        for (var i = 0; i < nc.length; ++i) {
+            var mw = nc[i].mw > 0 ? nc[i].mw : 1.0
+            nc[i] = { id: nc[i].id, name: nc[i].name, mw: nc[i].mw,
+                      massFrac: nc[i].massFrac,
+                      moleFrac: nc[i].massFrac / mw }
+            moleSum += nc[i].moleFrac
+        }
+        if (moleSum > 0) {
+            for (var j = 0; j < nc.length; ++j) {
+                nc[j] = { id: nc[j].id, name: nc[j].name, mw: nc[j].mw,
+                          massFrac: nc[j].massFrac,
+                          moleFrac: nc[j].moleFrac / moleSum }
+            }
+        }
+        compositionCache = nc
     }
 
     Component.onCompleted: refreshPackages("")
@@ -532,28 +572,202 @@ Item {
                 }
             }
 
-            CompactFrame {
-                id: detailPane
+            // ── Detail column: properties (top) + composition editor (bottom) ──
+            Item {
+                id: detailCol
                 x: rightPane.detailColX
                 y: rightHeader.height + 4
                 width: rightPane.detailColW
                 height: rightPane.height - rightHeader.height - 8
 
-                SectionHeader { id: detailHeader; width: parent.width; text: "Component Properties" }
-                SimpleSpreadsheet {
-                    id: detailSheet
-                    x: 0; y: detailHeader.height
-                    width: detailPane.width
-                    height: detailPane.height - detailHeader.height
-                    numRows: 13; numCols: 1
-                    colLabels: ["Value"]
-                    readOnly: true
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
-                    onWidthChanged: {
-                        if (width > 0) Qt.callLater(function() {
-                            if (root.resolvedCache.length > 0)
-                                root.loadComponentDetail(root.resolvedCache[0])
-                        })
+                // ── Component Properties spreadsheet ──────────────────────
+                CompactFrame {
+                    id: detailPane
+                    anchors { left: parent.left; right: parent.right; top: parent.top; bottom: compEditor.top }
+                    anchors.bottomMargin: 4
+
+                    SectionHeader { id: detailHeader; width: parent.width; text: "Component Properties" }
+                    SimpleSpreadsheet {
+                        id: detailSheet
+                        x: 0; y: detailHeader.height
+                        width: detailPane.width
+                        height: detailPane.height - detailHeader.height
+                        numRows: 15; numCols: 1
+                        colLabels: ["Value"]
+                        readOnly: true
+                        cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+                        onWidthChanged: {
+                            if (width > 0) Qt.callLater(function() {
+                                if (root.resolvedCache.length > 0)
+                                    root.loadComponentDetail(root.resolvedCache[0])
+                            })
+                        }
+                    }
+                }
+
+                // ── Composition editor ────────────────────────────────────
+                CompactFrame {
+                    id: compEditor
+                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                    height: 220
+
+                    SectionHeader {
+                        id: compEditorHdr; width: parent.width
+                        text: "Package Composition  (mass fractions)"
+                    }
+
+                    // Toolbar: sum indicator + Normalize button
+                    Item {
+                        id: compEditorToolbar
+                        anchors { left: parent.left; right: parent.right; top: compEditorHdr.bottom }
+                        height: 24
+
+                        // Compute sum of all edited mass fractions
+                        property real fracSum: {
+                            var s = 0
+                            for (var i = 0; i < root.compositionCache.length; ++i)
+                                s += root.compositionCache[i].massFrac
+                            return s
+                        }
+
+                        Text {
+                            anchors { left: parent.left; leftMargin: 6; verticalCenter: parent.verticalCenter }
+                            text: "Sum: " + compEditorToolbar.fracSum.toFixed(6)
+                            font.pixelSize: 10
+                            color: Math.abs(compEditorToolbar.fracSum - 1.0) < 1e-4 ? "#1a7a3c" : "#b23b3b"
+                        }
+
+                        Rectangle {
+                            anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                            width: 80; height: 18; radius: 3
+                            color: normalizeHover.containsMouse ? "#1a5a90" : "#2e73b8"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Normalize"; font.pixelSize: 10; font.bold: true; color: "white"
+                            }
+                            MouseArea {
+                                id: normalizeHover; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (root.compositionCache.length === 0) return
+                                    var s = 0
+                                    for (var i = 0; i < root.compositionCache.length; ++i)
+                                        s += root.compositionCache[i].massFrac
+                                    if (s <= 0) return
+                                    // Normalize all mass fractions and recompute mole fractions
+                                    var newCache = []
+                                    for (var j = 0; j < root.compositionCache.length; ++j) {
+                                        var entry = root.compositionCache[j]
+                                        var mf = entry.massFrac / s
+                                        newCache.push({ id: entry.id, name: entry.name, mw: entry.mw,
+                                                        massFrac: mf, moleFrac: entry.moleFrac })
+                                    }
+                                    root.compositionCache = newCache
+                                    root._recomputeMoleFracs()
+                                    root.loadComponentDetail({ id: root.selectedResolvedId,
+                                                               name: root.selectedResolvedId })
+                                }
+                            }
+                        }
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#97a2ad" }
+                    }
+
+                    // Column headers
+                    Item {
+                        id: compEditorColHdr
+                        anchors { left: parent.left; right: parent.right; top: compEditorToolbar.bottom }
+                        height: 18
+                        Row {
+                            anchors { fill: parent; leftMargin: 6 }
+                            Text { width: compEditor.width * 0.40; text: "Component"; font.pixelSize: 9; font.bold: true; color: "#1f2a34"; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                            Text { width: compEditor.width * 0.28; text: "Mass frac"; font.pixelSize: 9; font.bold: true; color: "#1f2a34"; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                            Text { width: compEditor.width * 0.28; text: "Mole frac"; font.pixelSize: 9; font.bold: true; color: "#526571"; horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter; height: parent.height }
+                        }
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#97a2ad" }
+                    }
+
+                    // Composition rows
+                    ListView {
+                        id: compEditorList
+                        anchors { left: parent.left; right: parent.right; top: compEditorColHdr.bottom; bottom: parent.bottom }
+                        anchors.bottomMargin: 4
+                        clip: true
+                        model: root.compositionCache
+                        ScrollBar.vertical: ScrollBar { width: 10; policy: ScrollBar.AsNeeded }
+
+                        Text {
+                            anchors.centerIn: parent
+                            visible: root.compositionCache.length === 0
+                            text: "No composition data\n(apply FluidPackageManager C++ files and rebuild)"
+                            color: "#97a2ad"; font.pixelSize: 10; font.italic: true
+                            horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+                            width: parent.width - 20
+                        }
+
+                        delegate: Item {
+                            width: compEditorList.width
+                            height: 22
+                            property int rowIdx: index
+
+                            Rectangle { anchors.fill: parent; color: index % 2 ? "#f4f6f8" : "#ffffff" }
+
+                            Row {
+                                anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
+
+                                // Component name
+                                Text {
+                                    width: compEditor.width * 0.40
+                                    text: modelData.name || modelData.id
+                                    font.pixelSize: 10; color: "#1f2a34"
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                // Editable mass fraction
+                                TextField {
+                                    id: massFracField
+                                    width: compEditor.width * 0.28 - 4
+                                    height: 18
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.massFrac.toFixed(6)
+                                    horizontalAlignment: Text.AlignRight
+                                    font.pixelSize: 10
+                                    selectByMouse: true
+                                    padding: 2; leftPadding: 4; rightPadding: 4
+                                    background: Rectangle {
+                                        color: massFracField.activeFocus ? "#fffbe6" : "transparent"
+                                        border.color: massFracField.activeFocus ? "#97a2ad" : "transparent"
+                                        border.width: 1
+                                    }
+                                    validator: RegularExpressionValidator {
+                                        regularExpression: /^[0-9]*\.?[0-9]*$/
+                                    }
+                                    onEditingFinished: {
+                                        var v = parseFloat(text)
+                                        if (!isFinite(v) || v < 0) { text = modelData.massFrac.toFixed(6); return }
+                                        // Update compositionCache
+                                        var nc = root.compositionCache.slice()
+                                        nc[rowIdx] = { id: nc[rowIdx].id, name: nc[rowIdx].name,
+                                                       mw: nc[rowIdx].mw, massFrac: v,
+                                                       moleFrac: nc[rowIdx].moleFrac }
+                                        root.compositionCache = nc
+                                        root._recomputeMoleFracs()
+                                        root.loadComponentDetail({ id: root.selectedResolvedId,
+                                                                   name: root.selectedResolvedId })
+                                    }
+                                }
+
+                                // Read-only mole fraction
+                                Text {
+                                    width: compEditor.width * 0.28
+                                    text: modelData.moleFrac.toFixed(6)
+                                    font.pixelSize: 10; color: "#526571"
+                                    horizontalAlignment: Text.AlignRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e8ebef" }
+                        }
                     }
                 }
             }

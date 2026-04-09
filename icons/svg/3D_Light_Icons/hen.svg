@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="heng" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a3040"/>
+      <stop offset="100%" stop-color="#161c28"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="42" height="42" rx="4" fill="url(#heng)" stroke="#2a3448" stroke-width="1.2"/>
+  <!-- hot stream (red, left to right) -->
+  <rect x="6" y="13" width="36" height="5" rx="2.5" fill="#c04020" stroke="#802010" stroke-width="1"/>
+  <rect x="7" y="14" width="30" height="2" rx="1" fill="white" opacity="0.15"/>
+  <polygon points="42,15.5 37,12.5 37,18.5" fill="#e05030"/>
+  <!-- cold stream (blue, right to left) -->
+  <rect x="6" y="30" width="36" height="5" rx="2.5" fill="#2060b0" stroke="#083070" stroke-width="1"/>
+  <rect x="7" y="31" width="30" height="2" rx="1" fill="white" opacity="0.15"/>
+  <polygon points="6,32.5 11,29.5 11,35.5" fill="#3070c0"/>
+  <!-- HX match circles (hot) -->
+  <circle cx="17" cy="15.5" r="5" fill="#1a2030" stroke="#c04020" stroke-width="1.8"/>
+  <circle cx="32" cy="15.5" r="5" fill="#1a2030" stroke="#c04020" stroke-width="1.8"/>
+  <!-- HX match circles (cold) -->
+  <circle cx="17" cy="32.5" r="5" fill="#1a2030" stroke="#2060b0" stroke-width="1.8"/>
+  <circle cx="32" cy="32.5" r="5" fill="#1a2030" stroke="#2060b0" stroke-width="1.8"/>
+  <!-- vertical connections -->
+  <line x1="17" y1="20.5" x2="17" y2="27.5" stroke="#b0c0d0" stroke-width="1.5"/>
+  <line x1="32" y1="20.5" x2="32" y2="27.5" stroke="#b0c0d0" stroke-width="1.5"/>
+  <!-- pinch line -->
+  <line x1="24" y1="6" x2="24" y2="42" stroke="#f07820" stroke-width="1" stroke-dasharray="3,3" opacity="0.7"/>
+</svg>

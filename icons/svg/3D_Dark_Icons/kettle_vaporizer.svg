@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="kvg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#4090d0"/>
+      <stop offset="50%" stop-color="#80c0f0"/>
+      <stop offset="100%" stop-color="#1060a0"/>
+    </linearGradient>
+    <linearGradient id="kvh" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffa060"/>
+      <stop offset="100%" stop-color="#802000"/>
+    </linearGradient>
+  </defs>
+  <!-- wide kettle shell -->
+  <ellipse cx="10" cy="28" rx="5" ry="12" fill="#1050a0" stroke="#083070" stroke-width="1.2"/>
+  <rect x="10" y="16" width="30" height="24" fill="url(#kvg)" stroke="#083070" stroke-width="1.5"/>
+  <ellipse cx="40" cy="28" rx="5" ry="12" fill="url(#kvg)" stroke="#083070" stroke-width="1.2"/>
+  <rect x="11" y="17" width="28" height="5" rx="0" fill="white" opacity="0.2"/>
+  <!-- tube bundle (hot) -->
+  <rect x="12" y="21" width="18" height="14" rx="3" fill="url(#kvh)" stroke="#802000" stroke-width="1"/>
+  <!-- tube dots -->
+  <circle cx="17" cy="26" r="2" fill="none" stroke="#ffd0a0" stroke-width="1"/>
+  <circle cx="23" cy="26" r="2" fill="none" stroke="#ffd0a0" stroke-width="1"/>
+  <circle cx="17" cy="31" r="2" fill="none" stroke="#ffd0a0" stroke-width="1"/>
+  <circle cx="23" cy="31" r="2" fill="none" stroke="#ffd0a0" stroke-width="1"/>
+  <!-- large vapor nozzle (top) -->
+  <rect x="19" y="8" width="8" height="8" rx="4" fill="#5cb85c" stroke="#2a7a2a" stroke-width="1.2"/>
+  <!-- process liquid in/out -->
+  <rect x="2" y="25" width="8" height="5" rx="2.5" fill="#4a90c0" stroke="#083070" stroke-width="1"/>
+  <rect x="40" y="25" width="6" height="5" rx="2.5" fill="#4a90c0" stroke="#083070" stroke-width="1"/>
+  <!-- heating medium top -->
+  <rect x="32" y="8" width="5" height="8" rx="2.5" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+</svg>

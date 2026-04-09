@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- circular recycle arrow -->
+  <path d="M24,8 A16,16 0 1,1 8,24" fill="none" stroke="#3a8fd1" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- arrow tip -->
+  <polygon points="24,8 18,4 18,12" fill="#3a8fd1"/>
+  <!-- inner loop arrow (opposite direction, smaller) -->
+  <path d="M24,14 A10,10 0 1,0 14,24" fill="none" stroke="#5aafe8" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3,2"/>
+  <polygon points="24,14 20,10 26,11" fill="#5aafe8"/>
+  <!-- R label -->
+  <text x="24" y="28" text-anchor="middle" font-size="10" fill="#3a8fd1" font-family="monospace" font-weight="bold">R</text>
+</svg>

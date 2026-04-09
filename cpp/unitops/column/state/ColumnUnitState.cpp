@@ -960,6 +960,39 @@ void ColumnUnitState::resetDrawSpecsToDefaults()
    setDrawSpecs(rows);
 }
 
+void ColumnUnitState::restoreSolveScalars(
+   double tColdK, double tHotK,
+   double qcCalcKW, double qrCalcKW,
+   double refluxFraction, double boilupFraction,
+   qint64 elapsedMs,
+   const QStringList& componentNames)
+{
+   tColdK_ = tColdK;
+   tHotK_ = tHotK;
+   qcCalcKW_ = qcCalcKW;
+   qrCalcKW_ = qrCalcKW;
+   refluxFraction_ = refluxFraction;
+   boilupFraction_ = boilupFraction;
+   solveElapsedMs_ = elapsedMs;
+   solved_ = true;
+   specsDirty_ = false;
+
+   if (componentNames_ != componentNames) {
+      componentNames_ = componentNames;
+      emit componentNamesChanged();
+   }
+
+   emit tColdKChanged();
+   emit tHotKChanged();
+   emit qcCalcKWChanged();
+   emit qrCalcKWChanged();
+   emit refluxFractionChanged();
+   emit boilupFractionChanged();
+   emit solveElapsedMsChanged();
+   emit solvedChanged();
+   emit specsDirtyChanged();
+}
+
 void ColumnUnitState::solve()
 {
    if (solving_)

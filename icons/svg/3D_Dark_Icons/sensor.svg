@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <radialGradient id="sng" cx="38%" cy="35%">
+      <stop offset="0%" stop-color="#d0e0f0"/>
+      <stop offset="60%" stop-color="#6080b0"/>
+      <stop offset="100%" stop-color="#202848"/>
+    </radialGradient>
+  </defs>
+  <!-- instrument circle (ISA style) -->
+  <circle cx="24" cy="24" r="17" fill="url(#sng)" stroke="#202848" stroke-width="1.8"/>
+  <ellipse cx="20" cy="19" rx="6" ry="5" fill="white" opacity="0.2"/>
+  <!-- inner ring -->
+  <circle cx="24" cy="24" r="11" fill="#1a2030" stroke="#4060a0" stroke-width="1.2"/>
+  <!-- gauge needle -->
+  <line x1="24" y1="24" x2="30" y2="17" stroke="#f07820" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="24" cy="24" r="2.5" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+  <!-- instrument label -->
+  <text x="24" y="30" text-anchor="middle" font-size="5.5" fill="#90b0d0" font-family="Arial" font-weight="bold">PT-101</text>
+  <!-- scale marks -->
+  <line x1="24" y1="14" x2="24" y2="16" stroke="#6080b0" stroke-width="1"/>
+  <line x1="33" y1="24" x2="35" y2="24" stroke="#6080b0" stroke-width="1"/>
+  <line x1="15" y1="24" x2="13" y2="24" stroke="#6080b0" stroke-width="1"/>
+  <!-- signal wire -->
+  <rect x="21" y="41" width="6" height="5" rx="2" fill="#4060a0" stroke="#202848" stroke-width="1"/>
+</svg>

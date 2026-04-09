@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="hg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b0d4f0"/>
+      <stop offset="50%" stop-color="#5090c0"/>
+      <stop offset="100%" stop-color="#2060a0"/>
+    </linearGradient>
+    <linearGradient id="hh" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffa060"/>
+      <stop offset="50%" stop-color="#d05010"/>
+      <stop offset="100%" stop-color="#902000"/>
+    </linearGradient>
+  </defs>
+  <!-- shell (blue cylinder) -->
+  <ellipse cx="10" cy="24" rx="4" ry="12" fill="#2060a0" stroke="#154080" stroke-width="1.2"/>
+  <rect x="10" y="12" width="28" height="24" fill="url(#hg)" stroke="#154080" stroke-width="1.2"/>
+  <ellipse cx="38" cy="24" rx="4" ry="12" fill="url(#hg)" stroke="#154080" stroke-width="1.2"/>
+  <!-- highlight -->
+  <rect x="11" y="13" width="26" height="6" rx="0" fill="white" opacity="0.2"/>
+  <!-- tube bundle (hot, red band) -->
+  <rect x="10" y="20" width="28" height="8" fill="url(#hh)" opacity="0.7"/>
+  <rect x="11" y="21" width="26" height="2" fill="white" opacity="0.15"/>
+  <!-- nozzles -->
+  <rect x="2" y="18" width="8" height="4" rx="2" fill="#5090c0" stroke="#154080" stroke-width="1"/>
+  <rect x="38" y="26" width="8" height="4" rx="2" fill="#5090c0" stroke="#154080" stroke-width="1"/>
+  <rect x="2" y="27" width="8" height="4" rx="2" fill="#d05010" stroke="#902000" stroke-width="1"/>
+  <rect x="38" y="18" width="8" height="4" rx="2" fill="#d05010" stroke="#902000" stroke-width="1"/>
+</svg>

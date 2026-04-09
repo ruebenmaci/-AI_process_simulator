@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- vessel with head -->
+  <path d="M12,18 Q12,10 24,10 Q36,10 36,18 L36,38 Q36,42 24,42 Q12,42 12,38 Z" fill="#2a3548" stroke="#b0c4de" stroke-width="2"/>
+  <!-- stirrer shaft -->
+  <line x1="24" y1="4" x2="24" y2="26" stroke="#b0c4de" stroke-width="2" stroke-linecap="round"/>
+  <!-- stirrer blades -->
+  <line x1="14" y1="28" x2="34" y2="28" stroke="#3a8fd1" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="16" y1="23" x2="24" y2="28" stroke="#3a8fd1" stroke-width="2" stroke-linecap="round"/>
+  <line x1="32" y1="23" x2="24" y2="28" stroke="#3a8fd1" stroke-width="2" stroke-linecap="round"/>
+  <!-- jacket -->
+  <path d="M10,19 Q10,12 24,12 Q38,12 38,19 L38,37 Q38,40 24,40 Q10,40 10,37 Z" fill="none" stroke="#e8a020" stroke-width="1" stroke-dasharray="2,2"/>
+  <!-- condenser nozzle top -->
+  <line x1="32" y1="12" x2="40" y2="8" stroke="#5aafe8" stroke-width="1.5"/>
+  <polygon points="40,8 37,10 39,13" fill="#5aafe8"/>
+  <!-- drain -->
+  <line x1="24" y1="42" x2="24" y2="46" stroke="#6e7a90" stroke-width="1.5"/>
+  <polygon points="24,46 21,42 27,42" fill="#6e7a90"/>
+</svg>

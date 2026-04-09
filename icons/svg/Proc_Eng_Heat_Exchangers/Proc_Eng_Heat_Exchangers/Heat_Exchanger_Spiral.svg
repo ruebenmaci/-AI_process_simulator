@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg"
-     viewBox="-3.000 -3.000 106.000 106.000"
-     width="96" height="96">
-  <rect x="0.0000" y="0.0000" width="100.0000" height="100.0000" fill="white" stroke="#141414" stroke-width="2.00"/>
-  <ellipse cx="50.0000" cy="50.0000" rx="15.0000" ry="15.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
-  <ellipse cx="50.0000" cy="50.0000" rx="27.5000" ry="27.5000" stroke="#141414" stroke-width="2.00" fill="none"/>
-  <ellipse cx="50.0000" cy="50.0000" rx="40.0000" ry="40.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
-  <path d="M 0.0000 50.0000 L 10.0000 50.0000 M 90.0000 50.0000 L 100.0000 50.0000" stroke="#141414" stroke-width="2.00" fill="none"/>
-</svg>

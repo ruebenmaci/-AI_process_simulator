@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- frame -->
+  <rect x="8" y="10" width="32" height="28" rx="3" fill="#f0f4fa" stroke="#2a4060" stroke-width="2"/>
+  <!-- plate lines (corrugated) -->
+  <line x1="14" y1="10" x2="14" y2="38" stroke="#2a4060" stroke-width="1.5"/>
+  <line x1="20" y1="10" x2="20" y2="38" stroke="#2a4060" stroke-width="1.5"/>
+  <line x1="26" y1="10" x2="26" y2="38" stroke="#2a4060" stroke-width="1.5"/>
+  <line x1="32" y1="10" x2="32" y2="38" stroke="#2a4060" stroke-width="1.5"/>
+  <!-- hot side (top/bottom ports) -->
+  <line x1="11" y1="6" x2="11" y2="10" stroke="#d9534f" stroke-width="2"/>
+  <polygon points="11,10 8,6 14,6" fill="#d9534f"/>
+  <line x1="29" y1="38" x2="29" y2="42" stroke="#d9534f" stroke-width="2"/>
+  <polygon points="29,42 26,38 32,38" fill="#d9534f"/>
+  <!-- cold side (top/bottom ports offset) -->
+  <line x1="29" y1="6" x2="29" y2="10" stroke="#5aafe8" stroke-width="2"/>
+  <polygon points="29,6 26,10 32,10" fill="#5aafe8"/>
+  <line x1="11" y1="38" x2="11" y2="42" stroke="#5aafe8" stroke-width="2"/>
+  <polygon points="11,42 8,38 14,38" fill="#5aafe8"/>
+</svg>

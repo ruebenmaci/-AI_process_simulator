@@ -33,6 +33,7 @@ class FlowsheetState : public QObject
       Q_PROPERTY(int     revision      READ revision      NOTIFY drawingMetaChanged)
       Q_PROPERTY(QString revisionDate  READ revisionDate  NOTIFY drawingMetaChanged)
       Q_PROPERTY(bool    isDirty       READ isDirty       NOTIFY isDirtyChanged)
+      Q_PROPERTY(QString currentFilePath READ currentFilePath NOTIFY currentFilePathChanged)
 
 public:
    struct MaterialConnection
@@ -99,7 +100,14 @@ public:
    void setDrawingTitle(const QString& v);
    void setDrawingNumber(const QString& v);
    void setDrawnBy(const QString& v);
-   Q_INVOKABLE void stampRevision();   // advances rev, clears dirty, stamps date
+   Q_INVOKABLE void stampRevision();   // advances rev, stamps date
+
+   // ── Persistence ──────────────────────────────────────────────────────────
+   Q_INVOKABLE bool saveToFile(const QString& filePath);
+   Q_INVOKABLE bool loadFromFile(const QString& filePath);
+   Q_INVOKABLE void newFlowsheet();
+   Q_INVOKABLE QString lastSaveError() const { return lastSaveError_; }
+   QString currentFilePath() const { return currentFilePath_; }
 
    QVariantList materialConnectionsVariant() const;
    MaterialStreamState* findMaterialStreamByUnitId(const QString& unitId) const;
@@ -116,6 +124,7 @@ signals:
    void lastOperationMessageChanged();
    void drawingMetaChanged();
    void isDirtyChanged();
+   void currentFilePathChanged();
 
 private:
    QString addColumnInternal(double x, double y);
@@ -149,4 +158,10 @@ private:
    bool    isDirty_ = false;
 
    void markDirty_();
+   void clearDirty_();
+   void setCurrentFilePath_(const QString& path);
+
+   // Persistence
+   QString currentFilePath_;
+   QString lastSaveError_;
 };

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect x="16" y="6" width="16" height="36" rx="4" fill="#2a3548" stroke="#b0c4de" stroke-width="2"/>
+  <!-- tray lines -->
+  <line x1="16" y1="14" x2="32" y2="14" stroke="#6e7a90" stroke-width="1.2"/>
+  <line x1="16" y1="21" x2="32" y2="21" stroke="#6e7a90" stroke-width="1.2"/>
+  <line x1="16" y1="28" x2="32" y2="28" stroke="#6e7a90" stroke-width="1.2"/>
+  <line x1="16" y1="35" x2="32" y2="35" stroke="#6e7a90" stroke-width="1.2"/>
+  <!-- stripping steam in bottom -->
+  <line x1="4" y1="40" x2="16" y2="40" stroke="#e8a020" stroke-width="2" stroke-dasharray="3,2"/>
+  <polygon points="16,40 12,38 12,42" fill="#e8a020"/>
+  <!-- feed in left-mid -->
+  <line x1="4" y1="22" x2="16" y2="22" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="16,22 12,20 12,24" fill="#3a8fd1"/>
+  <!-- overhead vapor out top -->
+  <line x1="24" y1="6" x2="24" y2="2" stroke="#5cb85c" stroke-width="2"/>
+  <polygon points="24,2 21,6 27,6" fill="#5cb85c"/>
+  <!-- bottoms out -->
+  <line x1="24" y1="42" x2="24" y2="46" stroke="#3a8fd1" stroke-width="2"/>
+  <polygon points="24,46 21,42 27,42" fill="#3a8fd1"/>
+  <!-- S label -->
+  <text x="24" y="10" text-anchor="middle" font-size="7" fill="#e8a020" font-family="monospace" font-weight="bold">S</text>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="csrg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#60a0e0"/>
+      <stop offset="50%" stop-color="#90c8f8"/>
+      <stop offset="100%" stop-color="#2060a0"/>
+    </linearGradient>
+  </defs>
+  <!-- vessel -->
+  <rect x="10" y="10" width="28" height="28" rx="5" fill="url(#csrg)" stroke="#154080" stroke-width="1.5"/>
+  <rect x="12" y="11" width="24" height="7" rx="3" fill="white" opacity="0.2"/>
+  <!-- jacket strips -->
+  <rect x="7" y="13" width="4" height="22" rx="2" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+  <rect x="37" y="13" width="4" height="22" rx="2" fill="#f07820" stroke="#a03010" stroke-width="1"/>
+  <!-- stirrer shaft -->
+  <rect x="22" y="3" width="4" height="12" rx="2" fill="#8090a8" stroke="#404858" stroke-width="1"/>
+  <!-- impeller -->
+  <rect x="14" y="27" width="20" height="3" rx="1.5" fill="white" stroke="#8090a8" stroke-width="1"/>
+  <line x1="16" y1="22" x2="22" y2="28" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <line x1="32" y1="22" x2="26" y2="28" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <!-- inlet/outlet -->
+  <rect x="2" y="16" width="8" height="4" rx="2" fill="#4080b0" stroke="#154080" stroke-width="1"/>
+  <rect x="38" y="28" width="8" height="4" rx="2" fill="#4080b0" stroke="#154080" stroke-width="1"/>
+</svg>

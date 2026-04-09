@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="flg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7090b0"/>
+      <stop offset="50%" stop-color="#a0b8d0"/>
+      <stop offset="100%" stop-color="#405070"/>
+    </linearGradient>
+  </defs>
+  <!-- vessel -->
+  <ellipse cx="10" cy="24" rx="4" ry="14" fill="#405070" stroke="#283040" stroke-width="1.5"/>
+  <rect x="10" y="10" width="28" height="28" fill="url(#flg)" stroke="#283040" stroke-width="1.5"/>
+  <ellipse cx="38" cy="24" rx="4" ry="14" fill="url(#flg)" stroke="#283040" stroke-width="1.5"/>
+  <rect x="11" y="11" width="26" height="6" rx="0" fill="white" opacity="0.2"/>
+  <!-- filter medium (centre band, hatched) -->
+  <rect x="21" y="10" width="6" height="28" fill="#2a3848" stroke="#405070" stroke-width="1"/>
+  <line x1="21" y1="13" x2="27" y2="18" stroke="#7090b0" stroke-width="0.8" opacity="0.7"/>
+  <line x1="21" y1="18" x2="27" y2="23" stroke="#7090b0" stroke-width="0.8" opacity="0.7"/>
+  <line x1="21" y1="23" x2="27" y2="28" stroke="#7090b0" stroke-width="0.8" opacity="0.7"/>
+  <line x1="21" y1="28" x2="27" y2="33" stroke="#7090b0" stroke-width="0.8" opacity="0.7"/>
+  <line x1="21" y1="33" x2="27" y2="38" stroke="#7090b0" stroke-width="0.8" opacity="0.7"/>
+  <!-- nozzles -->
+  <rect x="2" y="21" width="8" height="6" rx="3" fill="#5080a0" stroke="#283040" stroke-width="1"/>
+  <rect x="38" y="21" width="8" height="6" rx="3" fill="#5080a0" stroke="#283040" stroke-width="1"/>
+  <!-- drain bottom -->
+  <rect x="21" y="38" width="6" height="6" rx="3" fill="#806040" stroke="#503020" stroke-width="1"/>
+</svg>

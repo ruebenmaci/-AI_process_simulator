@@ -73,6 +73,20 @@ Item {
     // This lets the sheet size itself inside a Column without needing an explicit height.
     implicitHeight: hdrRowH + numRows * defaultRowH
 
+    // Reactive content dimensions — recalculate whenever rowH/colW arrays change.
+    // These drive the Flickable.contentHeight/contentWidth so the scrollbars
+    // correctly detect when scrolling is needed.
+    readonly property real contentH: {
+        var y = 0
+        for (var i = 0; i < numRows; i++) y += (rowH[i] || defaultRowH)
+        return y
+    }
+    readonly property real contentW: {
+        var x = 0
+        for (var i = 0; i < numCols; i++) x += (colW[i] || defaultColW)
+        return x
+    }
+
     Component.onCompleted: _init()
 
 
@@ -481,17 +495,17 @@ Item {
                 height: sheetBody.height - root.hdrRowH
                 clip: true; boundsBehavior: Flickable.StopAtBounds
                 interactive: false   // scrollbars + mousewheel only; no finger/mouse panning
-                contentWidth:  root.totalW()
-                contentHeight: root.totalH()
+                contentWidth:  root.contentW
+                contentHeight: root.contentH
 
-                onContentXChanged: { colHeaderCanvas.ox = contentX; colHeaderCanvas.requestPaint() }
-                onContentYChanged: { rowHeaderCanvas.oy = contentY; rowHeaderCanvas.requestPaint() }
+                onContentXChanged: { colHeaderCanvas.ox = contentX; colHeaderCanvas.requestPaint(); gridCanvas.requestPaint() }
+                onContentYChanged: { rowHeaderCanvas.oy = contentY; rowHeaderCanvas.requestPaint(); gridCanvas.requestPaint() }
 
                 // Main cell grid
                 Canvas {
                     id: gridCanvas
-                    width:  Math.max(flick.width,  root.totalW())
-                    height: Math.max(flick.height, root.totalH())
+                    width:  Math.max(flick.width,  root.contentW)
+                    height: Math.max(flick.height, root.contentH)
 
                     onPaint: {
                         var ctx = getContext("2d")
@@ -574,6 +588,19 @@ Item {
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton
                     preventStealing: true
+                    // Forward wheel events to scroll the Flickable
+                    onWheel: function(wheel) {
+                        var step = 60
+                        if (wheel.angleDelta.y !== 0) {
+                            var newY = flick.contentY - (wheel.angleDelta.y / 120) * step
+                            flick.contentY = Math.max(0, Math.min(newY, Math.max(0, root.contentH - flick.height)))
+                        }
+                        if (wheel.angleDelta.x !== 0) {
+                            var newX = flick.contentX - (wheel.angleDelta.x / 120) * step
+                            flick.contentX = Math.max(0, Math.min(newX, Math.max(0, root.contentW - flick.width)))
+                        }
+                        wheel.accepted = true
+                    }
 
                     // Hit-test pixel coordinates → { r, c }
                     function _hitTest(px, py) {
@@ -628,17 +655,17 @@ Item {
                 id: vBar; z: 5
                 anchors { right: sheetBody.right; top: sheetBody.top; topMargin: root.hdrRowH; bottom: sheetBody.bottom; bottomMargin: hBar.height }
                 orientation: Qt.Vertical; policy: ScrollBar.AsNeeded
-                size: flick.height / Math.max(1, flick.contentHeight)
-                position: flick.contentY / Math.max(1, flick.contentHeight)
-                onPositionChanged: if (pressed) flick.contentY = position * flick.contentHeight
+                size:     flick.height     / Math.max(1, root.contentH)
+                position: flick.contentY   / Math.max(1, root.contentH)
+                onPositionChanged: if (pressed) flick.contentY = position * root.contentH
             }
             ScrollBar {
                 id: hBar; z: 5
                 anchors { left: sheetBody.left; leftMargin: root.hdrColW; right: sheetBody.right; rightMargin: vBar.width; bottom: sheetBody.bottom }
                 orientation: Qt.Horizontal; policy: ScrollBar.AsNeeded
-                size: flick.width / Math.max(1, flick.contentWidth)
-                position: flick.contentX / Math.max(1, flick.contentWidth)
-                onPositionChanged: if (pressed) flick.contentX = position * flick.contentWidth
+                size:     flick.width      / Math.max(1, root.contentW)
+                position: flick.contentX   / Math.max(1, root.contentW)
+                onPositionChanged: if (pressed) flick.contentX = position * root.contentW
             }
         }
 

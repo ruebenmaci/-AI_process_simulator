@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="rcg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#60b060"/>
+      <stop offset="100%" stop-color="#206020"/>
+    </linearGradient>
+  </defs>
+  <!-- circular recycle arrow (thick, 3D-ish) -->
+  <path d="M24,8 A16,16 0 1,1 9,20" fill="none" stroke="url(#rcg)" stroke-width="5" stroke-linecap="round"/>
+  <!-- arrow tip -->
+  <polygon points="24,5 17,13 24,11 31,13" fill="#40a040" stroke="#206020" stroke-width="0.8"/>
+  <!-- inner arrow smaller, opposite direction -->
+  <path d="M24,14 A10,10 0 1,0 15,23" fill="none" stroke="#80d080" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4,2" opacity="0.7"/>
+  <polygon points="24,14 18,10 20,16 26,16" fill="#80d080" opacity="0.7"/>
+  <!-- center R label -->
+  <circle cx="24" cy="27" r="8" fill="#1a3020" stroke="#40a040" stroke-width="1.5"/>
+  <text x="24" y="31" text-anchor="middle" font-size="10" fill="#60d060" font-family="Arial" font-weight="bold">R</text>
+</svg>
