@@ -100,6 +100,7 @@ class ColumnUnitState : public ProcessUnitState {
       Q_PROPERTY(RunLogModel* runLogModel READ runLogModel CONSTANT)
       Q_PROPERTY(MaterialBalanceModel* materialBalanceModel READ materialBalanceModel CONSTANT)
       Q_PROPERTY(QString runResults READ runResults NOTIFY runResultsChanged)
+      Q_PROPERTY(QString lastSolverInputsExportPath READ lastSolverInputsExportPath NOTIFY lastSolverInputsExportPathChanged)
 
 public:
    explicit ColumnUnitState(QObject* parent = nullptr);
@@ -234,10 +235,14 @@ public:
    QString runResults() const {
       return runResults_;
    }
+   QString lastSolverInputsExportPath() const {
+      return lastSolverInputsExportPath_;
+   }
 
    void clearRunOutputs_();
 
    Q_INVOKABLE void solve();
+   Q_INVOKABLE QString exportLatestSolverInputsJson(const QString& filePath = QString());
    Q_INVOKABLE void restoreSolveScalars(double tColdK, double tHotK,
       double qcCalcKW, double qrCalcKW,
       double refluxFraction, double boilupFraction,
@@ -297,6 +302,7 @@ signals:
    void solvedChanged();
    void componentNamesChanged();
    void runResultsChanged();
+   void lastSolverInputsExportPathChanged();
 
 private:
    void setSolving_(bool v);
@@ -310,6 +316,7 @@ private:
    void pushProductStreamScaffolding_(const SolverOutputs& out);
    QString packageSelectedThermoMethod_() const;
    QString packageThermoLabel_() const;
+   QString defaultSolverInputsExportPath_() const;
 
    bool solving_ = false;
    bool specsDirty_ = false;
@@ -319,6 +326,7 @@ private:
    QTimer solveUiTick_;
    QFutureWatcher<SolverOutputs> solveWatcher_;
    SolverInputs pendingSolveInputs_;
+   QString lastSolverInputsExportPath_;
 
    // New
    int trays_ = 32;

@@ -154,12 +154,6 @@ Pane {
             return { x: item.x + item.width / 2, y: midY }
         }
 
-        if (type === "heat_exchanger") {
-            const pp = hexPortPoint(item, port)
-            if (pp) return { x: pp.x, y: pp.y }
-            return { x: item.x + item.width / 2, y: item.y + item.iconNodeBoxSize / 2 }
-        }
-
         if (type === "stream") {
             // visualContainer (50px) is horizontally centered; icon (42px) centered inside it
             const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
@@ -226,7 +220,7 @@ Pane {
         let streamId = ""
         let equipId  = ""
 
-        const isEquip = (t) => t === "column" || t === "heater" || t === "cooler" || t === "heat_exchanger"
+        const isEquip = (t) => t === "column" || t === "heater" || t === "cooler"
 
         if (firstType === "stream" && isEquip(clickedType)) {
             streamId = firstId
@@ -255,14 +249,8 @@ Pane {
             else if (root.connectionMode === "product")
                 ok = root.flowsheet.bindHeaterProductStream(equipId, streamId)
             else
+                // Default: if no mode set, try feed first then product
                 ok = root.flowsheet.bindHeaterFeedStream(equipId, streamId)
-        } else if (equipType === "heat_exchanger") {
-            // Map connectionMode to HEX port name
-            const hexPortMap = { "hotIn": "hotIn", "hotOut": "hotOut",
-                                  "coldIn": "coldIn", "coldOut": "coldOut",
-                                  "feed": "hotIn", "product": "hotOut" }
-            const hexPort = hexPortMap[root.connectionMode] || "hotIn"
-            ok = root.flowsheet.bindHexStream(equipId, hexPort, streamId)
         }
 
         root.connectionStatusText = ok
@@ -376,22 +364,6 @@ Pane {
         return null
     }
 
-    // Port positions on a heat exchanger item
-    // Icon viewBox 48x48: ports at y=19 (upper) and y=29 (lower), x=3 (left) x=45 (right)
-    // Normalised: upper=19/48=0.396, lower=29/48=0.604
-    function hexPortPoint(item, port) {
-        if (!item) return null
-        const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
-        const boxW    = item.iconNodeBoxSize
-        const upperY  = item.y + item.iconNodeBoxSize * 0.396
-        const lowerY  = item.y + item.iconNodeBoxSize * 0.604
-        if (port === "hotIn")   return Qt.point(boxLeft,        lowerY)
-        if (port === "hotOut")  return Qt.point(boxLeft + boxW, upperY)
-        if (port === "coldIn")  return Qt.point(boxLeft,        upperY)
-        if (port === "coldOut") return Qt.point(boxLeft + boxW, lowerY)
-        return null
-    }
-
     // Check all equipment for snap proximity while a stream is being dragged.
     function updateSnapTarget(streamItem) {
         if (!root.flowsheet || !streamItem) {
@@ -413,13 +385,10 @@ Pane {
 
             const isCol    = item.unitType === "column"
             const isHeater = item.unitType === "heater" || item.unitType === "cooler"
-            const isHex    = item.unitType === "heat_exchanger"
-            if (!isCol && !isHeater && !isHex) continue
+            if (!isCol && !isHeater) continue
 
             const equipId = item.unitId
-            const ports = isCol  ? ["feed", "distillate", "bottoms"]
-                        : isHex  ? ["hotIn", "hotOut", "coldIn", "coldOut"]
-                        : ["feed", "product"]
+            const ports = isCol ? ["feed", "distillate", "bottoms"] : ["feed", "product"]
 
             for (let p = 0; p < ports.length; ++p) {
                 const port = ports[p]
@@ -436,7 +405,7 @@ Pane {
                 }
                 if (alreadyConnected) continue
 
-                const pp = isCol ? columnPortPoint(item, port) : isHex ? hexPortPoint(item, port) : heaterPortPoint(item, port)
+                const pp = isCol ? columnPortPoint(item, port) : heaterPortPoint(item, port)
                 if (!pp) continue
 
                 const dist = Math.sqrt((sx - pp.x) * (sx - pp.x) + (sy - pp.y) * (sy - pp.y))
@@ -468,9 +437,7 @@ Pane {
         if (!snapActive || !root.flowsheet) return false
         const equipType = root.flowsheet.unitType(snapColumnId)
         let ok = false
-        if (equipType === "heat_exchanger") {
-            ok = root.flowsheet.bindHexStream(snapColumnId, snapPortName, streamId)
-        } else if (equipType === "column") {
+        if (equipType === "column") {
             if (snapPortName === "feed")
                 ok = root.flowsheet.bindColumnFeedStream(snapColumnId, streamId)
             else if (snapPortName === "distillate")
@@ -567,8 +534,6 @@ Pane {
                         root.flowsheet.addHeater(px, py)
                     else if (root.placementType === "cooler")
                         root.flowsheet.addCooler(px, py)
-                    else if (root.placementType === "heat_exchanger")
-                        root.flowsheet.addHeatExchanger(px, py)
                     root.cancelPlacement()
                 }
             }
@@ -731,9 +696,6 @@ Pane {
                         } else if (snapEquipType === "heater" || snapEquipType === "cooler") {
                             const hItem = root.unitItemById(root.snapColumnId)
                             pp = hItem ? root.heaterPortPoint(hItem, root.snapPortName) : null
-                        } else if (snapEquipType === "heat_exchanger") {
-                            const hItem = root.unitItemById(root.snapColumnId)
-                            pp = hItem ? root.hexPortPoint(hItem, root.snapPortName) : null
                         }
                         if (pp) {
                             const px = pp.x - drawingBorder.x
@@ -753,21 +715,12 @@ Pane {
                             ctx.fillStyle = "#00c080"
                             ctx.fill()
 
-                            // Port label — left-side ports draw label to the LEFT of the dot
+                            // Port label
                             const label = root.snapPortName.charAt(0).toUpperCase()
                                           + root.snapPortName.slice(1)
                             ctx.font = "bold 11px sans-serif"
                             ctx.fillStyle = "#00802a"
-                            const isLeftPort = (root.snapPortName === "feed"   ||
-                                                root.snapPortName === "hotIn"  ||
-                                                root.snapPortName === "coldIn")
-                            if (isLeftPort) {
-                                ctx.textAlign = "right"
-                                ctx.fillText(label, px - 16, py + 4)
-                                ctx.textAlign = "left"   // restore default
-                            } else {
-                                ctx.fillText(label, px + 16, py + 4)
-                            }
+                            ctx.fillText(label, px + 18, py + 4)
                         }
                     }
                 }
@@ -1060,8 +1013,6 @@ Pane {
                             return Qt.resolvedUrl(gAppTheme.iconPath("heater"))
                         if (root.placementType === "cooler")
                             return Qt.resolvedUrl(gAppTheme.iconPath("cooler"))
-                        if (root.placementType === "heat_exchanger")
-                            return Qt.resolvedUrl(gAppTheme.iconPath("heat_exchanger"))
                         return Qt.resolvedUrl(gAppTheme.iconPath("stream_material"))
                     }
                     fillMode: Image.PreserveAspectFit

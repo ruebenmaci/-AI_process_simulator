@@ -15,6 +15,8 @@
 
 class StreamUnitState;
 class MaterialStreamState;
+class HeaterCoolerUnitState;
+class HeatExchangerUnitState;
 
 class FlowsheetState : public QObject
 {
@@ -57,6 +59,12 @@ public:
    Q_INVOKABLE QString addColumnAndReturnId(double x = 100.0, double y = 100.0);
    Q_INVOKABLE void addStream(double x = 100.0, double y = 100.0);
    Q_INVOKABLE QString addStreamAndReturnId(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE void addHeater(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE QString addHeaterAndReturnId(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE void addCooler(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE QString addCoolerAndReturnId(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE void addHeatExchanger(double x = 100.0, double y = 100.0);
+   Q_INVOKABLE QString addHeatExchangerAndReturnId(double x = 100.0, double y = 100.0);
    Q_INVOKABLE void clear();
 
    Q_INVOKABLE void selectUnit(const QString& unitId);
@@ -66,6 +74,9 @@ public:
    Q_INVOKABLE void setStreamConnectionDirection(const QString& unitId, const QString& direction);
    Q_INVOKABLE bool bindColumnFeedStream(const QString& columnUnitId, const QString& streamUnitId);
    Q_INVOKABLE bool bindColumnProductStream(const QString& columnUnitId, const QString& productPort, const QString& streamUnitId);
+   Q_INVOKABLE bool bindHeaterFeedStream(const QString& heaterUnitId, const QString& streamUnitId);
+   Q_INVOKABLE bool bindHeaterProductStream(const QString& heaterUnitId, const QString& streamUnitId);
+   Q_INVOKABLE bool bindHexStream(const QString& hexUnitId, const QString& port, const QString& streamUnitId);
    Q_INVOKABLE bool disconnectMaterialStream(const QString& streamUnitId);
    Q_INVOKABLE bool deleteUnit(const QString& unitId);
    Q_INVOKABLE bool deleteSelectedUnit();
@@ -129,6 +140,8 @@ signals:
 private:
    QString addColumnInternal(double x, double y);
    QString addStreamInternal(double x, double y);
+   QString addHeaterCoolerInternal(double x, double y, const QString& unitType);
+   QString addHeatExchangerInternal(double x, double y);
    QString nextAvailableUnitId_(const QString& prefix) const;
    QString makeUniqueUnitName_(const QString& proposedName, const QString& type, const QString& excludeUnitId = QString()) const;
    bool isUnitConnected_(const QString& unitId, QString* detailMessage = nullptr) const;

@@ -12,6 +12,8 @@ add_executable(adt_tests
   test_invariants.cpp
   test_thermo_roundtrip.cpp
   test_benzene_toluene_column.cpp
+  RunResultsParser.cpp
+  test_column_runresults_regression.cpp
 )
 
 target_compile_features(adt_tests PRIVATE cxx_std_20)
@@ -35,5 +37,15 @@ add_executable(thermo_regression
 target_compile_features(thermo_regression PRIVATE cxx_std_20)
 target_link_libraries(thermo_regression PRIVATE adt_core)
 set_target_properties(thermo_regression PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+add_executable(runresults_to_json
+  RunResultsParser.cpp
+  runresults_to_json_main.cpp
+)
+
+target_compile_features(runresults_to_json PRIVATE cxx_std_20)
+set_target_properties(runresults_to_json PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

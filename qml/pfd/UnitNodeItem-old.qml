@@ -145,8 +145,6 @@ Item {
                     return Qt.resolvedUrl(gAppTheme.iconPath("heater"))
                 if (root.unitType === "cooler")
                     return Qt.resolvedUrl(gAppTheme.iconPath("cooler"))
-                if (root.unitType === "heat_exchanger")
-                    return Qt.resolvedUrl(gAppTheme.iconPath("heat_exchanger"))
                 // Generic fallback: try the unitType as an icon name directly
                 return Qt.resolvedUrl(gAppTheme.iconPath(root.unitType))
             }

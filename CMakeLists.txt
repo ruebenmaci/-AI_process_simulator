@@ -4,12 +4,24 @@ project(chatgpt5_adt_simulation_qt LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# TEMP: force Qt for Visual Studio (remove after it configures)
-set(Qt6_DIR "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6" CACHE PATH "" FORCE)
+# Set Qt path once; no FORCE so CMake does not rewrite the cache every configure pass
+# (FORCE was causing part of the infinite reconfigure loop)
+if(NOT DEFINED Qt6_DIR OR Qt6_DIR STREQUAL "")
+    set(Qt6_DIR "C:/Qt/6.10.1/msvc2022_64/lib/cmake/Qt6" CACHE PATH "Qt6 CMake dir")
+endif()
 list(PREPEND CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64")
 
 find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Concurrent)
 qt_standard_project_setup(REQUIRES 6.2)
+
+# ── Silence Qt CMake policy warnings that cause infinite reconfigure loops ──
+# QTP0001: URI-based import path policy (NEW = use URI, not directory)
+# QTP0004: Extra QML source directories must have qmldir files (NEW = opt-in,
+#           suppresses the regeneration that causes the CMake re-run loop)
+if(COMMAND qt_policy)
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 # ----------------------------
 # Core (solver/thermo) library
@@ -87,6 +99,10 @@ qt_add_executable(appChatGPT5_ADT
     cpp/streams/state/StreamUnitState.cpp
     cpp/unitops/column/state/ColumnUnitState.h
     cpp/unitops/column/state/ColumnUnitState.cpp
+    cpp/unitops/heater/state/HeaterCoolerUnitState.h
+    cpp/unitops/heater/state/HeaterCoolerUnitState.cpp
+    cpp/unitops/hex/state/HeatExchangerUnitState.h
+    cpp/unitops/hex/state/HeatExchangerUnitState.cpp
     cpp/unitops/column/models/TrayModel.h
     cpp/unitops/column/models/TrayModel.cpp
     cpp/unitops/column/models/DiagnosticsModel.h
@@ -115,6 +131,11 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/displaySettings/DisplaySettingsPanel.qml
         cpp/unitops/column/qml/ColumnWorkspaceWindow.qml
         cpp/unitops/column/qml/DistillationColumn.qml
+        cpp/unitops/heater/qml/HeaterCoolerView.qml
+        cpp/unitops/heater/qml/HeaterWorkspaceWindow.qml
+        cpp/unitops/heater/qml/CoolerWorkspaceWindow.qml
+        cpp/unitops/hex/qml/HeatExchangerView.qml
+        cpp/unitops/hex/qml/HeatExchangerWorkspaceWindow.qml
         cpp/streams/qml/StreamView.qml
         cpp/streams/qml/StreamCompositionPanel.qml
         cpp/streams/qml/StreamConditionsPanel.qml
@@ -184,6 +205,9 @@ target_include_directories(appChatGPT5_ADT PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/heater
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/heater/state
+    ${CMAKE_CURRENT_SOURCE_DIR}/cpp/unitops/hex/state
 )
 
 # Helpful for Visual Studio/Qt VS Tools

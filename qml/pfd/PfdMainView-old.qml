@@ -7,7 +7,6 @@ import QtQuick.Dialogs
 import ChatGPT5.ADT 1.0
 import "../../cpp/unitops/column/qml"
 import "../../cpp/unitops/heater/qml"
-import "../../cpp/unitops/hex/qml"
 import "."
 
 Item {
@@ -136,8 +135,6 @@ Item {
             return unitName ? "Heater  —  " + unitName : "Heater"
         } else if (root.activeUnit.type === "cooler") {
             return unitName ? "Cooler  —  " + unitName : "Cooler"
-        } else if (root.activeUnit.type === "heat_exchanger") {
-            return unitName ? "Heat Exchanger  —  " + unitName : "Heat Exchanger"
         } else {
             return unitName ? "Distillation Column  —  " + unitName : "Distillation Column"
         }
@@ -386,13 +383,12 @@ Item {
         readonly property bool streamMode:  !!root.activeUnit && root.activeUnit.type === "stream"
         readonly property bool heaterMode:  !!root.activeUnit && root.activeUnit.type === "heater"
         readonly property bool coolerMode:  !!root.activeUnit && root.activeUnit.type === "cooler"
-        readonly property bool hexMode:     !!root.activeUnit && root.activeUnit.type === "heat_exchanger"
 
         width:  streamMode  ? streamWidth
-              : (heaterMode || coolerMode || hexMode) ? heaterWidth
+              : (heaterMode || coolerMode) ? heaterWidth
               : columnNormalWidth
         height: streamMode  ? streamHeight
-              : (heaterMode || coolerMode || hexMode) ? heaterHeight
+              : (heaterMode || coolerMode) ? heaterHeight
               : columnNormalHeight
 
         active: visible && root.activePanel === floatingWorkspace
@@ -412,9 +408,8 @@ Item {
                 sourceComponent: {
                     const t = root.activeUnit ? root.activeUnit.type : ""
                     if (t === "stream")  return streamWorkspaceComponent
-                    if (t === "heater")       return heaterWorkspaceComponent
-                    if (t === "cooler")       return coolerWorkspaceComponent
-                    if (t === "heat_exchanger") return hexWorkspaceComponent
+                    if (t === "heater")  return heaterWorkspaceComponent
+                    if (t === "cooler")  return coolerWorkspaceComponent
                     return columnWorkspaceComponent
                 }
             }
@@ -447,14 +442,6 @@ Item {
         Component {
             id: coolerWorkspaceComponent
             CoolerWorkspaceWindow {
-                anchors.fill: parent
-                appState: root.activeUnit
-            }
-        }
-
-        Component {
-            id: hexWorkspaceComponent
-            HeatExchangerWorkspaceWindow {
                 anchors.fill: parent
                 appState: root.activeUnit
             }

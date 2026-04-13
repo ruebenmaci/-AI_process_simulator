@@ -68,21 +68,37 @@ Item {
             text: "No stream selected"; font.pixelSize: 11; color: root.textMuted
         }
 
-        ScrollView {
+        Flickable {
+            id: panelFlick
             x: 0; y: panelHdr.height
             width: parent.width; height: parent.height - panelHdr.height
             visible: root.has(); clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy:   ScrollBar.AsNeeded
+            contentWidth: width
+            contentHeight: panelColumn.implicitHeight + root.secGap
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
+
+            // Called by each child SimpleSpreadsheet when it has no internal scroll to do
+            function handleWheelPassthrough(deltaY, deltaX) {
+                var step = 60
+                if (deltaY !== 0) {
+                    var newY = panelFlick.contentY - (deltaY / 120) * step
+                    panelFlick.contentY = Math.max(0, Math.min(newY, Math.max(0, panelFlick.contentHeight - panelFlick.height)))
+                }
+            }
 
             Column {
-                width: parent.width
+                id: panelColumn
+                width: panelFlick.width
                 spacing: root.secGap
 
                 // ── Stream Summary ────────────────────────────────────
                 SecHdr { text: "Stream Summary" }
                 SimpleSpreadsheet {
                     id: sheetSummary
+                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
                     readOnly: true
                     x: 4; width: parent.width - 8; numRows: 11; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)
@@ -128,6 +144,7 @@ Item {
                 SecHdr { text: "Molecular & Bulk" }
                 SimpleSpreadsheet {
                     id: sheetMolecular
+                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
                     readOnly: true
                     x: 4; width: parent.width - 8; numRows: 6; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)
@@ -172,6 +189,7 @@ Item {
                 SecHdr { text: "Thermodynamic Properties" }
                 SimpleSpreadsheet {
                     id: sheetThermo
+                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
                     readOnly: true
                     x: 4; width: parent.width - 8; numRows: 8; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)
@@ -213,6 +231,7 @@ Item {
                 SecHdr { text: "Transport Properties" }
                 SimpleSpreadsheet {
                     id: sheetTransport
+                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
                     readOnly: true
                     x: 4; width: parent.width - 8; numRows: 5; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)
@@ -251,6 +270,7 @@ Item {
                 SecHdr { text: "Phase Envelope" }
                 SimpleSpreadsheet {
                     id: sheetEnvelope
+                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
                     readOnly: true
                     x: 4; width: parent.width - 8; numRows: 4; numCols: 1
                     defaultColW: Math.max(180, width - hdrColW - 4)

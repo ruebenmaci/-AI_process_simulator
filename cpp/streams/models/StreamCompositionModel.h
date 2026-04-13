@@ -36,9 +36,11 @@ public:
     QObject* streamObject() const;
 
     Q_INVOKABLE bool setFraction(int row, double value);
+    Q_INVOKABLE bool setMoleFraction(int row, double value);
     Q_INVOKABLE bool setPropertyValue(int row, const QString& field, double value);
     Q_INVOKABLE void resetToDefault();
     Q_INVOKABLE void normalizeFractions();
+    Q_INVOKABLE void normalizeMoleFractions();
     Q_INVOKABLE int rowCountQml() const { return rowCount(); }
 
 private:

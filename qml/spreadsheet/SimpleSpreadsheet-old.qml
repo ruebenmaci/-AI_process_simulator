@@ -14,12 +14,9 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
-import Qt.labs.platform 1.1 as Platform
 
 Item {
     id: root
-    clip: true
-
 
     // ── tunables ──────────────────────────────────────────────────────────────
     property int  numRows      : 50
@@ -39,16 +36,7 @@ Item {
     property color editBg       : "#fffbe6"
 
     property font  cellFont: Qt.font({ family: "Segoe UI", pixelSize: 10 })
-    property string cornerLabel: "Property"
     property bool  readOnly: false
-    // Per-column read-only override — list of column indices that cannot be edited
-    // e.g. readOnlyCols: [0] makes the first column (row header / Component) uneditable
-    property var   readOnlyCols: []
-    property bool  numericOnlyCells: true
-
-    // Fired after the user commits an edit to a cell (r, c, newText)
-    // Connect to this to push changes back to a C++ model
-    signal cellEdited(int row, int col, string text)
 
     // ── state ─────────────────────────────────────────────────────────────────
     property var colW     : []
@@ -64,13 +52,7 @@ Item {
     //           rowLabels: ["ID", "Name", "Formula", "MW", "BP"]
     property var colLabels: []
     property var rowLabels: []
-    property bool stretchToWidth: true
-    property int verticalScrollBarPolicy: ScrollBar.AsNeeded
-    property int horizontalScrollBarPolicy: ScrollBar.AsNeeded
 
-    // Fired when a wheel event occurs but the internal Flickable has nothing to scroll.
-    // Parent containers can connect to this to implement their own scrolling.
-    signal wheelPassthrough(real deltaY, real deltaX)
     property int  curRow   : 0
     property int  curCol   : 0
     property bool editing  : false
@@ -133,8 +115,8 @@ Item {
         var padding = 20     // 10px each side
         var minW    = 48
 
-        // Always include the corner label
-        var best = Math.ceil(ctx.measureText(root.cornerLabel).width) + padding
+        // Always include "Property" (the corner label)
+        var best = Math.ceil(ctx.measureText("Property").width) + padding
         if (best < minW) best = minW
 
         if (rowLabels && rowLabels.length > 0) {
@@ -199,19 +181,14 @@ Item {
         _init()
     }
 
-    // Resize all data columns to fill the sheet's current pixel width while
-    // leaving the frozen row-header column sized to its text content.
-    // For a 1-column sheet this makes the Value column fill the remaining space.
+    // Resize all columns to evenly fill the sheet's current pixel width.
+    // Call this after setting rowLabels (so hdrColW is up to date).
     function fitToWidth() {
         if (root.width <= 0 || numCols <= 0) return
         var available = Math.max(24 * numCols, root.width - hdrColW - 2)
+        var w = Math.floor(available / numCols)
         var arr = []
-        if (numCols === 1) {
-            arr.push(Math.max(24, available))
-        } else {
-            var w = Math.floor(available / numCols)
-            for (var c = 0; c < numCols; c++) arr.push(w)
-        }
+        for (var c = 0; c < numCols; c++) arr.push(w)
         colW = arr
         colHeaderCanvas.requestPaint()
         gridCanvas.requestPaint()
@@ -250,161 +227,28 @@ Item {
         store = ns
     }
 
-    function _selectRow(r) {
-        if (editing) _commitEdit()
-        r = Math.max(0, Math.min(numRows - 1, r))
-        curRow = r
-        curCol = numCols - 1
-        selAnchorRow = r
-        selAnchorCol = 0
-        _scrollTo(r, 0)
-        gridCanvas.requestPaint()
-        colHeaderCanvas.requestPaint()
-        rowHeaderCanvas.requestPaint()
-    }
-
-    function _selectColumn(c) {
-        if (editing) _commitEdit()
-        c = Math.max(0, Math.min(numCols - 1, c))
-        curRow = numRows - 1
-        curCol = c
-        selAnchorRow = 0
-        selAnchorCol = c
-        _scrollTo(0, c)
-        gridCanvas.requestPaint()
-        colHeaderCanvas.requestPaint()
-        rowHeaderCanvas.requestPaint()
-    }
-
-    function _selectAll() {
-        if (editing) _commitEdit()
-        curRow = numRows - 1
-        curCol = numCols - 1
-        selAnchorRow = 0
-        selAnchorCol = 0
-        _scrollTo(0, 0)
-        gridCanvas.requestPaint()
-        colHeaderCanvas.requestPaint()
-        rowHeaderCanvas.requestPaint()
-    }
-
-    function _selectedTextWithHeaders() {
-        var lines = []
-        var allRowsSelected = (root.selR1 === 0 && root.selR2 === root.numRows - 1)
-        var allColsSelected = (root.selC1 === 0 && root.selC2 === root.numCols - 1)
-
-        // Select-all via top-left corner: include corner label, column headers, and row labels.
-        if (allRowsSelected && allColsSelected) {
-            var fullHeader = [String(root.cornerLabel)]
-            for (var c = root.selC1; c <= root.selC2; c++)
-                fullHeader.push(String(root._colHdrLabel(c)))
-            lines.push(fullHeader.join("\t"))
-
-            for (var r = root.selR1; r <= root.selR2; r++) {
-                var fullRow = [String(root._rowHdrLabel(r))]
-                for (var c2 = root.selC1; c2 <= root.selC2; c2++)
-                    fullRow.push(root._getRaw(r, c2))
-                lines.push(fullRow.join("\t"))
-            }
-            return lines.join("\r\n")
-        }
-
-        // Full-column selection from header: include selected column headers, but not row labels.
-        if (allRowsSelected) {
-            var colHeader = []
-            for (var c3 = root.selC1; c3 <= root.selC2; c3++)
-                colHeader.push(String(root._colHdrLabel(c3)))
-            lines.push(colHeader.join("\t"))
-
-            for (var r2 = root.selR1; r2 <= root.selR2; r2++) {
-                var valueRow = []
-                for (var c4 = root.selC1; c4 <= root.selC2; c4++)
-                    valueRow.push(root._getRaw(r2, c4))
-                lines.push(valueRow.join("\t"))
-            }
-            return lines.join("\r\n")
-        }
-
-        // Full-row selection from row header: include row labels, but not column headers.
-        if (allColsSelected) {
-            for (var r3 = root.selR1; r3 <= root.selR2; r3++) {
-                var selectedRow = [String(root._rowHdrLabel(r3))]
-                for (var c5 = root.selC1; c5 <= root.selC2; c5++)
-                    selectedRow.push(root._getRaw(r3, c5))
-                lines.push(selectedRow.join("\t"))
-            }
-            return lines.join("\r\n")
-        }
-
-        // Normal inner-cell rectangle: include selected column headers and row labels.
-        var headerCols = [String(root.cornerLabel)]
-        for (var c6 = root.selC1; c6 <= root.selC2; c6++)
-            headerCols.push(String(root._colHdrLabel(c6)))
-        lines.push(headerCols.join("\t"))
-
-        for (var r4 = root.selR1; r4 <= root.selR2; r4++) {
-            var cols = [String(root._rowHdrLabel(r4))]
-            for (var c7 = root.selC1; c7 <= root.selC2; c7++)
-                cols.push(root._getRaw(r4, c7))
-            lines.push(cols.join("\t"))
-        }
-        return lines.join("\r\n")
-    }
-
     // ── clipboard ─────────────────────────────────────────────────────────────
     // Uses a hidden TextEdit to bridge to the OS system clipboard.
     function _copyToClipboard(text) {
-        if (typeof gClipboard !== "undefined" && gClipboard)
-            gClipboard.setText(text)
-        else {
-            clipBridge.text = text
-            clipBridge.selectAll()
-            clipBridge.copy()
-        }
+        clipBridge.text = text
+        clipBridge.selectAll()
+        clipBridge.copy()
     }
 
     function _pasteFromClipboard() {
-        if (typeof gClipboard !== "undefined" && gClipboard)
-            return gClipboard.text() || ""
-
-        clipBridge.selectAll()
+        clipBridge.text = ""
         clipBridge.paste()
-        return clipBridge.text || ""
-    }
-
-    function _isNumericText(text) {
-        var s = String(text === undefined || text === null ? "" : text).trim()
-        if (s === "") return true
-        return /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(s)
-    }
-
-    function _isEditableColumn(c) {
-        return !(readOnlyCols && readOnlyCols.indexOf(c) >= 0)
-    }
-
-    function _isValidCellInput(r, c, text) {
-        if (!_isEditableColumn(c)) return false
-        if (!numericOnlyCells) return true
-        return _isNumericText(text)
+        return clipBridge.text
     }
 
     function _paste() {
         if (readOnly) return
         var text = _pasteFromClipboard()
-        var lines = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
+        var lines = text.split("\n")
         for (var ri = 0; ri < lines.length; ri++) {
             var cols = lines[ri].split("\t")
-            for (var ci = 0; ci < cols.length; ci++) {
-                var rr = curRow + ri
-                var cc = curCol + ci
-                if (rr < 0 || rr >= numRows || cc < 0 || cc >= numCols)
-                    continue
-                if (!_isEditableColumn(cc))
-                    continue
-                if (!_isValidCellInput(rr, cc, cols[ci]))
-                    continue
-                _set(rr, cc, cols[ci])
-            }
+            for (var ci = 0; ci < cols.length; ci++)
+                _set(curRow + ri, curCol + ci, cols[ci])
         }
         gridCanvas.requestPaint()
     }
@@ -412,7 +256,6 @@ Item {
     // ── edit helpers ──────────────────────────────────────────────────────────
     function _beginEdit(r, c) {
         if (readOnly) return
-        if (readOnlyCols && readOnlyCols.indexOf(c) >= 0) return
         curRow   = r;  curCol = c
         editText = _getRaw(r, c)
         editing  = true
@@ -421,18 +264,11 @@ Item {
 
     function _commitEdit() {
         if (!editing) return
-        var r = curRow; var c = curCol; var txt = editText
-        if (!_isValidCellInput(r, c, txt)) {
-            cellInput.forceActiveFocus()
-            cellInput.selectAll()
-            return
-        }
-        _set(r, c, txt)
+        _set(curRow, curCol, editText)
         editing  = false
         editText = ""
         focusCatcher.forceActiveFocus()
         gridCanvas.requestPaint()
-        root.cellEdited(r, c, txt)
     }
 
     function _cancelEdit() {
@@ -520,11 +356,6 @@ Item {
             flick.contentY = cy + rh2 - flick.height
     }
 
-    RegularExpressionValidator {
-        id: numericCellValidator
-        regularExpression: /[-+]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][-+]?\d+)?|[-+]?|[-+]?\.|[-+]?\d+[eE]?|[-+]?\d+(?:\.\d*)?[eE][-+]?/
-    }
-
     // ── UI ────────────────────────────────────────────────────────────────────
     Item {
         id: sheetBody
@@ -534,26 +365,15 @@ Item {
             Rectangle {
                 x: 0; y: 0; z: 4
                 width: root.hdrColW; height: root.hdrRowH
-                color: (root.selR1 === 0 && root.selR2 === root.numRows - 1 &&
-                        root.selC1 === 0 && root.selC2 === root.numCols - 1) ? root.selColor : root.headerBg
-                border.color: root.headerBorder
+                color: root.headerBg; border.color: root.headerBorder
                 Text {
                     anchors.fill: parent
                     anchors.leftMargin: 8
                     verticalAlignment: Text.AlignVCenter
-                    text: root.cornerLabel
+                    text: "Property"
                     font: Qt.font({ family: "Segoe UI", pixelSize: 10, bold: true })
                     color: "#333333"
                     elide: Text.ElideRight
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    onPressed: function(e) {
-                        focusCatcher.forceActiveFocus()
-                        root._selectAll()
-                        e.accepted = true
-                    }
                 }
             }
             Item {
@@ -572,62 +392,13 @@ Item {
                             var cw = root.colW[c]
                             var x  = root.colX(c) - ox
                             if (x + cw < 0 || x > width) continue
-                            var colSelected = (c >= root.selC1 && c <= root.selC2)
-                            ctx.fillStyle = colSelected ? root.selColor : root.headerBg
+                            ctx.fillStyle = root.headerBg
                             ctx.fillRect(x, 0, cw, height)
                             ctx.strokeStyle = root.headerBorder; ctx.lineWidth = 1
                             ctx.strokeRect(x + 0.5, 0.5, cw - 1, height - 1)
                             ctx.fillStyle = "#333"; ctx.font = "bold 10px 'Segoe UI'"
                             ctx.textAlign = "center"; ctx.textBaseline = "middle"
                             ctx.fillText(root._colHdrLabel(c), x + cw / 2, height / 2)
-                        }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    preventStealing: true
-                    hoverEnabled: true
-
-                    function hitColumn(px) {
-                        var c = 0
-                        var acc = 0
-                        for (var j = 0; j < root.numCols; j++) {
-                            if (acc + root.colW[j] > px) {
-                                c = j
-                                break
-                            }
-                            acc += root.colW[j]
-                        }
-                        return Math.max(0, Math.min(root.numCols - 1, c))
-                    }
-
-                    onPressed: function(e) {
-                        focusCatcher.forceActiveFocus()
-                        if (root.editing) root._commitEdit()
-                        var c = hitColumn(e.x + flick.contentX)
-                        root.curRow = root.numRows - 1
-                        root.curCol = c
-                        root.selAnchorRow = 0
-                        root.selAnchorCol = c
-                        root._scrollTo(0, c)
-                        gridCanvas.requestPaint()
-                        colHeaderCanvas.requestPaint()
-                        rowHeaderCanvas.requestPaint()
-                        e.accepted = true
-                    }
-
-                    onPositionChanged: function(e) {
-                        if (!pressed) return
-                        var c = hitColumn(e.x + flick.contentX)
-                        if (c !== root.curCol || root.curRow !== root.numRows - 1) {
-                            root.curRow = root.numRows - 1
-                            root.curCol = c
-                            root._scrollTo(0, c)
-                            gridCanvas.requestPaint()
-                            colHeaderCanvas.requestPaint()
-                            rowHeaderCanvas.requestPaint()
                         }
                     }
                 }
@@ -648,6 +419,7 @@ Item {
                                 if (!pressed) return
                                 var arr = root.colW.slice()
                                 var newW = Math.max(24, colRH._sw + (e.x + colRH.x - colRH._sx))
+                                // Clamp: don't let this column push total width beyond the visible area
                                 var otherW = 0
                                 for (var i = 0; i < arr.length; i++)
                                     if (i !== colRH.colIdx) otherW += arr[i]
@@ -679,84 +451,13 @@ Item {
                             var rh = root.rowH[r]
                             var y  = root.rowY(r) - oy
                             if (y + rh < 0 || y > height) continue
-                            var rowSelected = (r >= root.selR1 && r <= root.selR2)
-                            ctx.fillStyle = rowSelected ? root.selColor : root.rowHdrBg
+                            ctx.fillStyle = root.rowHdrBg
                             ctx.fillRect(0, y, width, rh)
                             ctx.strokeStyle = root.headerBorder; ctx.lineWidth = 1
                             ctx.strokeRect(0.5, y + 0.5, width - 1, rh - 1)
                             ctx.fillStyle = "#333"; ctx.font = "10px 'Segoe UI'"
                             ctx.textAlign = "left"; ctx.textBaseline = "middle"
                             ctx.fillText(root._rowHdrLabel(r), 8, y + rh / 2)
-                        }
-                    }
-
-                    // Wheel over the Property column drives the internal Flickable
-                    MouseArea {
-                        anchors.fill: parent
-                        acceptedButtons: Qt.NoButton
-                        onWheel: function(wheel) {
-                            var step = 60
-                            var needsY = root.contentH > flick.height
-                            var needsX = root.contentW > flick.width
-                            if (needsY && wheel.angleDelta.y !== 0) {
-                                var newY = flick.contentY - (wheel.angleDelta.y / 120) * step
-                                flick.contentY = Math.max(0, Math.min(newY, root.contentH - flick.height))
-                            }
-                            if (needsX && wheel.angleDelta.x !== 0) {
-                                var newX = flick.contentX - (wheel.angleDelta.x / 120) * step
-                                flick.contentX = Math.max(0, Math.min(newX, root.contentW - flick.width))
-                            }
-                            if (!needsY && !needsX)
-                                root.wheelPassthrough(wheel.angleDelta.y, wheel.angleDelta.x)
-                            wheel.accepted = true
-                        }
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    preventStealing: true
-                    hoverEnabled: true
-
-                    function hitRow(py) {
-                        var r = 0
-                        var acc = 0
-                        for (var i = 0; i < root.numRows; i++) {
-                            if (acc + root.rowH[i] > py) {
-                                r = i
-                                break
-                            }
-                            acc += root.rowH[i]
-                        }
-                        return Math.max(0, Math.min(root.numRows - 1, r))
-                    }
-
-                    onPressed: function(e) {
-                        focusCatcher.forceActiveFocus()
-                        if (root.editing) root._commitEdit()
-                        var r = hitRow(e.y + flick.contentY)
-                        root.curRow = r
-                        root.curCol = root.numCols - 1
-                        root.selAnchorRow = r
-                        root.selAnchorCol = 0
-                        root._scrollTo(r, 0)
-                        gridCanvas.requestPaint()
-                        colHeaderCanvas.requestPaint()
-                        rowHeaderCanvas.requestPaint()
-                        e.accepted = true
-                    }
-
-                    onPositionChanged: function(e) {
-                        if (!pressed) return
-                        var r = hitRow(e.y + flick.contentY)
-                        if (r !== root.curRow || root.curCol !== root.numCols - 1) {
-                            root.curRow = r
-                            root.curCol = root.numCols - 1
-                            root._scrollTo(r, 0)
-                            gridCanvas.requestPaint()
-                            colHeaderCanvas.requestPaint()
-                            rowHeaderCanvas.requestPaint()
                         }
                     }
                 }
@@ -824,8 +525,6 @@ Item {
                                 if (root.editing && isCur)       ctx.fillStyle = root.editBg
                                 else if (isCur)                  ctx.fillStyle = root.curColor
                                 else if (inSel)                  ctx.fillStyle = root.selColor
-                                else if (root.readOnlyCols && root.readOnlyCols.indexOf(c) >= 0)
-                                                                 ctx.fillStyle = root.rowHdrBg
                                 else                             ctx.fillStyle = root.cellBg
                                 ctx.fillRect(cx, ry, cw, rh)
                                 ctx.strokeStyle = root.gridColor; ctx.lineWidth = 0.5
@@ -872,8 +571,6 @@ Item {
                     visible: root.editing
                     font: root.cellFont; color: "#111"
                     clip: true; selectByMouse: true
-                    validator: root.numericOnlyCells ? numericCellValidator : null
-                    inputMethodHints: root.numericOnlyCells ? (Qt.ImhFormattedNumbersOnly | Qt.ImhNoPredictiveText) : Qt.ImhNone
                     leftPadding: 4; verticalAlignment: TextInput.AlignVCenter
                     text: root.editText
                     onTextEdited: { root.editText = text }
@@ -891,22 +588,21 @@ Item {
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton
                     preventStealing: true
+                    // Forward wheel events to scroll the Flickable
                     onWheel: function(wheel) {
                         var step = 60
-                        var needsY = root.contentH > flick.height
-                        var needsX = root.contentW > flick.width
-                        if (needsY && wheel.angleDelta.y !== 0) {
+                        if (wheel.angleDelta.y !== 0) {
                             var newY = flick.contentY - (wheel.angleDelta.y / 120) * step
-                            flick.contentY = Math.max(0, Math.min(newY, root.contentH - flick.height))
+                            flick.contentY = Math.max(0, Math.min(newY, Math.max(0, root.contentH - flick.height)))
                         }
-                        if (needsX && wheel.angleDelta.x !== 0) {
+                        if (wheel.angleDelta.x !== 0) {
                             var newX = flick.contentX - (wheel.angleDelta.x / 120) * step
-                            flick.contentX = Math.max(0, Math.min(newX, root.contentW - flick.width))
+                            flick.contentX = Math.max(0, Math.min(newX, Math.max(0, root.contentW - flick.width)))
                         }
-                        if (!needsY && !needsX)
-                            root.wheelPassthrough(wheel.angleDelta.y, wheel.angleDelta.x)
                         wheel.accepted = true
                     }
+
+                    // Hit-test pixel coordinates → { r, c }
                     function _hitTest(px, py) {
                         var r = 0, c = 0, acc = 0
                         for (var i = 0; i < root.numRows; i++) {
@@ -958,7 +654,7 @@ Item {
             ScrollBar {
                 id: vBar; z: 5
                 anchors { right: sheetBody.right; top: sheetBody.top; topMargin: root.hdrRowH; bottom: sheetBody.bottom; bottomMargin: hBar.height }
-                orientation: Qt.Vertical; policy: root.verticalScrollBarPolicy
+                orientation: Qt.Vertical; policy: ScrollBar.AsNeeded
                 size:     flick.height     / Math.max(1, root.contentH)
                 position: flick.contentY   / Math.max(1, root.contentH)
                 onPositionChanged: if (pressed) flick.contentY = position * root.contentH
@@ -966,7 +662,7 @@ Item {
             ScrollBar {
                 id: hBar; z: 5
                 anchors { left: sheetBody.left; leftMargin: root.hdrColW; right: sheetBody.right; rightMargin: vBar.width; bottom: sheetBody.bottom }
-                orientation: Qt.Horizontal; policy: root.horizontalScrollBarPolicy
+                orientation: Qt.Horizontal; policy: ScrollBar.AsNeeded
                 size:     flick.width      / Math.max(1, root.contentW)
                 position: flick.contentX   / Math.max(1, root.contentW)
                 onPositionChanged: if (pressed) flick.contentX = position * root.contentW
@@ -983,9 +679,15 @@ Item {
             if (e.key === Qt.Key_F2 && !root.readOnly) {
                 root._beginEdit(root.curRow, root.curCol); e.accepted = true; return
             }
-            // Ctrl+C — copy selection including selected column headers and row labels
+            // Ctrl+C — copy full selection range to system clipboard (tab/newline separated)
             if (e.key === Qt.Key_C && (e.modifiers & Qt.ControlModifier)) {
-                root._copyToClipboard(root._selectedTextWithHeaders())
+                var lines = []
+                for (var r = root.selR1; r <= root.selR2; r++) {
+                    var cols = []
+                    for (var c = root.selC1; c <= root.selC2; c++) cols.push(root._getRaw(r, c))
+                    lines.push(cols.join("\t"))
+                }
+                root._copyToClipboard(lines.join("\n"))
                 e.accepted = true; return
             }
             // Ctrl+V
@@ -1014,17 +716,8 @@ Item {
             }
             // Printable key → start editing
             if (!root.readOnly && e.text.length > 0 && !root.editing) {
-                if (!root._isEditableColumn(root.curCol)) {
-                    e.accepted = true
-                    return
-                }
-                if (root.numericOnlyCells && !/^[-+0-9.eE]$/.test(e.text)) {
-                    e.accepted = true
-                    return
-                }
                 root._beginEdit(root.curRow, root.curCol)
-                root.editText = e.text
-                e.accepted = true
+                root.editText = e.text; e.accepted = true
             }
         }
     }
@@ -1044,9 +737,7 @@ Item {
     onColWChanged:        { gridCanvas.requestPaint(); colHeaderCanvas.requestPaint() }
     onRowHChanged:        { gridCanvas.requestPaint(); rowHeaderCanvas.requestPaint() }
     onColLabelsChanged:   colHeaderCanvas.requestPaint()
-    onRowLabelsChanged:   Qt.callLater(function() { _updateHdrColW(); rowHeaderCanvas.requestPaint(); if (stretchToWidth) fitToWidth() })
-    onHdrColWChanged:     Qt.callLater(function() { if (stretchToWidth) fitToWidth() })
-    onWidthChanged:       Qt.callLater(function() { if (stretchToWidth) fitToWidth() })
+    onRowLabelsChanged:   Qt.callLater(function() { _updateHdrColW(); rowHeaderCanvas.requestPaint(); fitToWidth() })
     onCurRowChanged:      gridCanvas.requestPaint()
     onCurColChanged:      gridCanvas.requestPaint()
     onSelAnchorRowChanged:gridCanvas.requestPaint()

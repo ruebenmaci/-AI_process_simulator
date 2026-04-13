@@ -32,7 +32,7 @@ Item {
         { iconId: "fired_heater",         label: "Fired Heater", unitType: "fired_heater", enabled: false },
         { iconId: "flash_drum",           label: "Flash Drum", unitType: "flash_drum", enabled: false },
         
-        { iconId: "heat_exchanger",       label: "Heat Exchanger", unitType: "heat_exchanger", enabled: true },
+        { iconId: "heat_exchanger",       label: "Heat Exchanger", unitType: "heat_exchanger", enabled: false },
         { iconId: "heater",               label: "Heater", unitType: "heater", enabled: true },
         { iconId: "hen",                  label: "HEN", unitType: "hen", enabled: false },
         { iconId: "kettle_vaporizer",     label: "Kettle Vaporizer", unitType: "kettle_vaporizer", enabled: false },

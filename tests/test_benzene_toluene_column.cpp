@@ -128,7 +128,8 @@ static const SolverTrayOut& trayByNumber(const SolverOutputs& out, int tray1)
 
 TEST_CASE("BT column: solver runs and produces finite outputs", "[benzene_toluene][smoke]")
 {
-    const SolverInputs in = makeBTInputs();
+    SolverInputs in = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     REQUIRE(out.trays.size() == static_cast<std::size_t>(in.trays));
@@ -138,7 +139,8 @@ TEST_CASE("BT column: solver runs and produces finite outputs", "[benzene_toluen
 
 TEST_CASE("BT column: mass balance error < 0.1%", "[benzene_toluene][balance]")
 {
-    const SolverInputs in = makeBTInputs();
+    SolverInputs in = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     const double total = out.energy.massBalance.totalProducts_kgph;
@@ -155,7 +157,8 @@ TEST_CASE("BT column: mass balance error < 0.1%", "[benzene_toluene][balance]")
 
 TEST_CASE("BT column: distillate and bottoms splits match UI results", "[benzene_toluene][products]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // UI result: Distillate 18184 kg/h, Bottoms 81816 kg/h
@@ -174,7 +177,8 @@ TEST_CASE("BT column: distillate and bottoms splits match UI results", "[benzene
 
 TEST_CASE("BT column: temperature profile is monotonically increasing bottom to top", "[benzene_toluene][temperature]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // Tray 1 (bottoms) must be hottest, tray 20 (top) must be coolest
@@ -189,7 +193,8 @@ TEST_CASE("BT column: temperature profile is monotonically increasing bottom to 
 
 TEST_CASE("BT column: tray temperatures within expected range", "[benzene_toluene][temperature]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // Top tray (20): condenser spec 362 K — should be close
@@ -210,7 +215,8 @@ TEST_CASE("BT column: tray temperatures within expected range", "[benzene_toluen
 
 TEST_CASE("BT column: condenser is total (vFrac=0 at tray 20)", "[benzene_toluene][condenser]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     const double vFrac_top = trayByNumber(out, 20).vFrac;
@@ -220,7 +226,8 @@ TEST_CASE("BT column: condenser is total (vFrac=0 at tray 20)", "[benzene_toluen
 
 TEST_CASE("BT column: vapor fraction consistent within sections", "[benzene_toluene][vfrac]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // Rectifying section (trays 19 down to 11): UI showed ~0.595-0.597
@@ -240,7 +247,8 @@ TEST_CASE("BT column: vapor fraction consistent within sections", "[benzene_tolu
 
 TEST_CASE("BT column: benzene y > x on every tray (more volatile)", "[benzene_toluene][vle]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // Benzene is component index 0
@@ -259,7 +267,8 @@ TEST_CASE("BT column: benzene y > x on every tray (more volatile)", "[benzene_to
 
 TEST_CASE("BT column: benzene mole fractions match UI at key trays", "[benzene_toluene][composition]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     constexpr std::size_t benz = 0;
@@ -297,7 +306,8 @@ TEST_CASE("BT column: benzene mole fractions match UI at key trays", "[benzene_t
 
 TEST_CASE("BT column: benzene enriches top-to-bottom correctly", "[benzene_toluene][composition]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     constexpr std::size_t benz = 0;
@@ -315,7 +325,8 @@ TEST_CASE("BT column: benzene enriches top-to-bottom correctly", "[benzene_tolue
 
 TEST_CASE("BT column: liquid flow jump at feed tray", "[benzene_toluene][flows]")
 {
-    const SolverInputs in  = makeBTInputs();
+    SolverInputs in  = makeBTInputs();
+    in.suppressLogs = true;
     const SolverOutputs out = solveColumn(in);
 
     // Liquid flow below feed tray should be substantially higher than above

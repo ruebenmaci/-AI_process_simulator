@@ -156,6 +156,66 @@ bool StreamCompositionModel::setFraction(int row, double value)
     return stream_->setCompositionStd(z);
 }
 
+bool StreamCompositionModel::setMoleFraction(int row, double value)
+{
+    if (!stream_ || !stream_->componentEditingEnabled()) {
+        return false;
+    }
+
+    const auto& thermo = stream_->fluidDefinition().thermo;
+    const auto& comps = thermo.components;
+    const auto& massFractions = stream_->compositionStd();
+    const std::size_t n = std::min(comps.size(), massFractions.size());
+    if (row < 0 || row >= static_cast<int>(n)) {
+        return false;
+    }
+
+    std::vector<double> moleFractions(n, 0.0);
+    double moleDenom = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double wi = massFractions[i];
+        const double mw = comps[i].MW;
+        if (!(wi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            continue;
+        moleDenom += wi / mw;
+    }
+    if (moleDenom > 0.0) {
+        for (std::size_t i = 0; i < n; ++i) {
+            const double wi = massFractions[i];
+            const double mw = comps[i].MW;
+            if (!(wi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+                continue;
+            moleFractions[i] = (wi / mw) / moleDenom;
+        }
+    }
+
+    moleFractions[static_cast<std::size_t>(row)] = value;
+
+    double massDenom = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double xi = moleFractions[i];
+        const double mw = comps[i].MW;
+        if (!(xi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            continue;
+        massDenom += xi * mw;
+    }
+    if (!(massDenom > 0.0)) {
+        return false;
+    }
+
+    std::vector<double> normalizedMassFractions = massFractions;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double xi = moleFractions[i];
+        const double mw = comps[i].MW;
+        if (!(xi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            normalizedMassFractions[i] = 0.0;
+        else
+            normalizedMassFractions[i] = (xi * mw) / massDenom;
+    }
+
+    return stream_->setCompositionStd(normalizedMassFractions);
+}
+
 bool StreamCompositionModel::setPropertyValue(int row, const QString& field, double value)
 {
     return stream_ && stream_->setComponentProperty(row, field, value);
@@ -174,6 +234,80 @@ void StreamCompositionModel::normalizeFractions()
     if (stream_) {
         stream_->normalizeComposition();
     }
+}
+
+void StreamCompositionModel::normalizeMoleFractions()
+{
+    if (!stream_ || !stream_->componentEditingEnabled()) {
+        return;
+    }
+
+    const auto& thermo = stream_->fluidDefinition().thermo;
+    const auto& comps = thermo.components;
+    const auto& massFractions = stream_->compositionStd();
+    const std::size_t n = std::min(comps.size(), massFractions.size());
+    if (n == 0) {
+        return;
+    }
+
+    std::vector<double> moleFractions(n, 0.0);
+    double moleDenom = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double wi = massFractions[i];
+        const double mw = comps[i].MW;
+        if (!(wi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            continue;
+        moleDenom += wi / mw;
+    }
+    if (!(moleDenom > 0.0)) {
+        return;
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+        const double wi = massFractions[i];
+        const double mw = comps[i].MW;
+        if (!(wi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            continue;
+        moleFractions[i] = (wi / mw) / moleDenom;
+    }
+
+    double normalizedSum = 0.0;
+    for (double xi : moleFractions) {
+        if (xi > 0.0 && std::isfinite(xi))
+            normalizedSum += xi;
+    }
+    if (!(normalizedSum > 0.0)) {
+        return;
+    }
+    for (double& xi : moleFractions) {
+        if (!(xi > 0.0) || !std::isfinite(xi))
+            xi = 0.0;
+        else
+            xi /= normalizedSum;
+    }
+
+    double massDenom = 0.0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double xi = moleFractions[i];
+        const double mw = comps[i].MW;
+        if (!(xi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            continue;
+        massDenom += xi * mw;
+    }
+    if (!(massDenom > 0.0)) {
+        return;
+    }
+
+    std::vector<double> normalizedMassFractions = massFractions;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double xi = moleFractions[i];
+        const double mw = comps[i].MW;
+        if (!(xi > 0.0) || !std::isfinite(mw) || mw <= 0.0)
+            normalizedMassFractions[i] = 0.0;
+        else
+            normalizedMassFractions[i] = (xi * mw) / massDenom;
+    }
+
+    stream_->setCompositionStd(normalizedMassFractions);
 }
 
 void StreamCompositionModel::reloadModel_()

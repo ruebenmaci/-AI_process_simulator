@@ -50,7 +50,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: root.bg; border.color: root.hdrBdr; border.width: 1
+        color: root.bg
 
         Rectangle {
             id: panelHeader

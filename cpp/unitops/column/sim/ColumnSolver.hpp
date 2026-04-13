@@ -67,6 +67,9 @@ struct SolverInputs {
    // Solver diagnostic verbosity
    LogLevel logLevel = LogLevel::Summary;
 
+   // When true, suppress solver logging/noisy console output during solveColumn().
+   bool suppressLogs = false;
+
    // Typed draw specs from UI/AppState
    std::vector<SolverDrawSpec> drawSpecs;
    // Optional labels keyed by 1-based tray number for UI display
@@ -89,27 +92,30 @@ struct SolverTrayOut {
 struct SolverOutputs {
    std::vector<SolverTrayOut> trays;
    std::vector<StreamSnapshot> streams;
-   // Plain-text block shown in RunResultsView.
-   // (Some code paths call this "runResultsText" for clarity.)
    std::string summary;
    std::string runResultsText;
 
-   // UI-facing diagnostics (mirrors React diagnostics panel)
    std::vector<Diagnostic> diagnostics;
 
-   // Boundary temps (for spike analysis / UI reporting)
    double Tcond_K = NAN;
    double Treb_K = NAN;
 
-   // Condenser type ("total"|"partial"), used for HYSYS-like explanations
    std::string condenserType = "total";
 
    EnergySpecSummary energy;
-   std::vector<std::string> componentNames; // display names parallel to x/y vectors
+   std::vector<std::string> componentNames;
 };
 
-// Optional callbacks let the solver stream diagnostics and progress.
-// Passing empty std::function objects disables logging/progress.
+std::string serializeSolverInputsToJson(
+   const SolverInputs& in,
+   bool pretty = true);
+
+bool writeSolverInputsJsonFile(
+   const SolverInputs& in,
+   const std::string& filePath,
+   std::string* errorMessage = nullptr,
+   bool pretty = true);
+
 SolverOutputs solveColumn(
    const SolverInputs& in,
    const std::function<void(const std::string&)>& onLog = {},

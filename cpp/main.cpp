@@ -15,6 +15,7 @@
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 #include <QWindow>
+#include <QClipboard>
 
 #include "unitops/column/state/ColumnUnitState.h"
 #include "flowsheet/state/FlowsheetState.h"
@@ -105,6 +106,26 @@ static void applyTitleBarColor(QWindow* window)
       &captionColor, sizeof(captionColor));
 }
 
+class ClipboardHelper : public QObject
+{
+   Q_OBJECT
+public:
+   explicit ClipboardHelper(QObject* parent = nullptr) : QObject(parent) {}
+
+   Q_INVOKABLE void setText(const QString& text)
+   {
+      if (auto* cb = QGuiApplication::clipboard())
+         cb->setText(text, QClipboard::Clipboard);
+   }
+
+   Q_INVOKABLE QString text() const
+   {
+      if (auto* cb = QGuiApplication::clipboard())
+         return cb->text(QClipboard::Clipboard);
+      return QString();
+   }
+};
+
 // ── main ──────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
    qInstallMessageHandler(vsMessageHandler);
@@ -127,6 +148,9 @@ int main(int argc, char* argv[]) {
    QGuiApplication app(argc, argv);
 
    QQmlApplicationEngine engine;
+
+   ClipboardHelper clipboardHelper;
+   engine.rootContext()->setContextProperty("gClipboard", &clipboardHelper);
 
    // Expose display settings to QML
    DisplaySettings displaySettings;

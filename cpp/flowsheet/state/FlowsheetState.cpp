@@ -1,5 +1,7 @@
 #include "flowsheet/state/FlowsheetState.h"
 #include "unitops/column/state/ColumnUnitState.h"
+#include "unitops/heater/state/HeaterCoolerUnitState.h"
+#include "unitops/hex/state/HeatExchangerUnitState.h"
 #include "unitops/column/models/TrayModel.h"
 #include "unitops/column/models/MaterialBalanceModel.h"
 #include "streams/state/StreamUnitState.h"
@@ -61,8 +63,13 @@ QString FlowsheetState::nextAvailableUnitId_(const QString& prefix) const
 QString FlowsheetState::makeUniqueUnitName_(const QString& proposedName, const QString& type, const QString& excludeUnitId) const
 {
    QString base = sanitizeUnitName(proposedName);
-   if (base.isEmpty())
-      base = type == QStringLiteral("column") ? QStringLiteral("dist_column") : QStringLiteral("stream");
+   if (base.isEmpty()) {
+      if (type == QStringLiteral("column"))       base = QStringLiteral("dist_column");
+      else if (type == QStringLiteral("heater"))        base = QStringLiteral("heater");
+      else if (type == QStringLiteral("cooler"))        base = QStringLiteral("cooler");
+      else if (type == QStringLiteral("heat_exchanger")) base = QStringLiteral("HEX");
+      else                                         base = QStringLiteral("stream");
+   }
 
    auto exists = [&](const QString& candidate) {
       for (const auto& unit : units_) {
@@ -413,6 +420,220 @@ QString FlowsheetState::addStreamAndReturnId(double x, double y)
    return addStreamInternal(x, y);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Heater / Cooler
+// ─────────────────────────────────────────────────────────────────────────────
+
+QString FlowsheetState::addHeaterCoolerInternal(double x, double y, const QString& unitType)
+{
+   // unitType is "heater" or "cooler" — determines id prefix, display name, iconKey
+   const QString id = nextAvailableUnitId_(unitType);
+
+   UnitNode node;
+   node.unitId      = id;
+   node.type        = unitType;
+   node.displayName = makeUniqueUnitName_(id, unitType);
+   node.x           = clampCoord(x, 42.0, 980.0);
+   node.y           = clampCoord(y, 90.0, 620.0);
+
+   nodes_.push_back(node);
+
+   auto unit = std::make_unique<HeaterCoolerUnitState>();
+   unit->setFlowsheetState(this);
+   unit->setId(id);
+   unit->setName(node.displayName);
+   unit->setType(unitType);
+   unit->setIconKey(unitType);   // maps to "heater.svg" or "cooler.svg"
+
+   // For cooler: default to cooling duty spec with negative duty
+   if (unitType == QStringLiteral("cooler")) {
+      unit->setSpecMode(QStringLiteral("duty"));
+      unit->setDutyKW(-1000.0);
+   }
+
+   connect(unit.get(), &ProcessUnitState::nameChanged,
+           this, [this, id, ptr = unit.get()]() {
+      const QString unique = makeUniqueUnitName_(ptr->name(), ptr->type(), id);
+      if (unique != ptr->name()) { ptr->setName(unique); return; }
+      if (const int idx = findNodeIndexById(id); idx >= 0) {
+         nodes_[idx].displayName = unique;
+         unitModel_.updateName(id, unique);
+         markDirty_();
+      }
+   });
+
+   units_.push_back(std::move(unit));
+   refreshUnitModel_();
+
+   if (selectedUnitId_.isEmpty()) {
+      selectedUnitId_ = id;
+      emit selectedUnitIdChanged();
+      emit selectedUnitChanged();
+   }
+
+   markDirty_();
+   emit unitCountChanged();
+   return id;
+}
+
+void FlowsheetState::addHeater(double x, double y)
+{
+   addHeaterCoolerInternal(x, y, QStringLiteral("heater"));
+}
+
+QString FlowsheetState::addHeaterAndReturnId(double x, double y)
+{
+   return addHeaterCoolerInternal(x, y, QStringLiteral("heater"));
+}
+
+void FlowsheetState::addCooler(double x, double y)
+{
+   addHeaterCoolerInternal(x, y, QStringLiteral("cooler"));
+}
+
+QString FlowsheetState::addCoolerAndReturnId(double x, double y)
+{
+   return addHeaterCoolerInternal(x, y, QStringLiteral("cooler"));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// addHeatExchangerInternal
+// ─────────────────────────────────────────────────────────────────────────────
+
+QString FlowsheetState::addHeatExchangerInternal(double x, double y)
+{
+   const QString id = nextAvailableUnitId_(QStringLiteral("heat_exchanger"));
+
+   UnitNode node;
+   node.unitId      = id;
+   node.type        = QStringLiteral("heat_exchanger");
+   node.displayName = makeUniqueUnitName_(id, QStringLiteral("heat_exchanger"));
+   node.x           = clampCoord(x, 42.0, 980.0);
+   node.y           = clampCoord(y, 90.0, 620.0);
+   nodes_.push_back(node);
+
+   auto unit = std::make_unique<HeatExchangerUnitState>();
+   unit->setFlowsheetState(this);
+   unit->setId(id);
+   unit->setName(node.displayName);
+   unit->setType(QStringLiteral("heat_exchanger"));
+   unit->setIconKey(QStringLiteral("heat_exchanger"));
+
+   connect(unit.get(), &ProcessUnitState::nameChanged,
+           this, [this, id, ptr = unit.get()]() {
+      const QString unique = makeUniqueUnitName_(ptr->name(), ptr->type(), id);
+      if (unique != ptr->name()) { ptr->setName(unique); return; }
+      if (const int idx = findNodeIndexById(id); idx >= 0) {
+         nodes_[idx].displayName = unique;
+         unitModel_.updateName(id, unique);
+         markDirty_();
+      }
+   });
+
+   units_.push_back(std::move(unit));
+   refreshUnitModel_();
+
+   if (selectedUnitId_.isEmpty()) {
+      selectedUnitId_ = id;
+      emit selectedUnitIdChanged();
+      emit selectedUnitChanged();
+   }
+   markDirty_();
+   emit unitCountChanged();
+   return id;
+}
+
+void FlowsheetState::addHeatExchanger(double x, double y)
+{
+   addHeatExchangerInternal(x, y);
+}
+
+QString FlowsheetState::addHeatExchangerAndReturnId(double x, double y)
+{
+   return addHeatExchangerInternal(x, y);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bindHexStream  — connect a stream to one of the four HEX ports
+// port: "hotIn" | "hotOut" | "coldIn" | "coldOut"
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool FlowsheetState::bindHexStream(const QString& hexUnitId,
+                                    const QString& port,
+                                    const QString& streamUnitId)
+{
+   auto* hex        = dynamic_cast<HeatExchangerUnitState*>(findUnitById(hexUnitId));
+   auto* streamUnit = findStreamUnitById(streamUnitId);
+   if (!hex || !streamUnit) return false;
+
+   const bool isInlet = (port == QStringLiteral("hotIn") ||
+                         port == QStringLiteral("coldIn"));
+
+   // Displace any stream already on this port
+   if (isInlet) {
+      if (auto existing = findConnectionForTarget_(hexUnitId, port)) {
+         if (existing->streamUnitId == streamUnitId) return true; // already bound
+         const QString prev = existing->streamUnitId;
+         removeConnectionsForStream_(prev);
+         relabelStreamFromBindings_(prev);
+      }
+      // Remove any prior target binding on this stream
+      for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+         if (it->streamUnitId == streamUnitId && !it->targetUnitId.isEmpty()) {
+            if (auto* hx = dynamic_cast<HeatExchangerUnitState*>(findUnitById(it->targetUnitId))) {
+               if (it->targetPort == QStringLiteral("hotIn"))  hx->setConnectedHotInStreamUnitId(QString{});
+               if (it->targetPort == QStringLiteral("coldIn")) hx->setConnectedColdInStreamUnitId(QString{});
+            }
+            it = materialConnections_.erase(it);
+         } else {
+            ++it;
+         }
+      }
+   } else {
+      if (auto existing = findConnectionForSource_(hexUnitId, port)) {
+         if (existing->streamUnitId == streamUnitId) return true; // already bound
+         const QString prev = existing->streamUnitId;
+         removeConnectionsForStream_(prev);
+         relabelStreamFromBindings_(prev);
+      }
+      // Remove any prior source binding on this stream
+      for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+         if (it->streamUnitId == streamUnitId && !it->sourceUnitId.isEmpty()) {
+            if (auto* hx = dynamic_cast<HeatExchangerUnitState*>(findUnitById(it->sourceUnitId))) {
+               if (it->sourcePort == QStringLiteral("hotOut"))  hx->setConnectedHotOutStreamUnitId(QString{});
+               if (it->sourcePort == QStringLiteral("coldOut")) hx->setConnectedColdOutStreamUnitId(QString{});
+            }
+            it = materialConnections_.erase(it);
+         } else {
+            ++it;
+         }
+      }
+   }
+
+   if (isInlet) {
+      materialConnections_.push_back(MaterialConnection{
+          streamUnitId, QString{}, QString{}, hexUnitId, port});
+      if (port == QStringLiteral("hotIn"))
+         hex->setConnectedHotInStreamUnitId(streamUnitId);
+      else
+         hex->setConnectedColdInStreamUnitId(streamUnitId);
+      setStreamConnectionDirection(streamUnitId, QStringLiteral("inlet"));
+   } else {
+      materialConnections_.push_back(MaterialConnection{
+          streamUnitId, hexUnitId, port, QString{}, QString{}});
+      if (port == QStringLiteral("hotOut"))
+         hex->setConnectedHotOutStreamUnitId(streamUnitId);
+      else
+         hex->setConnectedColdOutStreamUnitId(streamUnitId);
+      setStreamConnectionDirection(streamUnitId, QStringLiteral("outlet"));
+   }
+
+   setLastOperationMessage_(QString{});
+   emit materialConnectionsChanged();
+   markDirty_();
+   return true;
+}
+
 void FlowsheetState::clear()
 {
    if (nodes_.isEmpty() && units_.empty())
@@ -492,11 +713,25 @@ bool FlowsheetState::bindColumnFeedStream(const QString& columnUnitId, const QSt
    if (!column || !streamUnit)
       return false;
 
-   removeConnectionsForStream_(streamUnitId);
+   // Only refuse if this stream is already occupying the SAME ROLE (target/feed).
+   // A stream can be a source on one unit and a target on another simultaneously.
    if (auto existing = findConnectionForTarget_(columnUnitId, QStringLiteral("feed"))) {
+      if (existing->streamUnitId == streamUnitId) return true; // already bound, no-op
       const QString previousStreamUnitId = existing->streamUnitId;
       removeConnectionsForStream_(previousStreamUnitId);
       relabelStreamFromBindings_(previousStreamUnitId);
+   }
+   // If stream is already a target somewhere else, remove that prior target binding only
+   for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+      if (it->streamUnitId == streamUnitId && !it->targetUnitId.isEmpty()) {
+         if (auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(it->targetUnitId)))
+            col->setConnectedFeedStreamUnitId(QString{});
+         if (auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->targetUnitId)))
+            hc->setConnectedFeedStreamUnitId(QString{});
+         it = materialConnections_.erase(it);
+      } else {
+         ++it;
+      }
    }
 
    materialConnections_.push_back(MaterialConnection{
@@ -525,11 +760,24 @@ bool FlowsheetState::bindColumnProductStream(const QString& columnUnitId, const 
    if (normalizedPort != QStringLiteral("distillate") && normalizedPort != QStringLiteral("bottoms"))
       return false;
 
-   removeConnectionsForStream_(streamUnitId);
+   // Displace any stream already occupying this specific source port on the column
    if (auto existing = findConnectionForSource_(columnUnitId, normalizedPort)) {
+      if (existing->streamUnitId == streamUnitId) return true; // already bound, no-op
       const QString previousStreamUnitId = existing->streamUnitId;
       removeConnectionsForStream_(previousStreamUnitId);
       relabelStreamFromBindings_(previousStreamUnitId);
+   }
+   // If stream is already a source somewhere else, remove that prior source binding only
+   for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+      if (it->streamUnitId == streamUnitId && !it->sourceUnitId.isEmpty()) {
+         if (auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(it->sourceUnitId)))
+            col->setConnectedProductStreamUnitId(it->sourcePort, QString{});
+         if (auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->sourceUnitId)))
+            hc->setConnectedProductStreamUnitId(QString{});
+         it = materialConnections_.erase(it);
+      } else {
+         ++it;
+      }
    }
 
    materialConnections_.push_back(MaterialConnection{
@@ -541,6 +789,92 @@ bool FlowsheetState::bindColumnProductStream(const QString& columnUnitId, const 
       });
 
    column->setConnectedProductStreamUnitId(normalizedPort, streamUnitId);
+   setStreamConnectionDirection(streamUnitId, QStringLiteral("outlet"));
+   markDirty_();
+   setLastOperationMessage_(QString{});
+   emit materialConnectionsChanged();
+   return true;
+}
+
+bool FlowsheetState::bindHeaterFeedStream(const QString& heaterUnitId, const QString& streamUnitId)
+{
+   auto* heater     = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(heaterUnitId));
+   auto* streamUnit = findStreamUnitById(streamUnitId);
+   if (!heater || !streamUnit)
+      return false;
+
+   // Displace any stream already occupying this heater's feed port (same role conflict)
+   if (auto existing = findConnectionForTarget_(heaterUnitId, QStringLiteral("feed"))) {
+      if (existing->streamUnitId == streamUnitId) return true; // already bound, no-op
+      const QString prev = existing->streamUnitId;
+      removeConnectionsForStream_(prev);
+      relabelStreamFromBindings_(prev);
+   }
+   // If stream is already a target (feed) on another unit, remove that prior binding only
+   for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+      if (it->streamUnitId == streamUnitId && !it->targetUnitId.isEmpty()) {
+         if (auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(it->targetUnitId)))
+            col->setConnectedFeedStreamUnitId(QString{});
+         if (auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->targetUnitId)))
+            hc->setConnectedFeedStreamUnitId(QString{});
+         it = materialConnections_.erase(it);
+      } else {
+         ++it;
+      }
+   }
+
+   materialConnections_.push_back(MaterialConnection{
+       streamUnitId,
+       QString{},
+       QString{},
+       heaterUnitId,
+       QStringLiteral("feed")
+   });
+
+   heater->setConnectedFeedStreamUnitId(streamUnitId);
+   setStreamConnectionDirection(streamUnitId, QStringLiteral("inlet"));
+   markDirty_();
+   setLastOperationMessage_(QString{});
+   emit materialConnectionsChanged();
+   return true;
+}
+
+bool FlowsheetState::bindHeaterProductStream(const QString& heaterUnitId, const QString& streamUnitId)
+{
+   auto* heater     = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(heaterUnitId));
+   auto* streamUnit = findStreamUnitById(streamUnitId);
+   if (!heater || !streamUnit)
+      return false;
+
+   // Displace any stream already occupying this heater's product port (same role conflict)
+   if (auto existing = findConnectionForSource_(heaterUnitId, QStringLiteral("product"))) {
+      if (existing->streamUnitId == streamUnitId) return true; // already bound, no-op
+      const QString prev = existing->streamUnitId;
+      removeConnectionsForStream_(prev);
+      relabelStreamFromBindings_(prev);
+   }
+   // If stream is already a source (product) on another unit, remove that prior binding only
+   for (auto it = materialConnections_.begin(); it != materialConnections_.end();) {
+      if (it->streamUnitId == streamUnitId && !it->sourceUnitId.isEmpty()) {
+         if (auto* col = dynamic_cast<ColumnUnitState*>(findUnitById(it->sourceUnitId)))
+            col->setConnectedProductStreamUnitId(it->sourcePort, QString{});
+         if (auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->sourceUnitId)))
+            hc->setConnectedProductStreamUnitId(QString{});
+         it = materialConnections_.erase(it);
+      } else {
+         ++it;
+      }
+   }
+
+   materialConnections_.push_back(MaterialConnection{
+       streamUnitId,
+       heaterUnitId,
+       QStringLiteral("product"),
+       QString{},
+       QString{}
+   });
+
+   heater->setConnectedProductStreamUnitId(streamUnitId);
    setStreamConnectionDirection(streamUnitId, QStringLiteral("outlet"));
    markDirty_();
    setLastOperationMessage_(QString{});
@@ -675,10 +1009,22 @@ void FlowsheetState::removeConnectionsForStream_(const QString& streamUnitId)
       if (!it->targetUnitId.isEmpty()) {
          if (auto* column = dynamic_cast<ColumnUnitState*>(findUnitById(it->targetUnitId)))
             column->setConnectedFeedStreamUnitId(QString{});
+         if (auto* heater = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->targetUnitId)))
+            heater->setConnectedFeedStreamUnitId(QString{});
+         if (auto* hex = dynamic_cast<HeatExchangerUnitState*>(findUnitById(it->targetUnitId))) {
+            if (it->targetPort == QStringLiteral("hotIn"))  hex->setConnectedHotInStreamUnitId(QString{});
+            if (it->targetPort == QStringLiteral("coldIn")) hex->setConnectedColdInStreamUnitId(QString{});
+         }
       }
       if (!it->sourceUnitId.isEmpty()) {
          if (auto* column = dynamic_cast<ColumnUnitState*>(findUnitById(it->sourceUnitId)))
             column->setConnectedProductStreamUnitId(it->sourcePort, QString{});
+         if (auto* heater = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(it->sourceUnitId)))
+            heater->setConnectedProductStreamUnitId(QString{});
+         if (auto* hex = dynamic_cast<HeatExchangerUnitState*>(findUnitById(it->sourceUnitId))) {
+            if (it->sourcePort == QStringLiteral("hotOut"))  hex->setConnectedHotOutStreamUnitId(QString{});
+            if (it->sourcePort == QStringLiteral("coldOut")) hex->setConnectedColdOutStreamUnitId(QString{});
+         }
       }
 
       it = materialConnections_.erase(it);
@@ -984,6 +1330,38 @@ bool FlowsheetState::saveToFile(const QString& filePath)
             u[QStringLiteral("columnState")] = c;
          }
       }
+      // ── Heater / Cooler state ─────────────────────────────────────────────
+      else if (node.type == QStringLiteral("heater") || node.type == QStringLiteral("cooler")) {
+         auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(node.unitId));
+         if (hc) {
+            QJsonObject h;
+            h[QStringLiteral("specMode")]            = hc->specMode();
+            h[QStringLiteral("outletTemperatureK")]  = hc->outletTemperatureK();
+            h[QStringLiteral("dutyKW")]              = hc->dutyKW();
+            h[QStringLiteral("outletVaporFraction")] = hc->outletVaporFraction();
+            h[QStringLiteral("pressureDropPa")]      = hc->pressureDropPa();
+            // Connection IDs — persisted so we can re-wire on load
+            h[QStringLiteral("feedStreamUnitId")]    = hc->connectedFeedStreamUnitId();
+            h[QStringLiteral("productStreamUnitId")] = hc->connectedProductStreamUnitId();
+            u[QStringLiteral("heaterState")]         = h;
+         }
+      }
+
+      // ── Heat Exchanger state ──────────────────────────────────────────────
+      else if (node.type == QStringLiteral("heat_exchanger")) {
+         auto* hx = dynamic_cast<HeatExchangerUnitState*>(findUnitById(node.unitId));
+         if (hx) {
+            QJsonObject h;
+            h[QStringLiteral("specMode")]              = hx->specMode();
+            h[QStringLiteral("dutyKW")]                = hx->dutyKW();
+            h[QStringLiteral("hotOutletTK")]           = hx->hotOutletTK();
+            h[QStringLiteral("coldOutletTK")]          = hx->coldOutletTK();
+            h[QStringLiteral("hotSideDpPa")]           = hx->hotSidePressureDropPa();
+            h[QStringLiteral("coldSideDpPa")]          = hx->coldSidePressureDropPa();
+            u[QStringLiteral("hexState")]              = h;
+         }
+      }
+
       units.append(u);
    }
    root[QStringLiteral("units")] = units;
@@ -1064,6 +1442,12 @@ bool FlowsheetState::loadFromFile(const QString& filePath)
       else if (type == QStringLiteral("column")) {
          addColumnInternal(x, y);
       }
+      else if (type == QStringLiteral("heater") || type == QStringLiteral("cooler")) {
+         addHeaterCoolerInternal(x, y, type);
+      }
+      else if (type == QStringLiteral("heat_exchanger")) {
+         addHeatExchangerInternal(x, y);
+      }
       else {
          continue;
       }
@@ -1093,6 +1477,33 @@ bool FlowsheetState::loadFromFile(const QString& filePath)
                      for (const QJsonValue& cv : compArr) comp.push_back(cv.toDouble());
                      ms->setCompositionStd(comp);
                   }
+               }
+            }
+         }
+         else if (type == QStringLiteral("heater") || type == QStringLiteral("cooler")) {
+            const QJsonObject hs = u[QStringLiteral("heaterState")].toObject();
+            if (!hs.isEmpty()) {
+               auto* hc = dynamic_cast<HeaterCoolerUnitState*>(findUnitById(newId));
+               if (hc) {
+                  hc->setSpecMode(hs[QStringLiteral("specMode")].toString(QStringLiteral("temperature")));
+                  hc->setOutletTemperatureK(hs[QStringLiteral("outletTemperatureK")].toDouble(400.0));
+                  hc->setDutyKW(hs[QStringLiteral("dutyKW")].toDouble(1000.0));
+                  hc->setOutletVaporFraction(hs[QStringLiteral("outletVaporFraction")].toDouble(0.0));
+                  hc->setPressureDropPa(hs[QStringLiteral("pressureDropPa")].toDouble(0.0));
+               }
+            }
+         }
+         else if (type == QStringLiteral("heat_exchanger")) {
+            const QJsonObject hs = u[QStringLiteral("hexState")].toObject();
+            if (!hs.isEmpty()) {
+               auto* hx = dynamic_cast<HeatExchangerUnitState*>(findUnitById(newId));
+               if (hx) {
+                  hx->setSpecMode(hs[QStringLiteral("specMode")].toString(QStringLiteral("duty")));
+                  hx->setDutyKW(hs[QStringLiteral("dutyKW")].toDouble(1000.0));
+                  hx->setHotOutletTK(hs[QStringLiteral("hotOutletTK")].toDouble(350.0));
+                  hx->setColdOutletTK(hs[QStringLiteral("coldOutletTK")].toDouble(400.0));
+                  hx->setHotSidePressureDropPa(hs[QStringLiteral("hotSideDpPa")].toDouble(0.0));
+                  hx->setColdSidePressureDropPa(hs[QStringLiteral("coldSideDpPa")].toDouble(0.0));
                }
             }
          }
@@ -1208,24 +1619,39 @@ bool FlowsheetState::loadFromFile(const QString& filePath)
    }
 
    // Pass 2: restore connections
-   // Build a mapping from saved id → new id (they should match since addStreamInternal
-   // uses sequential ids, but we track by order)
    // Since we add units in order with the same prefix, ids should match.
-   // Restore connections using the ids from file directly.
    const QJsonArray conns = root[QStringLiteral("connections")].toArray();
    for (const QJsonValue& cv : conns) {
       const QJsonObject co = cv.toObject();
-      const QString streamId = co[QStringLiteral("streamUnitId")].toString();
-      const QString sourceId = co[QStringLiteral("sourceUnitId")].toString();
+      const QString streamId   = co[QStringLiteral("streamUnitId")].toString();
+      const QString sourceId   = co[QStringLiteral("sourceUnitId")].toString();
       const QString sourcePort = co[QStringLiteral("sourcePort")].toString();
-      const QString targetId = co[QStringLiteral("targetUnitId")].toString();
+      const QString targetId   = co[QStringLiteral("targetUnitId")].toString();
       const QString targetPort = co[QStringLiteral("targetPort")].toString();
 
       if (!targetId.isEmpty() && targetPort == QStringLiteral("feed")) {
-         bindColumnFeedStream(targetId, streamId);
+         // Could be column or heater/cooler — dispatch on the target unit type
+         const QString ttype = unitType(targetId);
+         if (ttype == QStringLiteral("heater") || ttype == QStringLiteral("cooler"))
+            bindHeaterFeedStream(targetId, streamId);
+         else
+            bindColumnFeedStream(targetId, streamId);
+      }
+      else if (!targetId.isEmpty() && (targetPort == QStringLiteral("hotIn") ||
+                                        targetPort == QStringLiteral("coldIn"))) {
+         bindHexStream(targetId, targetPort, streamId);
+      }
+      else if (!sourceId.isEmpty() && (sourcePort == QStringLiteral("hotOut") ||
+                                        sourcePort == QStringLiteral("coldOut"))) {
+         bindHexStream(sourceId, sourcePort, streamId);
       }
       else if (!sourceId.isEmpty()) {
-         bindColumnProductStream(sourceId, sourcePort, streamId);
+         // Could be column product (distillate/bottoms) or heater product
+         const QString stype = unitType(sourceId);
+         if (stype == QStringLiteral("heater") || stype == QStringLiteral("cooler"))
+            bindHeaterProductStream(sourceId, streamId);
+         else
+            bindColumnProductStream(sourceId, sourcePort, streamId);
       }
    }
 

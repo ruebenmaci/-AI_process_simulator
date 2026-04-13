@@ -27,7 +27,7 @@ Item {
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
         ColumnLayout {
-            width: Math.max(root.width - 12, 800)
+            width: Math.max(0, root.width - 12)
             spacing: 0
 
             StreamView {

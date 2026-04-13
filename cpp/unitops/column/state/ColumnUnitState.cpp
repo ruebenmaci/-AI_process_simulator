@@ -17,6 +17,9 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QCoreApplication>
 #include <QStringConverter>
+#include <QFileInfo>
+#include <QSaveFile>
+#include <QRegularExpression>
 
 #include "streams/state/StreamUnitState.h"
 #include "unitops/column/config/CrudeInitialSettings.hpp"
@@ -992,6 +995,76 @@ void ColumnUnitState::restoreSolveScalars(
    emit solvedChanged();
    emit specsDirtyChanged();
 }
+
+
+QString ColumnUnitState::defaultSolverInputsExportPath_() const
+{
+   const QString baseDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+      + "/AI_Process_Simulator/solver_inputs";
+   QDir().mkpath(baseDir);
+
+   QString unitPart = name().trimmed();
+   if (unitPart.isEmpty())
+      unitPart = QStringLiteral("column");
+   unitPart.replace(QRegularExpression(QStringLiteral(R"([^A-Za-z0-9_\-]+)")), QStringLiteral("_"));
+
+   QString fluidPart = selectedCrude().trimmed();
+   if (fluidPart.isEmpty())
+      fluidPart = QStringLiteral("unknown_fluid");
+   fluidPart.replace(QRegularExpression(QStringLiteral(R"([^A-Za-z0-9_\-]+)")), QStringLiteral("_"));
+
+   const QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+   return baseDir + "/" + unitPart + "_" + fluidPart + "_" + ts + "_solver_inputs.json";
+}
+
+QString ColumnUnitState::exportLatestSolverInputsJson(const QString& filePath)
+{
+   const bool havePending = !pendingSolveInputs_.fluidThermo.components.empty();
+   if (!havePending) {
+      qWarning() << "[ColumnUnitState] No prepared SolverInputs available to export yet."
+                 << "Run the column solver first.";
+      return QString();
+   }
+
+   const QString resolvedPath = filePath.trimmed().isEmpty()
+      ? defaultSolverInputsExportPath_()
+      : filePath;
+
+   QFileInfo fi(resolvedPath);
+   QDir().mkpath(fi.absolutePath());
+
+   QSaveFile outFile(resolvedPath);
+   if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      qWarning() << "[ColumnUnitState] Failed to open solver inputs export file:" << resolvedPath
+                 << outFile.errorString();
+      return QString();
+   }
+
+   const std::string json = serializeSolverInputsToJson(pendingSolveInputs_, true);
+   const QByteArray bytes = QByteArray::fromStdString(json);
+
+   if (outFile.write(bytes) != bytes.size()) {
+      qWarning() << "[ColumnUnitState] Failed to write solver inputs export file:" << resolvedPath
+                 << outFile.errorString();
+      outFile.cancelWriting();
+      return QString();
+   }
+
+   if (!outFile.commit()) {
+      qWarning() << "[ColumnUnitState] Failed to commit solver inputs export file:" << resolvedPath
+                 << outFile.errorString();
+      return QString();
+   }
+
+   if (lastSolverInputsExportPath_ != resolvedPath) {
+      lastSolverInputsExportPath_ = resolvedPath;
+      emit lastSolverInputsExportPathChanged();
+   }
+
+   runLogModel_.append(QString("Exported SolverInputs JSON: %1").arg(resolvedPath));
+   return resolvedPath;
+}
+
 
 void ColumnUnitState::solve()
 {

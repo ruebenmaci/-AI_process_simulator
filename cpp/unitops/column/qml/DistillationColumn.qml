@@ -200,11 +200,12 @@ Rectangle {
                     { text: "Profiles",         width: 76 },
                     { text: "Products",         width: 76 },
                     { text: "Run Log",          width: 74 },
-                    { text: "Diagnostics",      width: 90 }
+                    { text: "Diagnostics",      width: 90 },
+                    { text: "Run Results",      width: 94 }
                 ]
-                currentIndex: ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"].indexOf(root.activeTab)
+                currentIndex: ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics","Run Results"].indexOf(root.activeTab)
                 onTabClicked: function(index) {
-                    const names = ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics"]
+                    const names = ["Worksheet/Solver","Performance","Profiles","Products","Run Log","Diagnostics","Run Results"]
                     root.activeTab = names[index]
                 }
             }
@@ -1462,6 +1463,88 @@ Rectangle {
                         }
                         Text{anchors.centerIn:parent;visible:!appState||!appState.diagnosticsModel||appState.diagnosticsModel.rowCount()===0
                              text:"No diagnostics";color:textMuted;font.pixelSize:fsLbl;font.italic:true}
+                    }
+                }
+            }
+
+
+            // ==================================================
+            //  RUN RESULTS TAB
+            // ==================================================
+            Item {
+                anchors.fill: parent
+                visible: root.activeTab === "Run Results"
+
+                CompactFrame {
+                    anchors.fill: parent
+                    SectionHeader { id: runResultsHdr; width: parent.width; text: "Run Results" }
+
+                    Row {
+                        id: runResultsActions
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: runResultsHdr.bottom
+                            leftMargin: 6
+                            rightMargin: 6
+                            topMargin: 6
+                        }
+                        spacing: 6
+
+                        ClassicButton {
+                            text: "Export Solver Inputs JSON"
+                            width: 150
+                            onClicked: {
+                                if (appState && appState.exportLatestSolverInputsJson) {
+                                    const p = appState.exportLatestSolverInputsJson("")
+                                    if (p && p.length > 0)
+                                        console.log("Exported SolverInputs JSON:", p)
+                                }
+                            }
+                        }
+
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(0, parent.width - 170)
+                            text: appState && appState.lastSolverInputsExportPath
+                                  ? "Last export: " + appState.lastSolverInputsExportPath
+                                  : "Run the solver, then export the exact SolverInputs JSON used for that run."
+                            color: textMuted
+                            font.pixelSize: fsLbl
+                            elide: Text.ElideMiddle
+                        }
+                    }
+
+                    ScrollView {
+                        anchors {
+                            left: parent.left; right: parent.right
+                            top: runResultsActions.bottom; bottom: parent.bottom
+                            leftMargin: 6; rightMargin: 6; bottomMargin: 6
+                            topMargin: 6
+                        }
+                        clip: true
+                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        ScrollBar.horizontal.policy: ScrollBar.AsNeeded
+
+                        TextArea {
+                            id: runResultsTextArea
+                            width: Math.max(parent ? parent.width : 0, implicitWidth)
+                            readOnly: true
+                            selectByMouse: true
+                            wrapMode: TextEdit.NoWrap
+                            textFormat: TextEdit.PlainText
+                            text: appState && appState.runResults ? appState.runResults : ""
+                            font.family: "Monospace"
+                            font.pixelSize: fsVal
+                            color: textMain
+                            background: Rectangle {
+                                color: inputBg
+                                border.color: borderIn
+                                border.width: 1
+                            }
+                            placeholderText: "Run solver to populate run results"
+                            padding: 6
+                        }
                     }
                 }
             }
