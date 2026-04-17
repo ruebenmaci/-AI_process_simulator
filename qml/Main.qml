@@ -142,6 +142,8 @@ ApplicationWindow {
         Menu {
             title: "Help"
             font.pixelSize: 12
+            MenuItem { text: "Solver Convergence Settings"; font.pixelSize: 12; onTriggered: pfdView.showSolverConvergenceHelp() }
+            MenuItem { text: "Stripper Status Help"; font.pixelSize: 12; onTriggered: pfdView.showStripperStatusHelp() }
             MenuItem { text: "About"; font.pixelSize: 12; onTriggered: pfdView.showAbout() }
         }
     }

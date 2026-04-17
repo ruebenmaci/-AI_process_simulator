@@ -23,84 +23,95 @@
 #include "streams/state/MaterialStreamState.h"
 
 #include "./flowsheet/state/ProcessUnitState.h"
+#include "unitops/column/sim/ColumnSolveSpecBuilder.hpp"
 
 class FlowsheetState;
 
 class ColumnUnitState : public ProcessUnitState {
    Q_OBJECT
 
-      Q_PROPERTY(QStringList crudeNames READ crudeNames CONSTANT)
-      Q_PROPERTY(QObject* feedStream READ feedStream NOTIFY feedStreamChanged)
-      Q_PROPERTY(QString connectedFeedStreamName READ connectedFeedStreamName NOTIFY feedStreamChanged)
-      Q_PROPERTY(QString selectedCrude READ selectedCrude WRITE setSelectedCrude NOTIFY selectedCrudeChanged)
-      Q_PROPERTY(QString selectedFluidPackageName READ selectedFluidPackageName NOTIFY selectedFluidPackageChanged)
-      Q_PROPERTY(QString effectiveThermoMethod READ effectiveThermoMethod NOTIFY effectiveThermoMethodChanged)
-      Q_PROPERTY(bool packageThermoControlled READ packageThermoControlled NOTIFY selectedFluidPackageChanged)
+   Q_PROPERTY(QStringList crudeNames READ crudeNames CONSTANT)
+   Q_PROPERTY(QObject* feedStream READ feedStream NOTIFY feedStreamChanged)
+   Q_PROPERTY(QString connectedFeedStreamName READ connectedFeedStreamName NOTIFY feedStreamChanged)
+   Q_PROPERTY(QString selectedCrude READ selectedCrude WRITE setSelectedCrude NOTIFY selectedCrudeChanged)
+   Q_PROPERTY(QString selectedFluidPackageName READ selectedFluidPackageName NOTIFY selectedFluidPackageChanged)
+   Q_PROPERTY(QString effectiveThermoMethod READ effectiveThermoMethod NOTIFY effectiveThermoMethodChanged)
+   Q_PROPERTY(bool packageThermoControlled READ packageThermoControlled NOTIFY selectedFluidPackageChanged)
 
-      Q_PROPERTY(bool solving READ solving NOTIFY solvingChanged)
-      Q_PROPERTY(qint64 solveElapsedMs READ solveElapsedMs NOTIFY solveElapsedMsChanged)
-      Q_PROPERTY(bool specsDirty READ specsDirty NOTIFY specsDirtyChanged)
+   Q_PROPERTY(bool solving READ solving NOTIFY solvingChanged)
+   Q_PROPERTY(qint64 solveElapsedMs READ solveElapsedMs NOTIFY solveElapsedMsChanged)
+   Q_PROPERTY(bool specsDirty READ specsDirty NOTIFY specsDirtyChanged)
 
-      Q_PROPERTY(int solverLogLevel READ solverLogLevel WRITE setSolverLogLevel NOTIFY solverLogLevelChanged) // 0=None 1=Summary 2=Debug
+   Q_PROPERTY(int solverLogLevel READ solverLogLevel WRITE setSolverLogLevel NOTIFY solverLogLevelChanged) // 0=None 1=Summary 2=Debug
 
-      // New: tray count controls
-      Q_PROPERTY(int trays READ trays WRITE setTrays NOTIFY traysChanged)
-      Q_PROPERTY(int minTrays READ minTrays CONSTANT)
-      Q_PROPERTY(int maxTrays READ maxTrays CONSTANT)
-      Q_PROPERTY(int maxSideDraws READ maxSideDraws NOTIFY traysChanged)
-      Q_PROPERTY(bool separatorMode READ separatorMode NOTIFY traysChanged)
+   // New: tray count controls
+   Q_PROPERTY(int trays READ trays WRITE setTrays NOTIFY traysChanged)
+   Q_PROPERTY(int minTrays READ minTrays CONSTANT)
+   Q_PROPERTY(int maxTrays READ maxTrays CONSTANT)
+   Q_PROPERTY(int maxSideDraws READ maxSideDraws NOTIFY traysChanged)
+   Q_PROPERTY(bool separatorMode READ separatorMode NOTIFY traysChanged)
 
-      Q_PROPERTY(QString eosMode READ eosMode WRITE setEosMode NOTIFY eosModeChanged)          // auto | manual
-      Q_PROPERTY(QString eosManual READ eosManual WRITE setEosManual NOTIFY eosManualChanged) // PR | PRSV | SRK
+   Q_PROPERTY(QString eosMode READ eosMode WRITE setEosMode NOTIFY eosModeChanged)          // auto | manual
+   Q_PROPERTY(QString eosManual READ eosManual WRITE setEosManual NOTIFY eosManualChanged) // PR | PRSV | SRK
 
-      Q_PROPERTY(QString condenserType READ condenserType WRITE setCondenserType NOTIFY condenserTypeChanged) // total | partial
-      Q_PROPERTY(QString reboilerType READ reboilerType WRITE setReboilerType NOTIFY reboilerTypeChanged)     // partial | total
+   Q_PROPERTY(QString condenserType READ condenserType WRITE setCondenserType NOTIFY condenserTypeChanged) // total | partial
+   Q_PROPERTY(QString reboilerType READ reboilerType WRITE setReboilerType NOTIFY reboilerTypeChanged)     // partial | total
 
-      Q_PROPERTY(double topPressurePa READ topPressurePa WRITE setTopPressurePa NOTIFY topPressurePaChanged)
-      Q_PROPERTY(double dpPerTrayPa READ dpPerTrayPa WRITE setDpPerTrayPa NOTIFY dpPerTrayPaChanged)
+   Q_PROPERTY(double topPressurePa READ topPressurePa WRITE setTopPressurePa NOTIFY topPressurePaChanged)
+   Q_PROPERTY(double dpPerTrayPa READ dpPerTrayPa WRITE setDpPerTrayPa NOTIFY dpPerTrayPaChanged)
 
-      Q_PROPERTY(double etaVTop READ etaVTop WRITE setEtaVTop NOTIFY etaVTopChanged)
-      Q_PROPERTY(double etaVMid READ etaVMid WRITE setEtaVMid NOTIFY etaVMidChanged)
-      Q_PROPERTY(double etaVBot READ etaVBot WRITE setEtaVBot NOTIFY etaVBotChanged)
+   Q_PROPERTY(double etaVTop READ etaVTop WRITE setEtaVTop NOTIFY etaVTopChanged)
+   Q_PROPERTY(double etaVMid READ etaVMid WRITE setEtaVMid NOTIFY etaVMidChanged)
+   Q_PROPERTY(double etaVBot READ etaVBot WRITE setEtaVBot NOTIFY etaVBotChanged)
 
-      Q_PROPERTY(bool enableEtaL READ enableEtaL WRITE setEnableEtaL NOTIFY enableEtaLChanged)
-      Q_PROPERTY(double etaLTop READ etaLTop WRITE setEtaLTop NOTIFY etaLTopChanged)
-      Q_PROPERTY(double etaLMid READ etaLMid WRITE setEtaLMid NOTIFY etaLMidChanged)
-      Q_PROPERTY(double etaLBot READ etaLBot WRITE setEtaLBot NOTIFY etaLBotChanged)
+   Q_PROPERTY(bool enableEtaL READ enableEtaL WRITE setEnableEtaL NOTIFY enableEtaLChanged)
+   Q_PROPERTY(double etaLTop READ etaLTop WRITE setEtaLTop NOTIFY etaLTopChanged)
+   Q_PROPERTY(double etaLMid READ etaLMid WRITE setEtaLMid NOTIFY etaLMidChanged)
+   Q_PROPERTY(double etaLBot READ etaLBot WRITE setEtaLBot NOTIFY etaLBotChanged)
 
-      Q_PROPERTY(double feedRateKgph READ feedRateKgph WRITE setFeedRateKgph NOTIFY feedRateKgphChanged)
-      Q_PROPERTY(double feedTempK READ feedTempK WRITE setFeedTempK NOTIFY feedTempKChanged)
-      Q_PROPERTY(int feedTray READ feedTray WRITE setFeedTray NOTIFY feedTrayChanged)
+   Q_PROPERTY(double feedRateKgph READ feedRateKgph WRITE setFeedRateKgph NOTIFY feedRateKgphChanged)
+   Q_PROPERTY(double feedTempK READ feedTempK WRITE setFeedTempK NOTIFY feedTempKChanged)
+   Q_PROPERTY(int feedTray READ feedTray WRITE setFeedTray NOTIFY feedTrayChanged)
+   Q_PROPERTY(int maxOuterIterations READ maxOuterIterations WRITE setMaxOuterIterations NOTIFY maxOuterIterationsChanged)
+   Q_PROPERTY(double outerConvergenceTolerance READ outerConvergenceTolerance WRITE setOuterConvergenceTolerance NOTIFY outerConvergenceToleranceChanged)
 
-      Q_PROPERTY(QVariantList drawSpecs READ drawSpecs WRITE setDrawSpecs NOTIFY drawSpecsChanged)
+   Q_PROPERTY(QVariantList drawSpecs READ drawSpecs WRITE setDrawSpecs NOTIFY drawSpecsChanged)
+   Q_PROPERTY(QVariantList attachedStrippers READ attachedStrippers NOTIFY attachedStrippersChanged)
+   Q_PROPERTY(QVariantList attachedStripperProducts READ attachedStripperProducts NOTIFY attachedStripperProductsChanged)
 
-      Q_PROPERTY(QString condenserSpec READ condenserSpec WRITE setCondenserSpec NOTIFY condenserSpecChanged)
-      Q_PROPERTY(QString reboilerSpec READ reboilerSpec WRITE setReboilerSpec NOTIFY reboilerSpecChanged)
+   Q_PROPERTY(QString condenserSpec READ condenserSpec WRITE setCondenserSpec NOTIFY condenserSpecChanged)
+   Q_PROPERTY(QString reboilerSpec READ reboilerSpec WRITE setReboilerSpec NOTIFY reboilerSpecChanged)
 
-      Q_PROPERTY(double refluxRatio READ refluxRatio WRITE setRefluxRatio NOTIFY refluxRatioChanged)
-      Q_PROPERTY(double boilupRatio READ boilupRatio WRITE setBoilupRatio NOTIFY boilupRatioChanged)
-      Q_PROPERTY(double qcKW READ qcKW WRITE setQcKW NOTIFY qcKWChanged)
-      Q_PROPERTY(double qrKW READ qrKW WRITE setQrKW NOTIFY qrKWChanged)
-      Q_PROPERTY(double qcCalcKW READ qcCalcKW NOTIFY qcCalcKWChanged)
-      Q_PROPERTY(double qrCalcKW READ qrCalcKW NOTIFY qrCalcKWChanged)
-      Q_PROPERTY(double topTsetK READ topTsetK WRITE setTopTsetK NOTIFY topTsetKChanged)
-      Q_PROPERTY(double bottomTsetK READ bottomTsetK WRITE setBottomTsetK NOTIFY bottomTsetKChanged)
+   Q_PROPERTY(double refluxRatio READ refluxRatio WRITE setRefluxRatio NOTIFY refluxRatioChanged)
+   Q_PROPERTY(double boilupRatio READ boilupRatio WRITE setBoilupRatio NOTIFY boilupRatioChanged)
+   Q_PROPERTY(double qcKW READ qcKW WRITE setQcKW NOTIFY qcKWChanged)
+   Q_PROPERTY(double qrKW READ qrKW WRITE setQrKW NOTIFY qrKWChanged)
+   Q_PROPERTY(double qcCalcKW READ qcCalcKW NOTIFY qcCalcKWChanged)
+   Q_PROPERTY(double qrCalcKW READ qrCalcKW NOTIFY qrCalcKWChanged)
+   Q_PROPERTY(double topTsetK READ topTsetK WRITE setTopTsetK NOTIFY topTsetKChanged)
+   Q_PROPERTY(double bottomTsetK READ bottomTsetK WRITE setBottomTsetK NOTIFY bottomTsetKChanged)
 
-      // Derived/result fields displayed in the "Column" panel
-      Q_PROPERTY(double refluxFraction READ refluxFraction NOTIFY refluxFractionChanged)
-      Q_PROPERTY(double boilupFraction READ boilupFraction NOTIFY boilupFractionChanged)
-      Q_PROPERTY(double tColdK READ tColdK NOTIFY tColdKChanged)
-      Q_PROPERTY(double tHotK READ tHotK NOTIFY tHotKChanged)
+   // Derived/result fields displayed in the "Column" panel
+   Q_PROPERTY(double refluxFraction READ refluxFraction NOTIFY refluxFractionChanged)
+   Q_PROPERTY(double boilupFraction READ boilupFraction NOTIFY boilupFractionChanged)
+   Q_PROPERTY(double tColdK READ tColdK NOTIFY tColdKChanged)
+   Q_PROPERTY(double tHotK READ tHotK NOTIFY tHotKChanged)
 
-      Q_PROPERTY(bool solved READ solved NOTIFY solvedChanged)
+   Q_PROPERTY(bool solved READ solved NOTIFY solvedChanged)
 
-      Q_PROPERTY(TrayModel* trayModel READ trayModel CONSTANT)
-      Q_PROPERTY(QStringList componentNames READ componentNames NOTIFY componentNamesChanged)
-      Q_PROPERTY(DiagnosticsModel* diagnosticsModel READ diagnosticsModel CONSTANT)
-      Q_PROPERTY(RunLogModel* runLogModel READ runLogModel CONSTANT)
-      Q_PROPERTY(MaterialBalanceModel* materialBalanceModel READ materialBalanceModel CONSTANT)
-      Q_PROPERTY(QString runResults READ runResults NOTIFY runResultsChanged)
-      Q_PROPERTY(QString lastSolverInputsExportPath READ lastSolverInputsExportPath NOTIFY lastSolverInputsExportPathChanged)
+   Q_PROPERTY(TrayModel* trayModel READ trayModel CONSTANT)
+   Q_PROPERTY(QStringList componentNames READ componentNames NOTIFY componentNamesChanged)
+   Q_PROPERTY(DiagnosticsModel* diagnosticsModel READ diagnosticsModel CONSTANT)
+   Q_PROPERTY(RunLogModel* runLogModel READ runLogModel CONSTANT)
+   Q_PROPERTY(MaterialBalanceModel* materialBalanceModel READ materialBalanceModel CONSTANT)
+   Q_PROPERTY(QString runResults READ runResults NOTIFY runResultsChanged)
+   Q_PROPERTY(QString lastSolverInputsExportPath READ lastSolverInputsExportPath NOTIFY lastSolverInputsExportPathChanged)
+
+   friend bool ColumnSolveSpecBuilder::build(
+      const ::ColumnUnitState& column,
+      const ::MaterialStreamState* feed,
+      ::SolverInputs& out,
+      QString* errorMessage);
 
 public:
    explicit ColumnUnitState(QObject* parent = nullptr);
@@ -190,6 +201,10 @@ public:
    void setFeedTempK(double v);
    int feedTray() const;
    void setFeedTray(int v);
+   int maxOuterIterations() const { return maxOuterIterations_; }
+   void setMaxOuterIterations(int v);
+   double outerConvergenceTolerance() const { return outerConvergenceTolerance_; }
+   void setOuterConvergenceTolerance(double v);
 
    QString condenserSpec() const;
    void setCondenserSpec(const QString& v);
@@ -253,6 +268,8 @@ public:
 
    QVariantList drawSpecs() const;
    void setDrawSpecs(const QVariantList& v);
+   QVariantList attachedStrippers() const;
+   QVariantList attachedStripperProducts() const;
 
 signals:
    void solverLogLevelChanged();
@@ -263,6 +280,8 @@ signals:
    void traysChanged();
 
    void drawSpecsChanged();
+   void attachedStrippersChanged();
+   void attachedStripperProductsChanged();
    void selectedCrudeChanged();
    void selectedFluidPackageChanged();
    void effectiveThermoMethodChanged();
@@ -284,6 +303,8 @@ signals:
    void feedRateKgphChanged();
    void feedTempKChanged();
    void feedTrayChanged();
+   void maxOuterIterationsChanged();
+   void outerConvergenceToleranceChanged();
    void condenserSpecChanged();
    void reboilerSpecChanged();
    void refluxRatioChanged();
@@ -332,6 +353,8 @@ private:
    int trays_ = 32;
 
    QVariantList drawSpecs_;
+   QVariantList attachedStrippersCache_;
+   QVariantList attachedStripperProductsCache_;
    void applyCrudeDefaults(const QString& crude);
 
    QStringList crudeNames_;
@@ -367,6 +390,8 @@ private:
    double etaLBot_ = 1.0;
 
    int feedTray_ = 4;
+   int maxOuterIterations_ = 100;
+   double outerConvergenceTolerance_ = 1e-4;
 
    QString condenserSpec_ = "temperature";
    QString reboilerSpec_ = "boilup";

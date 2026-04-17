@@ -11,6 +11,7 @@
 class RunLogModel : public QAbstractListModel {
   Q_OBJECT
   Q_PROPERTY(QString allText READ allText NOTIFY allTextChanged)
+  Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
   enum Roles { TextRole = Qt::UserRole + 1 };
@@ -22,6 +23,10 @@ public:
   QHash<int, QByteArray> roleNames() const override;
 
   Q_INVOKABLE void clear();
+  Q_INVOKABLE QString lineAt(int index) const;
+  Q_INVOKABLE QVariantList findMatches(const QString& query, bool caseSensitive = false) const;
+
+  int count() const { return m_lines.size(); }
 
   // Convenience wrappers used by AppState / solver.
   void appendLine(const QString& line);
@@ -36,6 +41,7 @@ signals:
   // Emitted after clear() so QML views that maintain their own text buffer
   // (via Connections/onLineAppended) can reset immediately.
   void cleared();
+  void countChanged();
 
 private:
   void trimIfNeeded();

@@ -11,7 +11,7 @@ if(NOT DEFINED Qt6_DIR OR Qt6_DIR STREQUAL "")
 endif()
 list(PREPEND CMAKE_PREFIX_PATH "C:/Qt/6.10.1/msvc2022_64")
 
-find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Quick QuickControls2 Core Concurrent)
 qt_standard_project_setup(REQUIRES 6.2)
 
 # ── Silence Qt CMake policy warnings that cause infinite reconfigure loops ──
@@ -44,6 +44,7 @@ add_library(adt_core
   cpp/unitops/column/config/CrudeInitialSettings.cpp
   cpp/unitops/column/sim/CounterCurrentColumnSimulator.cpp
   cpp/unitops/column/sim/ColumnSolver.cpp
+  cpp/unitops/column/sim/StagedColumnCore.cpp
 )
 
 # Your solver code is already using C++20 in places; make it explicit.
@@ -67,42 +68,42 @@ target_include_directories(adt_core PUBLIC
 # ----------------------------
 qt_add_executable(appChatGPT5_ADT
     cpp/main.cpp
+    cpp/AppTheme.h
     cpp/components/ComponentRecord.h
     cpp/components/ComponentRecord.cpp
-    cpp/fluid/FluidPackageRecord.h
-    cpp/fluid/FluidPackageRecord.cpp
     cpp/components/ComponentListRecord.h
     cpp/components/ComponentListRecord.cpp
     cpp/components/ComponentManager.h
     cpp/components/ComponentManager.cpp
     cpp/components/models/CompGroupListModel.h
     cpp/components/models/CompGroupListModel.cpp
-    cpp/fluid/FluidPackageManager.h
-    cpp/fluid/FluidPackageManager.cpp
     cpp/components/models/ComponentListModel.h
     cpp/components/models/ComponentListModel.cpp
-    cpp/fluid/models/FluidPackageListModel.h
-    cpp/fluid/models/FluidPackageListModel.cpp
     cpp/flowsheet/UnitNode.h
     cpp/flowsheet/models/FlowsheetUnitModel.h
     cpp/flowsheet/models/FlowsheetUnitModel.cpp
     cpp/flowsheet/state/FlowsheetState.h
-    cpp/AppTheme.h
     cpp/flowsheet/state/FlowsheetState.cpp
     cpp/flowsheet/state/ProcessUnitState.h
     cpp/flowsheet/state/ProcessUnitState.cpp
-    cpp/streams/state/MaterialStreamState.h
-    cpp/streams/state/MaterialStreamState.cpp
+    cpp/fluid/FluidPackageRecord.h
+    cpp/fluid/FluidPackageRecord.cpp
+    cpp/fluid/FluidPackageManager.h
+    cpp/fluid/FluidPackageManager.cpp
+    cpp/fluid/models/FluidPackageListModel.h
+    cpp/fluid/models/FluidPackageListModel.cpp
     cpp/streams/models/StreamCompositionModel.h
     cpp/streams/models/StreamCompositionModel.cpp
+    cpp/streams/state/MaterialStreamState.h
+    cpp/streams/state/MaterialStreamState.cpp
     cpp/streams/state/StreamUnitState.h
     cpp/streams/state/StreamUnitState.cpp
     cpp/unitops/column/state/ColumnUnitState.h
     cpp/unitops/column/state/ColumnUnitState.cpp
-    cpp/unitops/heater/state/HeaterCoolerUnitState.h
-    cpp/unitops/heater/state/HeaterCoolerUnitState.cpp
-    cpp/unitops/hex/state/HeatExchangerUnitState.h
-    cpp/unitops/hex/state/HeatExchangerUnitState.cpp
+    cpp/unitops/column/sim/ColumnSolveSpecBuilder.hpp
+    cpp/unitops/column/sim/ColumnSolveSpecBuilder.cpp
+    cpp/unitops/column/sim/StagedColumnCore.hpp
+    cpp/unitops/column/sim/StagedColumnCore.cpp
     cpp/unitops/column/models/TrayModel.h
     cpp/unitops/column/models/TrayModel.cpp
     cpp/unitops/column/models/DiagnosticsModel.h
@@ -111,6 +112,10 @@ qt_add_executable(appChatGPT5_ADT
     cpp/unitops/column/models/RunLogModel.cpp
     cpp/unitops/column/models/MaterialBalanceModel.h
     cpp/unitops/column/models/MaterialBalanceModel.cpp
+    cpp/unitops/heater/state/HeaterCoolerUnitState.h
+    cpp/unitops/heater/state/HeaterCoolerUnitState.cpp
+    cpp/unitops/hex/state/HeatExchangerUnitState.h
+    cpp/unitops/hex/state/HeatExchangerUnitState.cpp
 )
 
 qt_add_qml_module(appChatGPT5_ADT
@@ -196,6 +201,7 @@ target_link_libraries(appChatGPT5_ADT
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Concurrent
+        Qt6::Core
         adt_core
         dwmapi
 )

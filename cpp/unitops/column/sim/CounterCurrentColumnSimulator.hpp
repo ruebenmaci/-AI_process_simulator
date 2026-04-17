@@ -12,6 +12,7 @@
 #include "../thermo/pseudocomponents/componentData.hpp"
 #include "../../../utils/LogLevel.hpp"
 #include "../../../thermo/ThermoConfig.hpp"
+#include "StagedColumnCore.hpp"
 
 struct ProgressEvent {
   std::string stage;          // "init", "iter", "trayStart", "trayEnd", "units", "converged", ...
@@ -73,6 +74,57 @@ struct Diagnostic {
   std::string level;   // "info" | "warn" | "error"
   std::string code;
   std::string message;
+};
+
+struct SimulationAttachedStripperSpec {
+  std::string stripperId;
+  std::string label = "Attached Side Stripper";
+  int sourceTrayIndex0 = -1;
+  int returnTrayIndex0 = -1;
+  int trays = 4;
+  int feedTrayIndex0 = 2;
+  double topPressurePa = 101325.0;
+  double dpPerStagePa = 0.0;
+  std::string heatMode = "none";    // "none" | "steam" | "reboiler_duty"
+  double steamRateKgph = 0.0;
+  double reboilerDutyKW = 0.0;
+  int maxCoupledIterations = 25;
+  double couplingTolerance = 1e-3;
+  double returnDamping = 0.35;
+};
+
+struct SimulationAttachedStripperSummary {
+  std::string stripperId;
+  std::string label;
+  int sourceTray = 0;
+  int returnTray = 0;
+  int trays = 0;
+  int feedTray = 0;
+  std::string heatMode;
+  double feedKgph = 0.0;
+  double vaporReturnKgph = 0.0;
+  double bottomsProductKgph = 0.0;
+  double topTemperatureK = std::numeric_limits<double>::quiet_NaN();
+  double bottomTemperatureK = std::numeric_limits<double>::quiet_NaN();
+  double topPressurePa = std::numeric_limits<double>::quiet_NaN();
+  double feedTemperatureK = std::numeric_limits<double>::quiet_NaN();
+  double feedPressurePa = std::numeric_limits<double>::quiet_NaN();
+  double vaporReturnTemperatureK = std::numeric_limits<double>::quiet_NaN();
+  double vaporReturnPressurePa = std::numeric_limits<double>::quiet_NaN();
+  double bottomsTemperatureK = std::numeric_limits<double>::quiet_NaN();
+  double bottomsPressurePa = std::numeric_limits<double>::quiet_NaN();
+  bool approximatedSteamMode = false;
+  std::string status = "OK";
+  bool solveConverged = false;
+  bool coupledConverged = false;
+  int coupledIterationsCompleted = 0;
+  int maxCoupledIterations = 0;
+  double coupledResidual = std::numeric_limits<double>::quiet_NaN();
+  double couplingTolerance = std::numeric_limits<double>::quiet_NaN();
+  double returnDamping = std::numeric_limits<double>::quiet_NaN();
+  std::string coupledMode;
+  std::string summaryText;
+  std::vector<Diagnostic> diagnostics;
 };
 
 struct MassBalance {
@@ -140,6 +192,7 @@ struct SimulationResult {
   std::vector<Diagnostic> diagnostics;
   EnergySpecSummary energy;
   struct { BoundaryTemps condenser; BoundaryTemps reboiler; } boundary;
+  std::vector<SimulationAttachedStripperSummary> attachedStrippers;
 };
 
 struct SimulationDrawSpec {
@@ -190,6 +243,7 @@ struct SimulationOptions {
   double feedRate_kgph = 100000.0;
 
   int maxIter = 80;
+  double outerConvergenceTolerance = 1e-4;
   double relax = 0.45;
   double relaxT = 0.3;
   double topApproach = 10.0;
@@ -219,6 +273,12 @@ struct SimulationOptions {
   // to populate K/H diagnostics (Kmin/Kmax/Htarget/Hcalc/dH). This is slower.
   // When false, tray reporting uses converged solver state directly (faster).
   bool reportTrayFlashDiagnostics = false;
+
+  // Optional internal attached side strippers fed from main-column side draws.
+  // Phase 19 Pass 1 integrates an outer-iteration coupled attached-stripper path:
+  // the stripper feed is taken from the current side draw on sourceTrayIndex0,
+  // and the returned vapor is re-injected at returnTrayIndex0 on the next outer iteration.
+  std::vector<SimulationAttachedStripperSpec> attachedStripperSpecs;
 };
 
 SimulationResult simulateColumn(const SimulationOptions& opt);

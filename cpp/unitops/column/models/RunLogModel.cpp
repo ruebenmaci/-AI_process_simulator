@@ -1,6 +1,7 @@
 #include "RunLogModel.h"
 
 #include <QDebug>
+#include <QVariantList>
 
 RunLogModel::RunLogModel(QObject* parent) : QAbstractListModel(parent) {
   m_emitTimer.start();
@@ -31,6 +32,25 @@ QHash<int, QByteArray> RunLogModel::roleNames() const {
   return roles;
 }
 
+
+QString RunLogModel::lineAt(int index) const {
+  if (index < 0 || index >= m_lines.size()) return {};
+  return m_lines.at(index);
+}
+
+QVariantList RunLogModel::findMatches(const QString& query, bool caseSensitive) const {
+  QVariantList matches;
+  if (query.isEmpty()) return matches;
+
+  const Qt::CaseSensitivity cs = caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
+  for (int i = 0; i < m_lines.size(); ++i) {
+    if (m_lines.at(i).contains(query, cs)) {
+      matches.push_back(i);
+    }
+  }
+  return matches;
+}
+
 void RunLogModel::clear() {
   beginResetModel();
   m_lines.clear();
@@ -40,6 +60,7 @@ void RunLogModel::clear() {
   m_pendingAllTextSignals = 0;
   m_emitTimer.restart();
   emit allTextChanged();
+  emit countChanged();
   emit cleared();
 }
 
@@ -63,6 +84,7 @@ void RunLogModel::appendLines(const QStringList& lines) {
   beginInsertRows(QModelIndex(), first, last);
   m_lines.append(filtered);
   endInsertRows();
+  emit countChanged();
 
   trimIfNeeded();
   m_allTextDirty = true;
@@ -80,6 +102,7 @@ void RunLogModel::append(const QString& line) {
   beginInsertRows(QModelIndex(), insertRow, insertRow);
   m_lines.append(line);
   endInsertRows();
+  emit countChanged();
 
   // Bounded storage
   trimIfNeeded();
@@ -99,6 +122,7 @@ void RunLogModel::trimIfNeeded() {
   for (int i = 0; i < extra; ++i)
       m_lines.removeFirst();
   endRemoveRows();
+  emit countChanged();
 
   m_allTextDirty = true;
 }

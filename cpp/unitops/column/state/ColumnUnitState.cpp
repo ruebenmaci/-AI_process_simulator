@@ -20,6 +20,7 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QRegularExpression>
+#include <QUuid>
 
 #include "streams/state/StreamUnitState.h"
 #include "unitops/column/config/CrudeInitialSettings.hpp"
@@ -30,7 +31,131 @@
 #include "../../../thermo/eos/PRSV.hpp"
 #include "../../../fluid/FluidPackageManager.h"
 
+#include "unitops/column/sim/ColumnSolveSpecBuilder.hpp"
+
 static constexpr int MAX_LOG_BUFFER_LINES = 5000;
+
+
+namespace {
+
+QVariantMap diagnosticToVariantMap(const Diagnostic& diagnostic)
+{
+   QVariantMap row;
+   row.insert(QStringLiteral("level"), QString::fromStdString(diagnostic.level));
+   row.insert(QStringLiteral("code"), QString::fromStdString(diagnostic.code));
+   row.insert(QStringLiteral("message"), QString::fromStdString(diagnostic.message));
+   return row;
+}
+
+QString makeStableStripperId()
+{
+   return QStringLiteral("stripper_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+}
+
+QString classifyAttachedStripperStatus(const QString& rawStatus,
+                                       int warningCount,
+                                       int errorCount,
+                                       bool solveConverged,
+                                       bool coupledConverged)
+{
+   const QString normalized = rawStatus.trimmed().toUpper();
+
+   if (errorCount > 0)
+      return QStringLiteral("FAIL");
+
+   if (normalized == QStringLiteral("FAIL") || normalized == QStringLiteral("FAILED") || normalized == QStringLiteral("ERROR"))
+      return QStringLiteral("FAIL");
+
+   // The current solver can explicitly emit SKIPPED when a configured stripper
+   // had no usable positive liquid side-draw feed. For the existing UI we keep
+   // the user-facing set limited to OK / WARN / FAIL, so SKIPPED is surfaced as FAIL.
+   if (normalized == QStringLiteral("SKIPPED"))
+      return QStringLiteral("FAIL");
+
+   // After Phase 19 recoupling, a successful internal stripper flash/solve is not
+   // sufficient on its own. If the attached stripper did not produce a usable solve,
+   // or the coupled return never settled within tolerance, the selected-result status
+   // should reflect that even if the raw inner solve status still says OK.
+   if (!solveConverged)
+      return QStringLiteral("FAIL");
+
+   if (warningCount > 0)
+      return QStringLiteral("WARN");
+
+   if (!coupledConverged)
+      return QStringLiteral("WARN");
+
+   if (normalized == QStringLiteral("WARN") || normalized == QStringLiteral("WARNING"))
+      return QStringLiteral("WARN");
+
+   return QStringLiteral("OK");
+}
+
+QVariantMap attachedStripperSummaryToVariantMap(const SimulationAttachedStripperSummary& summary)
+{
+   QVariantMap row;
+   row.insert(QStringLiteral("stripperId"), QString::fromStdString(summary.stripperId));
+   row.insert(QStringLiteral("label"), QString::fromStdString(summary.label));
+   row.insert(QStringLiteral("sourceTray"), summary.sourceTray);
+   row.insert(QStringLiteral("returnTray"), summary.returnTray);
+   row.insert(QStringLiteral("trays"), summary.trays);
+   row.insert(QStringLiteral("feedTray"), summary.feedTray);
+   row.insert(QStringLiteral("heatMode"), QString::fromStdString(summary.heatMode));
+   row.insert(QStringLiteral("feedKgph"), summary.feedKgph);
+   row.insert(QStringLiteral("vaporReturnKgph"), summary.vaporReturnKgph);
+   row.insert(QStringLiteral("bottomsProductKgph"), summary.bottomsProductKgph);
+   row.insert(QStringLiteral("topTemperatureK"), summary.topTemperatureK);
+   row.insert(QStringLiteral("bottomTemperatureK"), summary.bottomTemperatureK);
+   row.insert(QStringLiteral("topPressurePa"), summary.topPressurePa);
+   row.insert(QStringLiteral("feedTemperatureK"), summary.feedTemperatureK);
+   row.insert(QStringLiteral("feedPressurePa"), summary.feedPressurePa);
+   row.insert(QStringLiteral("vaporReturnTemperatureK"), summary.vaporReturnTemperatureK);
+   row.insert(QStringLiteral("vaporReturnPressurePa"), summary.vaporReturnPressurePa);
+   row.insert(QStringLiteral("bottomsTemperatureK"), summary.bottomsTemperatureK);
+   row.insert(QStringLiteral("bottomsPressurePa"), summary.bottomsPressurePa);
+   row.insert(QStringLiteral("approximatedSteamMode"), summary.approximatedSteamMode);
+   row.insert(QStringLiteral("solveConverged"), summary.solveConverged);
+   row.insert(QStringLiteral("coupledConverged"), summary.coupledConverged);
+   row.insert(QStringLiteral("coupledIterationsCompleted"), summary.coupledIterationsCompleted);
+   row.insert(QStringLiteral("maxCoupledIterations"), summary.maxCoupledIterations);
+   row.insert(QStringLiteral("coupledResidual"), summary.coupledResidual);
+   row.insert(QStringLiteral("couplingTolerance"), summary.couplingTolerance);
+   row.insert(QStringLiteral("returnDamping"), summary.returnDamping);
+   row.insert(QStringLiteral("coupledMode"), QString::fromStdString(summary.coupledMode));
+   row.insert(QStringLiteral("rawStatus"), QString::fromStdString(summary.status));
+   row.insert(QStringLiteral("summaryText"), QString::fromStdString(summary.summaryText));
+
+   QVariantList diagnostics;
+   diagnostics.reserve(static_cast<int>(summary.diagnostics.size()));
+   int warningCount = 0;
+   int errorCount = 0;
+   for (const auto& diagnostic : summary.diagnostics)
+   {
+      const QString level = QString::fromStdString(diagnostic.level).trimmed().toLower();
+      if (level == QStringLiteral("warn") || level == QStringLiteral("warning"))
+         ++warningCount;
+      else if (level == QStringLiteral("error"))
+         ++errorCount;
+      diagnostics.push_back(diagnosticToVariantMap(diagnostic));
+   }
+
+   const QString displayStatus = classifyAttachedStripperStatus(QString::fromStdString(summary.status),
+                                                               warningCount,
+                                                               errorCount,
+                                                               summary.solveConverged,
+                                                               summary.coupledConverged);
+
+   row.insert(QStringLiteral("status"), displayStatus);
+   row.insert(QStringLiteral("diagnosticCount"), diagnostics.size());
+   row.insert(QStringLiteral("warningCount"), warningCount);
+   row.insert(QStringLiteral("errorCount"), errorCount);
+   row.insert(QStringLiteral("hasWarnings"), warningCount > 0);
+   row.insert(QStringLiteral("hasErrors"), errorCount > 0);
+   row.insert(QStringLiteral("diagnostics"), diagnostics);
+   return row;
+}
+
+} // namespace
 
 bool allowSummaryTag(const QString& s)
 {
@@ -80,6 +205,9 @@ bool allowSummaryTag(const QString& s)
       "[SCALE]",
       //"[SCALE_PRODUCTS]",
       "[SIDE_DRAW]",
+      "[STRIPPER]",
+      "[STRIPPER_COUPLED]",
+      "[STRIPPER_DIAG]",
       //"[TRAFFIC_CLAMP]",
       "[UNITS]",
    };
@@ -694,6 +822,28 @@ void ColumnUnitState::setFeedTray(int v)
    emit feedTrayChanged();
 }
 
+void ColumnUnitState::setMaxOuterIterations(int v)
+{
+   v = std::clamp(v, 1, 1000);
+   if (maxOuterIterations_ == v)
+      return;
+   maxOuterIterations_ = v;
+   markSpecsDirty_();
+   emit maxOuterIterationsChanged();
+}
+
+void ColumnUnitState::setOuterConvergenceTolerance(double v)
+{
+   if (!std::isfinite(v))
+      return;
+   v = std::clamp(v, 1e-8, 1.0);
+   if (qFuzzyCompare(outerConvergenceTolerance_, v))
+      return;
+   outerConvergenceTolerance_ = v;
+   markSpecsDirty_();
+   emit outerConvergenceToleranceChanged();
+}
+
 // ---------------- Specs ----------------
 
 
@@ -701,10 +851,21 @@ void ColumnUnitState::setFeedTray(int v)
 
 QVariantList ColumnUnitState::drawSpecs() const { return drawSpecs_; }
 
+QVariantList ColumnUnitState::attachedStrippers() const
+{
+   return attachedStrippersCache_;
+}
+
+QVariantList ColumnUnitState::attachedStripperProducts() const
+{
+   return attachedStripperProductsCache_;
+}
+
 void ColumnUnitState::setDrawSpecs(const QVariantList& v)
 {
    // Canonical schema:
-   // { name, tray(1-based), basis, phase, value, pct(legacy mirror) }
+   // { name, tray(1-based), basis, phase, value, pct(legacy mirror),
+   //   stripperEnabled, stripperLabel, stripperTrays, stripperReturnTray, stripperHeatMode, stripperHeatValue }
    QVariantList normalized;
    normalized.reserve(v.size());
 
@@ -778,6 +939,26 @@ void ColumnUnitState::setDrawSpecs(const QVariantList& v)
          : pickDbl(m, { "pct" }, 0.0);
       out.insert("pct", std::max(0.0, pctLegacy));
 
+      // attached side stripper fields (preserve through QML edits even before solver hookup)
+      const bool stripperEnabled = m.value("stripperEnabled", false).toBool();
+      QString stripperId = pickStr(m, { "stripperId" });
+      if (stripperEnabled && stripperId.isEmpty())
+         stripperId = makeStableStripperId();
+      out.insert("stripperEnabled", stripperEnabled);
+      out.insert("stripperId", stripperId);
+      out.insert("stripperLabel", pickStr(m, { "stripperLabel" }));
+      out.insert("stripperTrays", std::max(2, pickInt(m, { "stripperTrays" }, 4)));
+      out.insert("stripperReturnTray", std::clamp(pickInt(m, { "stripperReturnTray" }, std::max(2, tray - 1)), 2, std::max(2, trays_ - 1)));
+      {
+         QString hm = pickStr(m, { "stripperHeatMode" });
+         if (hm.isEmpty()) hm = QStringLiteral("Steam");
+         out.insert("stripperHeatMode", hm);
+      }
+      out.insert("stripperHeatValue", pickDbl(m, { "stripperHeatValue" }, 0.0));
+      out.insert("stripperMaxCoupledIterations", std::max(1, pickInt(m, { "stripperMaxCoupledIterations" }, 25)));
+      out.insert("stripperCouplingTolerance", std::max(1e-8, pickDbl(m, { "stripperCouplingTolerance" }, 1e-3)));
+      out.insert("stripperReturnDamping", std::clamp(pickDbl(m, { "stripperReturnDamping" }, 0.35), 0.0, 1.0));
+
       normalized.push_back(out);
       if (normalized.size() >= cap) break;
    }
@@ -785,6 +966,7 @@ void ColumnUnitState::setDrawSpecs(const QVariantList& v)
    drawSpecs_ = normalized;
    markSpecsDirty_();
    emit drawSpecsChanged();
+   emit attachedStripperProductsChanged();
 }
 
 QString ColumnUnitState::condenserSpec() const { return condenserSpec_; }
@@ -1019,7 +1201,7 @@ QString ColumnUnitState::defaultSolverInputsExportPath_() const
 
 QString ColumnUnitState::exportLatestSolverInputsJson(const QString& filePath)
 {
-   const bool havePending = !pendingSolveInputs_.fluidThermo.components.empty();
+   const bool havePending = !pendingSolveInputs_.core.fluidThermo.components.empty();
    if (!havePending) {
       qWarning() << "[ColumnUnitState] No prepared SolverInputs available to export yet."
                  << "Run the column solver first.";
@@ -1065,7 +1247,6 @@ QString ColumnUnitState::exportLatestSolverInputsJson(const QString& filePath)
    return resolvedPath;
 }
 
-
 void ColumnUnitState::solve()
 {
    if (solving_)
@@ -1080,6 +1261,11 @@ void ColumnUnitState::solve()
 
    SolverInputs in;
    const MaterialStreamState* feed = activeFeedStream();
+   if (!feed) {
+      diagnosticsModel_.append(QStringLiteral("error"),
+         QStringLiteral("No active feed stream available."));
+      return;
+   }
 
    // Guard: warn via diagnostics if the feed stream has no valid fluid package.
    // The solve proceeds using legacy crude-based thermo in this case.
@@ -1093,108 +1279,20 @@ void ColumnUnitState::solve()
          << "— Solver will fall back to legacy EOS selection.";
    }
 
-   in.fluidName = feed->selectedFluid().toStdString();
-   in.fluidThermo = feed->fluidDefinition().thermo;
-   in.feedComposition = feed->compositionStd();
-   in.trays = trays_;
-   in.feedRateKgph = feedRateKgph();
-   in.feedTray = std::clamp(feedTray_, 1, in.trays);
-   in.feedTempK = feedTempK();
-   in.topPressurePa = topPressurePa_;
-   in.dpPerTrayPa = dpPerTrayPa_;
-
-   // Capture UI verbosity at the moment the solve starts.
-   // This controls ONLY what goes to the UI RunLogModel.
-   const int uiLogLevel = solverLogLevel_; // 0=None, 1=Summary, 2=Debug
-
-   // Solver emission level controls what the simulator emits via opt.onLog.
-   // Even when UI verbosity is OFF, we still want full-fidelity file logging.
-   const int solverEmitLevel = (uiLogLevel <= 0) ? 1 : uiLogLevel; // 2=Debug
-   in.logLevel = static_cast<LogLevel>(solverEmitLevel);
-
-   // Resolve ThermoConfig from the feed stream's fluid package (primary path).
-   // Also keep eosMode/eosManual populated for legacy fallback inside the solver.
-   const QString packageThermoMethod = packageSelectedThermoMethod_();
-   if (!packageThermoMethod.isEmpty()) {
-      const QString pkgId = feed->selectedFluidPackageId().trimmed();
-      auto* fpm = FluidPackageManager::instance();
-      if (fpm)
-         in.thermoConfig = fpm->thermoConfigForPackageResolved(pkgId);
-      in.eosMode = "manual";
-      in.eosManual = packageThermoMethod.toStdString();
-   }
-   else {
-      in.eosMode = eosMode_.toStdString();
-      in.eosManual = eosManual_.toStdString();
-   }
-   in.condenserType = condenserType_.toStdString();
-   in.reboilerType = reboilerType_.toStdString();
-   in.condenserSpec = condenserSpec_.toStdString();
-   in.reboilerSpec = reboilerSpec_.toStdString();
-
-   in.refluxRatio = refluxRatio_;
-   in.boilupRatio = boilupRatio_;
-   in.qcKW = qcKW_;
-   in.qrKW = qrKW_;
-   in.topTsetK = topTsetK_;
-   in.bottomTsetK = bottomTsetK_;
-
-   in.etaVTop = etaVTop_;
-   in.etaVMid = etaVMid_;
-   in.etaVBot = etaVBot_;
-   in.enableEtaL = enableEtaL_;
-   in.etaLTop = etaLTop_;
-   in.etaLMid = etaLMid_;
-   in.etaLBot = etaLBot_;
-
-   // Side draws: consume new schema ({name,tray,basis,phase,value,pct})
-   in.drawSpecs.clear();
-   in.drawLabelsByTray1.clear();
-
-   for (const auto& v : drawSpecs_)
-   {
-      const QVariantMap m = v.toMap();
-
-      const QString name = m.value("name").toString().trimmed();
-      const int tray1 = m.value("tray").toInt();
-
-      const QString basis = m.value("basis").toString().trimmed().isEmpty()
-         ? QString("feedPct")
-         : m.value("basis").toString().trimmed();
-
-      const QString phase = m.value("phase").toString().trimmed().isEmpty()
-         ? QString("L")
-         : m.value("phase").toString().trimmed();
-
-      const double value = m.contains("value")
-         ? m.value("value").toDouble()
-         : m.value("pct").toDouble(); // backward compatibility
-
-      if (tray1 <= 0 || tray1 > in.trays)
-         continue;
-      if (!std::isfinite(value) || value <= 0.0)
-         continue;
-      if (phase.compare("L", Qt::CaseInsensitive) != 0)
-         continue; // current solver path handles liquid side draws
-
-      SolverDrawSpec ds;
-      ds.trayIndex0 = tray1 - 1;       // keep 0-based internal tray index
-      ds.name = name.toStdString();
-      ds.basis = basis.toStdString();  // "feedPct" | "stageLiqPct" | "kgph"
-      ds.phase = phase.toStdString();  // "L"
-      ds.value = value;
-
-      in.drawSpecs.push_back(std::move(ds));
-
-      if (!name.isEmpty())
-         in.drawLabelsByTray1[tray1] = name.toStdString();
+   QString buildError;
+   if (!ColumnSolveSpecBuilder::build(*this, feed, in, &buildError)) {
+      diagnosticsModel_.append(QStringLiteral("error"),
+         buildError.isEmpty()
+         ? QStringLiteral("Failed to build solver inputs.")
+         : buildError);
+      return;
    }
 
    // Debug: confirm solver-side draw specs built from AppState.drawSpecs_
-   if (!in.drawSpecs.empty())
+   if (!in.core.drawSpecs.empty())
    {
       qDebug() << "[DrawSpecs Solver] entries=" << static_cast<int>(in.drawSpecs.size());
-      for (const auto& ds : in.drawSpecs)
+      for (const auto& ds : in.core.drawSpecs)
       {
          qDebug() << "  trayIndex0=" << ds.trayIndex0
             << " basis=" << QString::fromStdString(ds.basis)
@@ -1207,6 +1305,7 @@ void ColumnUnitState::solve()
    {
       qDebug() << "[DrawSpecs Solver] entries=0";
    }
+
    runLogModel_.append(QString("Solve: fluid=%1 package=%2 thermo=%3 trays=%4 feed=%5 kg/h feedTray=%6")
       .arg(feed->selectedFluid())
       .arg(feed->selectedFluidPackageName().isEmpty() ? QStringLiteral("(legacy)") : feed->selectedFluidPackageName())
@@ -1214,6 +1313,11 @@ void ColumnUnitState::solve()
       .arg(in.trays)
       .arg(feedRateKgph(), 0, 'f', 0)
       .arg(in.feedTray));
+
+   // Capture UI verbosity at the moment the solve starts.
+   // This controls ONLY what goes to the UI RunLogModel.
+   const int uiLogLevel = solverLogLevel_; // 0=None, 1=Summary, 2=Debug
+
    // Open per-solve full-fidelity log file (disk) before launching worker.
    openSolverLogFile_();
 
@@ -1238,8 +1342,6 @@ void ColumnUnitState::solve()
             const int overflow = self->logBuffer_.size() - MAX_LOG_BUFFER_LINES;
             self->logBuffer_.erase(self->logBuffer_.begin(),
                self->logBuffer_.begin() + overflow);
-            // optional: add a marker line once
-            // self->logBuffer_.prepend(QString("[LOG] dropped %1 lines").arg(overflow));
          }
       };
 
@@ -1295,11 +1397,7 @@ void ColumnUnitState::solve()
          }
          else if (ev.stage == "trayStart")
          {
-            // Force-flush any pending coalesced thermo logs so "(repeated N times)"
-            // summaries land at the correct tray boundary (instead of drifting into
-            // the next tray and appearing to "recycle" tray numbers).
             {
-               // Flush to disk log
                const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
                   {
                      const QString q = QString::fromStdString(s);
@@ -1310,7 +1408,6 @@ void ColumnUnitState::solve()
                flushEOSKCoalescer(thermoLoggerFile);
                flushPRSVCoalescer(thermoLoggerFile);
 
-               // Flush to UI only when verbosity > 0
                if (uiLogLevel > 0)
                {
                   const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
@@ -1338,10 +1435,7 @@ void ColumnUnitState::solve()
          }
          else if (ev.stage == "trayEnd")
          {
-            // Flush at tray end as well so any repeated thermo logs are attributed
-            // to the tray that produced them.
             {
-               // Flush to disk log
                const auto thermoLoggerFile = [fileLine, uiLogLevel](const std::string& s)
                   {
                      const QString q = QString::fromStdString(s);
@@ -1352,7 +1446,6 @@ void ColumnUnitState::solve()
                flushEOSKCoalescer(thermoLoggerFile);
                flushPRSVCoalescer(thermoLoggerFile);
 
-               // Flush to UI only when verbosity > 0
                if (uiLogLevel > 0)
                {
                   const auto thermoLoggerUi = [bufferLine, uiLogLevel](const std::string& s)
@@ -1438,6 +1531,12 @@ void ColumnUnitState::clearRunOutputs_()
    runResults_.clear();
    emit runResultsChanged();
 
+   attachedStrippersCache_.clear();
+   emit attachedStrippersChanged();
+
+   attachedStripperProductsCache_.clear();
+   emit attachedStripperProductsChanged();
+
    // Column / Condenser / Reboiler derived fields
    refluxFraction_ = 0.0;
    boilupFraction_ = 0.0;
@@ -1459,7 +1558,7 @@ void ColumnUnitState::clearRunOutputs_()
 
 void ColumnUnitState::applySolveOutputs_(const SolverInputs& in, const SolverOutputs& out)
 {
-   trayModel_.resetToDefaults(in.trays);
+   trayModel_.resetToDefaults(in.core.trays);
 
    const int N = static_cast<int>(out.trays.size());
    for (int i = 0; i < N; ++i)
@@ -1532,59 +1631,165 @@ void ColumnUnitState::applySolveOutputs_(const SolverInputs& in, const SolverOut
    emit tHotKChanged();
 
    // ---- Material balance (product basis) ----
-   // Include all product streams contributing to the overall balance:
-   //   - Distillate / overhead (calculated by solver)
-   //   - Side draws (configured in Draw Config)
-   //   - Bottoms / residue (calculated by solver)
    mbModel_.reset();
    mbModel_.setFeedKg(feedRateKgph());
 
+   attachedStrippersCache_.clear();
+   attachedStripperProductsCache_.clear();
+
+   for (const auto& summary : out.attachedStrippers)
+      attachedStrippersCache_.push_back(attachedStripperSummaryToVariantMap(summary));
+
+   emit attachedStrippersChanged();
+
+   struct OrderedProductRow
+   {
+      MaterialBalanceLine line;
+      int category = 1;      // 0=overhead, 1=tray-ordered side/stripper products, 2=bottoms
+      int sourceTray = 0;    // higher tray should appear earlier
+      int insertionOrder = 0;
+   };
+
+   std::vector<OrderedProductRow> orderedProductRows;
+   orderedProductRows.reserve(static_cast<size_t>(drawSpecs_.size()) + out.attachedStrippers.size() + 2);
+   int insertionOrder = 0;
+
+   auto pushOrderedProduct = [&](const QString& label, double kgph, int category, int sourceTray)
+   {
+      if (!std::isfinite(kgph) || kgph <= 0.0)
+         return;
+
+      OrderedProductRow row;
+      row.line.name = label;
+      row.line.kgph = kgph;
+      row.category = category;
+      row.sourceTray = sourceTray;
+      row.insertionOrder = insertionOrder++;
+      orderedProductRows.push_back(row);
+   };
+
    if (std::isfinite(out.energy.D_kgph) && out.energy.D_kgph > 0.0)
-      mbModel_.setDraw(QStringLiteral("Distillate (Overhead)"), out.energy.D_kgph);
+      pushOrderedProduct(QStringLiteral("Distillate (Overhead)"), out.energy.D_kgph, 0, std::numeric_limits<int>::max());
 
-   // ---- Material balance (product basis) ----
-   mbModel_.reset();
-   mbModel_.setFeedKg(feedRateKgph());
-
-   // 1) Distillate / overhead product (actual solved)
-   if (std::isfinite(out.energy.D_kgph) && out.energy.D_kgph > 0.0)
-      mbModel_.setDraw(QStringLiteral("Distillate (Overhead)"), out.energy.D_kgph);
-
-   // 2) Actual solved side draws (NOT the target draw specs)
    for (int i = 0; i < static_cast<int>(out.trays.size()); ++i)
    {
       const auto& tr = out.trays[static_cast<size_t>(i)];
-      const double kgph = tr.drawFlow;
-
-      if (!std::isfinite(kgph) || kgph <= 0.0)
-         continue;
-
       const int tray1 = i + 1;
-      QString label;
+
+      QVariantMap drawRow;
+      bool hasConfiguredDraw = false;
       for (const auto& v : drawSpecs_)
       {
          const QVariantMap m = v.toMap();
          if (m.value("tray").toInt() != tray1)
             continue;
+         drawRow = m;
+         hasConfiguredDraw = true;
+         break;
+      }
+      if (!hasConfiguredDraw)
+         continue;
 
-         const QString name = m.value("name").toString().trimmed();
-         if (!name.isEmpty()) {
-            label = QStringLiteral("%1 [Tray %2]").arg(name).arg(tray1);
-            break;
+      const bool stripperEnabled = drawRow.value("stripperEnabled").toBool();
+      if (stripperEnabled)
+      {
+         const QString stripperId = drawRow.value("stripperId").toString().trimmed();
+         const QString stripperLabel = drawRow.value("stripperLabel").toString().trimmed();
+         const QString drawName = drawRow.value("name").toString().trimmed();
+         const QString effectiveStripperLabel = stripperLabel.isEmpty()
+            ? QStringLiteral("%1 Stripper").arg(drawName.isEmpty() ? QStringLiteral("Draw") : drawName)
+            : stripperLabel;
+
+         const SimulationAttachedStripperSummary* matchedStripper = nullptr;
+         for (const auto& summary : out.attachedStrippers)
+         {
+            if (!stripperId.isEmpty()
+                && QString::fromStdString(summary.stripperId).compare(stripperId, Qt::CaseInsensitive) == 0)
+            {
+               matchedStripper = &summary;
+               break;
+            }
+            if (summary.sourceTray == tray1)
+            {
+               matchedStripper = &summary;
+               break;
+            }
+            if (!effectiveStripperLabel.isEmpty()
+                && QString::fromStdString(summary.label).compare(effectiveStripperLabel, Qt::CaseInsensitive) == 0)
+            {
+               matchedStripper = &summary;
+               break;
+            }
+         }
+
+         if (matchedStripper != nullptr
+             && std::isfinite(matchedStripper->bottomsProductKgph)
+             && matchedStripper->bottomsProductKgph > 0.0)
+         {
+            const QString label = stripperLabel.isEmpty()
+               ? QStringLiteral("%1 Stripper Bottoms").arg(drawName.isEmpty() ? QStringLiteral("Draw") : drawName)
+               : QStringLiteral("%1 Bottoms").arg(stripperLabel);
+
+            pushOrderedProduct(label, matchedStripper->bottomsProductKgph, 1, matchedStripper->sourceTray);
+
+            QVariantMap row;
+            row.insert(QStringLiteral("label"), label);
+            row.insert(QStringLiteral("sourceTray"), matchedStripper->sourceTray);
+            row.insert(QStringLiteral("returnTray"), matchedStripper->returnTray);
+            row.insert(QStringLiteral("heatMode"), QString::fromStdString(matchedStripper->heatMode));
+            row.insert(QStringLiteral("kgph"), matchedStripper->bottomsProductKgph);
+            row.insert(QStringLiteral("feedPct"), feedRateKgph() > 0.0 ? matchedStripper->bottomsProductKgph / feedRateKgph() : 0.0);
+            attachedStripperProductsCache_.push_back(row);
+            continue;
          }
       }
 
+      const double kgph = tr.drawFlow;
+      if (!std::isfinite(kgph) || kgph <= 0.0)
+         continue;
+
+      QString label;
+      const QString name = drawRow.value("name").toString().trimmed();
+      if (!name.isEmpty())
+         label = QStringLiteral("%1 [Tray %2]").arg(name).arg(tray1);
       if (label.isEmpty())
          label = QStringLiteral("Side Draw [Tray %1]").arg(tray1);
-
-      mbModel_.setDraw(label, kgph);
+      pushOrderedProduct(label, kgph, 1, tray1);
    }
 
-   // 3) Bottoms / residue product (actual solved)
    if (std::isfinite(out.energy.B_kgph) && out.energy.B_kgph > 0.0)
-      mbModel_.setDraw(QStringLiteral("Bottoms (Residue)"), out.energy.B_kgph);
+      pushOrderedProduct(QStringLiteral("Bottoms (Residue)"), out.energy.B_kgph, 2, std::numeric_limits<int>::min());
 
+   std::sort(orderedProductRows.begin(), orderedProductRows.end(),
+             [](const OrderedProductRow& a, const OrderedProductRow& b)
+             {
+                if (a.category != b.category)
+                   return a.category < b.category;
+                if (a.category == 1 && a.sourceTray != b.sourceTray)
+                   return a.sourceTray > b.sourceTray;
+                return a.insertionOrder < b.insertionOrder;
+             });
+
+   std::vector<MaterialBalanceLine> orderedLines;
+   orderedLines.reserve(orderedProductRows.size());
+   for (const auto& row : orderedProductRows)
+      orderedLines.push_back(row.line);
+   mbModel_.setLines(orderedLines);
    mbModel_.finalize();
+
+   std::sort(attachedStripperProductsCache_.begin(), attachedStripperProductsCache_.end(),
+             [](const QVariant& a, const QVariant& b)
+             {
+                const QVariantMap ma = a.toMap();
+                const QVariantMap mb = b.toMap();
+                const int trayA = ma.value(QStringLiteral("sourceTray")).toInt();
+                const int trayB = mb.value(QStringLiteral("sourceTray")).toInt();
+                if (trayA != trayB)
+                   return trayA > trayB;
+                return ma.value(QStringLiteral("label")).toString().compare(mb.value(QStringLiteral("label")).toString(), Qt::CaseInsensitive) < 0;
+             });
+
+   emit attachedStripperProductsChanged();
 
    // ---- Temperature spike analysis (ported from React App.js) ----
    struct SpikeFlags
@@ -1782,6 +1987,8 @@ void ColumnUnitState::applyCrudeDefaults(const QString& crude)
 
    setTopPressurePa(s.Ptop_Pa);
    setDpPerTrayPa(s.dP_perTray_Pa);
+   setMaxOuterIterations(100);
+   setOuterConvergenceTolerance(1e-4);
 
    // Specs mapping (config uses lowercase strings; UI uses TitleCase)
    if (s.condenserSpec == "temperature")

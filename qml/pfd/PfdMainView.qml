@@ -17,10 +17,16 @@ Item {
     property var activeUnit: root.flowsheet ? root.flowsheet.selectedUnit : null
     property bool floatingWorkspaceVisible: false
     property point floatingWorkspacePos: Qt.point(40, 40)
+    property point floatingWorkspaceRelPos: Qt.point(40 / Math.max(1, width), 40 / Math.max(1, height))
     property bool componentManagerVisible: false
     property point componentManagerPos: Qt.point(80, 80)
+    property point componentManagerRelPos: Qt.point(80 / Math.max(1, width), 80 / Math.max(1, height))
     property bool fluidManagerVisible: false
     property point fluidManagerPos: Qt.point(120, 120)
+    property point fluidManagerRelPos: Qt.point(120 / Math.max(1, width), 120 / Math.max(1, height))
+    property point equipmentPalettePos: Qt.point(0, 0)
+    property point equipmentPaletteRelPos: Qt.point(0, 0)
+    property bool suppressPanelPosCapture: false
     property int topPanelZ: 100
     property var activePanel: null
 
@@ -30,6 +36,72 @@ Item {
         panel.panelZ = topPanelZ
         activePanel = panel
     }
+    function clamp01(v) {
+        return Math.max(0, Math.min(1, v))
+    }
+
+    function clampPanelX(v, panel) {
+        return Math.max(0, Math.min(Math.max(0, width - panel.width), v))
+    }
+
+    function clampPanelY(v, panel) {
+        return Math.max(0, Math.min(Math.max(0, height - panel.height), v))
+    }
+
+    function capturePanelRelativePosition(panel, posPropName, relPropName) {
+        if (!panel || suppressPanelPosCapture)
+            return
+        const px = clampPanelX(panel.x, panel)
+        const py = clampPanelY(panel.y, panel)
+        root[posPropName] = Qt.point(px, py)
+        root[relPropName] = Qt.point(clamp01(px / Math.max(1, width)), clamp01(py / Math.max(1, height)))
+    }
+
+    function applyPanelRelativePosition(panel, posPropName, relPropName, fallbackX, fallbackY) {
+        if (!panel)
+            return
+        suppressPanelPosCapture = true
+        const rel = root[relPropName]
+        const useRel = rel && (rel.x > 0 || rel.y > 0)
+        const targetX = useRel ? rel.x * width : fallbackX
+        const targetY = useRel ? rel.y * height : fallbackY
+        const clampedX = clampPanelX(targetX, panel)
+        const clampedY = clampPanelY(targetY, panel)
+        panel.x = clampedX
+        panel.y = clampedY
+        root[posPropName] = Qt.point(clampedX, clampedY)
+        root[relPropName] = Qt.point(clamp01(clampedX / Math.max(1, width)), clamp01(clampedY / Math.max(1, height)))
+        suppressPanelPosCapture = false
+    }
+
+    function applyEquipmentPalettePosition(useCurrent) {
+        if (!equipmentPalette.visible)
+            return
+        suppressPanelPosCapture = true
+        const rightMargin = 60
+        const topMargin = 40
+        const fallbackX = Math.max(8, width - equipmentPalette.width - rightMargin)
+        const fallbackY = topMargin
+        const rel = equipmentPaletteRelPos
+        const hasRel = useCurrent || (rel && (rel.x > 0 || rel.y > 0))
+        const targetX = hasRel ? rel.x * width : fallbackX
+        const targetY = hasRel ? rel.y * height : fallbackY
+        const maxX = Math.max(0, width - equipmentPalette.width)
+        const maxY = Math.max(0, height - equipmentPalette.height)
+        equipmentPalette.x = Math.max(0, Math.min(maxX, targetX))
+        equipmentPalette.y = Math.max(0, Math.min(maxY, targetY))
+        equipmentPalettePos = Qt.point(equipmentPalette.x, equipmentPalette.y)
+        equipmentPaletteRelPos = Qt.point(clamp01(equipmentPalette.x / Math.max(1, width)), clamp01(equipmentPalette.y / Math.max(1, height)))
+        suppressPanelPosCapture = false
+    }
+
+    function refreshFloatingPanelPositions() {
+        applyPanelRelativePosition(componentManagerPanel, 'componentManagerPos', 'componentManagerRelPos', 80, 80)
+        applyPanelRelativePosition(fluidManagerPanel, 'fluidManagerPos', 'fluidManagerRelPos', 120, 120)
+        applyPanelRelativePosition(floatingWorkspace, 'floatingWorkspacePos', 'floatingWorkspaceRelPos', 40, 40)
+        applyEquipmentPalettePosition(true)
+    }
+
 
     function defaultSaveFileName() {
         // Build a filename from the drawing title + timestamp, no spaces
@@ -48,6 +120,9 @@ Item {
     implicitWidth: 1200
     implicitHeight: 900
     focus: true
+
+    onWidthChanged: Qt.callLater(root.refreshFloatingPanelPositions)
+    onHeightChanged: Qt.callLater(root.refreshFloatingPanelPositions)
 
     function tryDeleteSelectedUnit() {
         if (!root.flowsheet || !root.flowsheet.selectedUnitId || root.flowsheet.selectedUnitId === "")
@@ -104,11 +179,8 @@ Item {
         if (equipmentPalette.visible) {
             equipmentPalette.visible = false
         } else {
-            const rightMargin = 60
-            const topMargin = 40
-            equipmentPalette.x = Math.max(8, root.width - equipmentPalette.width - rightMargin)
-            equipmentPalette.y = topMargin
             equipmentPalette.visible = true
+            Qt.callLater(function() { root.applyEquipmentPalettePosition(false) })
         }
     }
 
@@ -124,6 +196,16 @@ Item {
     function showAbout() {
         aboutDialog.visible = true
         aboutDialog.forceActiveFocus()
+    }
+
+    function showSolverConvergenceHelp() {
+        solverConvergenceHelpDialog.visible = true
+        solverConvergenceHelpDialog.forceActiveFocus()
+    }
+
+    function showStripperStatusHelp() {
+        stripperStatusHelpDialog.visible = true
+        stripperStatusHelpDialog.forceActiveFocus()
     }
 
     function workspaceTitle() {
@@ -178,9 +260,18 @@ Item {
             // Overlays the PFD area; draggable via its title bar.
             EquipmentPalette {
                 id: equipmentPalette
-                boundsItem: parent
+                boundsItem: root
                 visible: false
                 z: 100
+                onXChanged: if (!root.suppressPanelPosCapture) {
+                    root.equipmentPalettePos = Qt.point(x, y)
+                    root.equipmentPaletteRelPos = Qt.point(root.clamp01(x / Math.max(1, root.width)), root.clamp01(y / Math.max(1, root.height)))
+                }
+                onYChanged: if (!root.suppressPanelPosCapture) {
+                    root.equipmentPalettePos = Qt.point(x, y)
+                    root.equipmentPaletteRelPos = Qt.point(root.clamp01(x / Math.max(1, root.width)), root.clamp01(y / Math.max(1, root.height)))
+                }
+                onVisibleChanged: if (visible) Qt.callLater(function() { root.applyEquipmentPalettePosition(false) })
 
                 onPlacementRequested: function(unitType) {
                     pfdCanvas.beginPlacement(unitType)
@@ -285,7 +376,7 @@ Item {
     FloatingPanel {
         id: componentManagerPanel
         visible: root.componentManagerVisible
-        onVisibleChanged: if (visible) root.raisePanel(componentManagerPanel)
+        onVisibleChanged: if (visible) { root.raisePanel(componentManagerPanel); Qt.callLater(function() { root.applyPanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos", 80, 80) }) }
         panelTitle: "Component Manager"
         panelIconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("component_list"))
         boundsItem: root
@@ -293,12 +384,13 @@ Item {
         minPanelHeight: 560
         width: Math.min(980, Math.max(860, root.width - 260))
         height: Math.min(640, Math.max(560, root.height - 220))
-        x: Math.min(root.componentManagerPos.x, Math.max(0, root.width - width))
-        y: Math.min(root.componentManagerPos.y, Math.max(0, root.height - height))
         active: visible && root.activePanel === componentManagerPanel
 
-        onXChanged: root.componentManagerPos = Qt.point(x, y)
-        onYChanged: root.componentManagerPos = Qt.point(x, y)
+        onXChanged: root.capturePanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos")
+        onYChanged: root.capturePanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos")
+        onWidthChanged: Qt.callLater(function() { root.applyPanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos", 80, 80) })
+        onHeightChanged: Qt.callLater(function() { root.applyPanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos", 80, 80) })
+        Component.onCompleted: Qt.callLater(function() { root.applyPanelRelativePosition(componentManagerPanel, "componentManagerPos", "componentManagerRelPos", 80, 80) })
         onActivated: root.raisePanel(componentManagerPanel)
         onCloseRequested: {
             root.componentManagerVisible = false
@@ -317,7 +409,7 @@ Item {
     FloatingPanel {
         id: fluidManagerPanel
         visible: root.fluidManagerVisible
-        onVisibleChanged: if (visible) root.raisePanel(fluidManagerPanel)
+        onVisibleChanged: if (visible) { root.raisePanel(fluidManagerPanel); Qt.callLater(function() { root.applyPanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos", 120, 120) }) }
         panelTitle: "Fluid Package Manager"
         panelIconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("fluid_package"))
         boundsItem: root
@@ -325,12 +417,13 @@ Item {
         minPanelHeight: 720
         width: Math.min(1240, Math.max(1040, root.width - 100))
         height: Math.min(820, Math.max(720, root.height - 100))
-        x: Math.min(root.fluidManagerPos.x, Math.max(0, root.width - width))
-        y: Math.min(root.fluidManagerPos.y, Math.max(0, root.height - height))
         active: visible && root.activePanel === fluidManagerPanel
 
-        onXChanged: root.fluidManagerPos = Qt.point(x, y)
-        onYChanged: root.fluidManagerPos = Qt.point(x, y)
+        onXChanged: root.capturePanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos")
+        onYChanged: root.capturePanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos")
+        onWidthChanged: Qt.callLater(function() { root.applyPanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos", 120, 120) })
+        onHeightChanged: Qt.callLater(function() { root.applyPanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos", 120, 120) })
+        Component.onCompleted: Qt.callLater(function() { root.applyPanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos", 120, 120) })
         onActivated: root.raisePanel(fluidManagerPanel)
         onCloseRequested: {
             root.fluidManagerVisible = false
@@ -349,14 +442,12 @@ Item {
     FloatingPanel {
         id: floatingWorkspace
         visible: root.floatingWorkspaceVisible && !!root.activeUnit
-        onVisibleChanged: if (visible) root.raisePanel(floatingWorkspace)
+        onVisibleChanged: if (visible) { root.raisePanel(floatingWorkspace); Qt.callLater(function() { root.applyPanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos", 40, 40) }) }
         panelTitle: root.workspaceTitle()
         panelIconSource: root.activeUnit && root.activeUnit.type === "stream"
                          ? Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
                          : Qt.resolvedUrl(gAppTheme.iconPath("dist_column"))
         boundsItem: root
-        x: Math.min(root.floatingWorkspacePos.x, Math.max(0, root.width - width))
-        y: Math.min(root.floatingWorkspacePos.y, Math.max(0, root.height - height))
 
         // Update title whenever the selected unit changes (type switch stream↔column)
         Connections {
@@ -397,8 +488,11 @@ Item {
 
         active: visible && root.activePanel === floatingWorkspace
 
-        onXChanged: root.floatingWorkspacePos = Qt.point(x, y)
-        onYChanged: root.floatingWorkspacePos = Qt.point(x, y)
+        onXChanged: root.capturePanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos")
+        onYChanged: root.capturePanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos")
+        onWidthChanged: Qt.callLater(function() { root.applyPanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos", 40, 40) })
+        onHeightChanged: Qt.callLater(function() { root.applyPanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos", 40, 40) })
+        Component.onCompleted: Qt.callLater(function() { root.applyPanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos", 40, 40) })
         onActivated: root.raisePanel(floatingWorkspace)
 
         onCloseRequested: {
@@ -549,6 +643,236 @@ Item {
         }
     }
 
+
+
+    Item {
+        id: stripperStatusHelpDialog
+        visible: false
+        z: 561
+        width: 760
+        height: Math.min(root.height - 48, 560)
+        x: Math.max(24, Math.min(root.width - width - 24, (root.width - width) / 2))
+        y: Math.max(24, Math.min(root.height - height - 24, (root.height - height) / 2))
+
+        function close() {
+            visible = false
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: "#eef3f6"
+            border.color: "#7f8f9b"
+            border.width: 1
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 36
+                radius: 6
+                color: "#d8e1e7"
+                border.color: "#93a3ae"
+
+                Label {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Stripper Status Help"
+                    font.pixelSize: 13
+                    font.bold: true
+                    color: "#17212b"
+                }
+
+                ClassicButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "OK"
+                    onClicked: stripperStatusHelpDialog.close()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: 6
+                color: "#f6f9fb"
+                border.color: "#c4d0d8"
+
+                Flickable {
+                    id: stripperStatusHelpFlick
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    clip: true
+                    contentWidth: width
+                    contentHeight: stripperStatusHelpColumn.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
+
+                    Column {
+                        id: stripperStatusHelpColumn
+                        width: stripperStatusHelpFlick.width - 8
+                        spacing: 10
+
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "Understanding stripper run status"
+                            font.pixelSize: 13
+                            font.bold: true
+                            color: "#17212b"
+                        }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "The Stripper Run Results panel shows a compact status for the selected attached side stripper. The current user-facing statuses are OK, WARN, and FAIL. Detailed message text belongs on the Diagnostics panel."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+
+                        Label { width: parent.width; wrapMode: Text.WordWrap; text: "Current coupling mode"; font.pixelSize: 13; font.bold: true; color: "#17212b" }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "Mode = outer_iteration_reinject means the stripper is solved from the current liquid side-draw feed, then its vapor return is re-injected at the configured return tray on the next outer column iteration. Coupled = No means the inner stripper solve was usable, but the outer vapor-return recoupling did not settle within the current coupling tolerance before the coupled iteration limit was reached."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+
+                        Label { width: parent.width; wrapMode: Text.WordWrap; text: "WARN statuses and how to fix them"; font.pixelSize: 13; font.bold: true; color: "#17212b" }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "1. Coupling not converged. This is the most common WARN after coupled vapor-return reinjection is enabled. It means Solve Conv = Yes, but Coupled = No because the vapor-return recoupling residual stayed above the coupling tolerance. Typical fixes: increase Max Coupled Iterations, loosen Coupling Tol slightly, or reduce Return Damping if the return is oscillating. If the solve is stable but simply slow, a moderate increase in Return Damping can help. Also review source tray, return tray, number of stripper trays, and heat value, because very aggressive settings can make recoupling harder to settle."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "2. Warning diagnostics present. The displayed status is also set to WARN whenever the stripper summary contains warning-level diagnostics. Open the Diagnostics panel and look for messages with the selected stripper label. Fix the specific warning shown there. In general, warnings are reduced by using physically reasonable tray locations, modest heat input, positive liquid side-draw feed, and convergence settings that are not tighter than necessary."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+
+                        Label { width: parent.width; wrapMode: Text.WordWrap; text: "FAIL statuses and how to fix them"; font.pixelSize: 13; font.bold: true; color: "#17212b" }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "1. Internal stripper solve did not converge. This occurs when the stripper itself did not produce a usable result during the coupled solve. Fixes: reduce the severity of the stripper specification, check the return tray and number of trays, reduce extreme heat values, and inspect the Diagnostics panel for the selected stripper. If the case is marginal, a looser coupling tolerance or more coupled iterations may help the outer loop, but the inner stripper spec still needs to be physically reasonable."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "2. No usable positive liquid side-draw feed. Internally the solver can mark this as SKIPPED, but the user-facing status is shown as FAIL so the Stripper Run Results panel stays within OK / WARN / FAIL. This usually means the selected source tray did not provide a positive liquid draw for that stripper. Fixes: make sure the draw is liquid, move the source tray to a location with real liquid traffic, reduce competing draws, review feed location and column conditions, or reduce an overly aggressive heat setting that strips away the liquid draw."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "3. Error diagnostics present. The displayed status is also set to FAIL whenever the stripper summary contains error-level diagnostics. Open the Diagnostics panel, find the selected stripper name, and fix the specific error reported there first."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+
+                        Label { width: parent.width; wrapMode: Text.WordWrap; text: "Recommended tuning order"; font.pixelSize: 13; font.bold: true; color: "#17212b" }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "For a WARN caused by coupling not converging: first increase Max Coupled Iterations, then loosen Coupling Tol slightly, then adjust Return Damping. Lower damping is usually more stable; higher damping may reduce iteration count when the case is already stable, but it can also oscillate and increase total solve time. If the warning persists, review the stripper tray locations and heat setting."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+                        Label {
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                            text: "For a FAIL: inspect the Diagnostics panel before changing tolerances blindly. FAIL usually indicates either no usable liquid feed at the source tray or that the internal stripper solve could not converge to a usable result. Fixing the physical setup is usually more effective than only increasing iteration limits."
+                            font.pixelSize: 12
+                            color: "#17212b"
+                        }
+                    }
+                }
+            }
+        }
+
+        Keys.onEscapePressed: stripperStatusHelpDialog.close()
+    }
+
+    Item {
+        id: solverConvergenceHelpDialog
+        visible: false
+        z: 560
+        width: 640
+        height: solverConvergenceHelpColumn.implicitHeight + 18
+        x: Math.max(24, Math.min(root.width - width - 24, (root.width - width) / 2))
+        y: Math.max(24, Math.min(root.height - height - 24, (root.height - height) / 2))
+
+        function close() {
+            visible = false
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: "#eef3f6"
+            border.color: "#7f8f9b"
+            border.width: 1
+        }
+
+        ColumnLayout {
+            id: solverConvergenceHelpColumn
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 36
+                radius: 6
+                color: "#d8e1e7"
+                border.color: "#93a3ae"
+
+                Label {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Solver Convergence Settings"
+                    font.pixelSize: 13
+                    font.bold: true
+                    color: "#17212b"
+                }
+
+                ClassicButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "OK"
+                    onClicked: solverConvergenceHelpDialog.close()
+                }
+            }
+
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Column settings\n\nMax Outer Iterations: Maximum number of main column outer iterations before the solve stops. Higher values can help difficult cases converge, but may increase solve time.\n\nOuter Convergence Tolerance: Main column outer-loop convergence target. Smaller values usually give tighter convergence but require more iterations and longer solve times.\n\nAttached side stripper settings\n\nMax Coupled Iterations: Maximum number of coupled stripper iterations allowed during the solve. Higher values can improve coupled return stabilization, but can increase solve time.\n\nCoupling Tolerance: Target tolerance for attached-stripper vapor return stabilization. Smaller values tighten coupling and usually increase solve time.\n\nReturn Damping: Blends the new stripper vapor return with the previous one. Lower values are usually more stable but may converge more slowly. Higher values may reduce iteration count when stable, but can oscillate and sometimes increase total solve time.\n\nRecommended starting values\n\nColumn: Max Outer Iterations = 100, Outer Convergence Tolerance = 1e-4\nStripper: Max Coupled Iterations = 25, Coupling Tolerance = 1e-3, Return Damping = 0.35"
+                color: "#17212b"
+                font.pixelSize: 12
+            }
+        }
+
+        Keys.onEscapePressed: solverConvergenceHelpDialog.close()
+    }
 
     Item {
         id: aboutDialog

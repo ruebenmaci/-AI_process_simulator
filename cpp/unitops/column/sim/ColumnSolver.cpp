@@ -7,6 +7,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <unordered_set>
 #include <streambuf>
 
 
@@ -102,20 +103,6 @@ void writeKijMatrix_(std::ostringstream& os, const std::vector<std::vector<doubl
    os << "]";
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 class ScopedStdStreamSilencer {
 public:
     explicit ScopedStdStreamSilencer(bool enabled)
@@ -145,6 +132,8 @@ private:
 
 std::string serializeSolverInputsToJson(const SolverInputs& in, bool pretty)
 {
+   const auto& core = in.core;
+   const auto& boundary = in.boundary;
    std::ostringstream os;
    if (pretty) os << "{\n";
    else os << "{";
@@ -155,58 +144,58 @@ std::string serializeSolverInputsToJson(const SolverInputs& in, bool pretty)
    };
 
    writeIndent_(os, 1, pretty); os << "\"schemaVersion\": 1"; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"fluidName\": \"" << jsonEscape_(in.fluidName) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"trays\": " << in.trays; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"feedRateKgph\": " << std::setprecision(17) << in.feedRateKgph; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"feedTray\": " << in.feedTray; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"feedTempK\": " << std::setprecision(17) << in.feedTempK; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"topPressurePa\": " << std::setprecision(17) << in.topPressurePa; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"dpPerTrayPa\": " << std::setprecision(17) << in.dpPerTrayPa; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"fluidName\": \"" << jsonEscape_(core.fluidName) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"trays\": " << core.trays; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"feedRateKgph\": " << std::setprecision(17) << core.feedRateKgph; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"feedTray\": " << core.feedTray; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"feedTempK\": " << std::setprecision(17) << core.feedTempK; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"topPressurePa\": " << std::setprecision(17) << core.topPressurePa; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"dpPerTrayPa\": " << std::setprecision(17) << core.dpPerTrayPa; nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"thermoConfig\": {"; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"thermoMethodId\": \"" << jsonEscape_(in.thermoConfig.thermoMethodId) << "\","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"displayName\": \"" << jsonEscape_(in.thermoConfig.displayName) << "\","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"eosName\": \"" << jsonEscape_(in.thermoConfig.eosName) << "\","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"phaseModelFamily\": \"" << jsonEscape_(in.thermoConfig.phaseModelFamily) << "\","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"supportFlags\": "; writeStringArray_(os, in.thermoConfig.supportFlags, 2, pretty); os << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"supportsEnthalpy\": " << (in.thermoConfig.supportsEnthalpy ? "true" : "false") << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"supportsEntropy\": " << (in.thermoConfig.supportsEntropy ? "true" : "false") << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"supportsTwoPhase\": " << (in.thermoConfig.supportsTwoPhase ? "true" : "false"); if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"thermoMethodId\": \"" << jsonEscape_(core.thermoConfig.thermoMethodId) << "\","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"displayName\": \"" << jsonEscape_(core.thermoConfig.displayName) << "\","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"eosName\": \"" << jsonEscape_(core.thermoConfig.eosName) << "\","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"phaseModelFamily\": \"" << jsonEscape_(core.thermoConfig.phaseModelFamily) << "\","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"supportFlags\": "; writeStringArray_(os, core.thermoConfig.supportFlags, 2, pretty); os << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"supportsEnthalpy\": " << (core.thermoConfig.supportsEnthalpy ? "true" : "false") << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"supportsEntropy\": " << (core.thermoConfig.supportsEntropy ? "true" : "false") << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"supportsTwoPhase\": " << (core.thermoConfig.supportsTwoPhase ? "true" : "false"); if (pretty) os << "\n";
    writeIndent_(os, 1, pretty); os << "}"; nl(true);
 
-   writeIndent_(os, 1, pretty); os << "\"eosMode\": \"" << jsonEscape_(in.eosMode) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"eosManual\": \"" << jsonEscape_(in.eosManual) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"condenserType\": \"" << jsonEscape_(in.condenserType) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"reboilerType\": \"" << jsonEscape_(in.reboilerType) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"condenserSpec\": \"" << jsonEscape_(in.condenserSpec) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"reboilerSpec\": \"" << jsonEscape_(in.reboilerSpec) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"refluxRatio\": " << std::setprecision(17) << in.refluxRatio; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"boilupRatio\": " << std::setprecision(17) << in.boilupRatio; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"qcKW\": " << std::setprecision(17) << in.qcKW; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"qrKW\": " << std::setprecision(17) << in.qrKW; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"topTsetK\": " << std::setprecision(17) << in.topTsetK; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"bottomTsetK\": " << std::setprecision(17) << in.bottomTsetK; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"eosMode\": \"" << jsonEscape_(core.eosMode) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"eosManual\": \"" << jsonEscape_(core.eosManual) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"condenserType\": \"" << jsonEscape_(boundary.condenserType) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"reboilerType\": \"" << jsonEscape_(boundary.reboilerType) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"condenserSpec\": \"" << jsonEscape_(boundary.condenserSpec) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"reboilerSpec\": \"" << jsonEscape_(boundary.reboilerSpec) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"refluxRatio\": " << std::setprecision(17) << boundary.refluxRatio; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"boilupRatio\": " << std::setprecision(17) << boundary.boilupRatio; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"qcKW\": " << std::setprecision(17) << boundary.qcKW; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"qrKW\": " << std::setprecision(17) << boundary.qrKW; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"topTsetK\": " << std::setprecision(17) << boundary.topTsetK; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"bottomTsetK\": " << std::setprecision(17) << boundary.bottomTsetK; nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"murphree\": {"; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaVTop\": " << std::setprecision(17) << in.etaVTop << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaVMid\": " << std::setprecision(17) << in.etaVMid << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaVBot\": " << std::setprecision(17) << in.etaVBot << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"enableEtaL\": " << (in.enableEtaL ? "true" : "false") << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaLTop\": " << std::setprecision(17) << in.etaLTop << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaLMid\": " << std::setprecision(17) << in.etaLMid << ","; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"etaLBot\": " << std::setprecision(17) << in.etaLBot; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaVTop\": " << std::setprecision(17) << core.etaVTop << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaVMid\": " << std::setprecision(17) << core.etaVMid << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaVBot\": " << std::setprecision(17) << core.etaVBot << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"enableEtaL\": " << (core.enableEtaL ? "true" : "false") << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaLTop\": " << std::setprecision(17) << core.etaLTop << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaLMid\": " << std::setprecision(17) << core.etaLMid << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"etaLBot\": " << std::setprecision(17) << core.etaLBot; if (pretty) os << "\n";
    writeIndent_(os, 1, pretty); os << "}"; nl(true);
 
-   writeIndent_(os, 1, pretty); os << "\"logLevel\": \"" << logLevelToString_(in.logLevel) << "\""; nl(true);
-   writeIndent_(os, 1, pretty); os << "\"suppressLogs\": " << (in.suppressLogs ? "true" : "false"); nl(true);
+   writeIndent_(os, 1, pretty); os << "\"logLevel\": \"" << logLevelToString_(core.logLevel) << "\""; nl(true);
+   writeIndent_(os, 1, pretty); os << "\"suppressLogs\": " << (core.suppressLogs ? "true" : "false"); nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"feedComposition\": ";
-   writeDoubleArray_(os, in.feedComposition, 1, pretty); nl(true);
+   writeDoubleArray_(os, core.feedComposition, 1, pretty); nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"drawSpecs\": [";
-   if (pretty && !in.drawSpecs.empty()) os << "\n";
-   for (size_t i = 0; i < in.drawSpecs.size(); ++i) {
-      const auto& ds = in.drawSpecs[i];
+   if (pretty && !core.drawSpecs.empty()) os << "\n";
+   for (size_t i = 0; i < core.drawSpecs.size(); ++i) {
+      const auto& ds = core.drawSpecs[i];
       writeIndent_(os, 2, pretty); os << "{";
       if (pretty) os << "\n";
       writeIndent_(os, 3, pretty); os << "\"trayIndex0\": " << ds.trayIndex0 << ","; if (pretty) os << "\n";
@@ -215,31 +204,31 @@ std::string serializeSolverInputsToJson(const SolverInputs& in, bool pretty)
       writeIndent_(os, 3, pretty); os << "\"phase\": \"" << jsonEscape_(ds.phase) << "\","; if (pretty) os << "\n";
       writeIndent_(os, 3, pretty); os << "\"value\": " << std::setprecision(17) << ds.value; if (pretty) os << "\n";
       writeIndent_(os, 2, pretty); os << "}";
-      if (i + 1 < in.drawSpecs.size()) os << ",";
+      if (i + 1 < core.drawSpecs.size()) os << ",";
       if (pretty) os << "\n";
    }
    writeIndent_(os, 1, pretty); os << "]"; nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"drawLabelsByTray1\": {";
-   if (pretty && !in.drawLabelsByTray1.empty()) os << "\n";
+   if (pretty && !core.drawLabelsByTray1.empty()) os << "\n";
    size_t labelCount = 0;
-   for (const auto& kv : in.drawLabelsByTray1) {
+   for (const auto& kv : core.drawLabelsByTray1) {
       writeIndent_(os, 2, pretty);
       os << "\"" << kv.first << "\": \"" << jsonEscape_(kv.second) << "\"";
-      if (++labelCount < in.drawLabelsByTray1.size()) os << ",";
+      if (++labelCount < core.drawLabelsByTray1.size()) os << ",";
       if (pretty) os << "\n";
    }
    writeIndent_(os, 1, pretty); os << "}"; nl(true);
 
    writeIndent_(os, 1, pretty); os << "\"fluidThermo\": {"; if (pretty) os << "\n";
-   writeIndent_(os, 2, pretty); os << "\"hasZDefault\": " << (in.fluidThermo.hasZDefault ? "true" : "false") << ","; if (pretty) os << "\n";
+   writeIndent_(os, 2, pretty); os << "\"hasZDefault\": " << (core.fluidThermo.hasZDefault ? "true" : "false") << ","; if (pretty) os << "\n";
    writeIndent_(os, 2, pretty); os << "\"zDefault\": ";
-   writeDoubleArray_(os, in.fluidThermo.zDefault, 2, pretty); os << ","; if (pretty) os << "\n";
+   writeDoubleArray_(os, core.fluidThermo.zDefault, 2, pretty); os << ","; if (pretty) os << "\n";
 
    writeIndent_(os, 2, pretty); os << "\"components\": [";
-   if (pretty && !in.fluidThermo.components.empty()) os << "\n";
-   for (size_t i = 0; i < in.fluidThermo.components.size(); ++i) {
-      const auto& c = in.fluidThermo.components[i];
+   if (pretty && !core.fluidThermo.components.empty()) os << "\n";
+   for (size_t i = 0; i < core.fluidThermo.components.size(); ++i) {
+      const auto& c = core.fluidThermo.components[i];
       writeIndent_(os, 3, pretty); os << "{";
       if (pretty) os << "\n";
       writeIndent_(os, 4, pretty); os << "\"name\": \"" << jsonEscape_(c.name) << "\","; if (pretty) os << "\n";
@@ -251,13 +240,13 @@ std::string serializeSolverInputsToJson(const SolverInputs& in, bool pretty)
       writeIndent_(os, 4, pretty); os << "\"SG\": " << std::setprecision(17) << c.SG << ","; if (pretty) os << "\n";
       writeIndent_(os, 4, pretty); os << "\"delta\": " << std::setprecision(17) << c.delta; if (pretty) os << "\n";
       writeIndent_(os, 3, pretty); os << "}";
-      if (i + 1 < in.fluidThermo.components.size()) os << ",";
+      if (i + 1 < core.fluidThermo.components.size()) os << ",";
       if (pretty) os << "\n";
    }
    writeIndent_(os, 2, pretty); os << "],"; if (pretty) os << "\n";
 
    writeIndent_(os, 2, pretty); os << "\"kij\": ";
-   writeKijMatrix_(os, in.fluidThermo.kij, 2, pretty); if (pretty) os << "\n";
+   writeKijMatrix_(os, core.fluidThermo.kij, 2, pretty); if (pretty) os << "\n";
    writeIndent_(os, 1, pretty); os << "}"; nl(false);
 
    os << "}";
@@ -284,28 +273,26 @@ bool writeSolverInputsJsonFile(
    return true;
 }
 
-
-
-
-
 SolverOutputs solveColumn(
    const SolverInputs& in,
    const std::function<void(const std::string&)>& onLog,
    const std::function<void(const ProgressEvent&)>& onProgress) {
-   const FluidThermoData& thermo = in.fluidThermo;
+   const auto& core = in.core;
+   const auto& boundary = in.boundary;
+   const FluidThermoData& thermo = core.fluidThermo;
 
    SimulationOptions opt;
-   opt.thermoConfig = in.thermoConfig;
-   opt.crudeName = in.fluidName;
-   opt.trays = std::max(2, in.trays);
-   opt.feedRate_kgph = std::max(0.0, in.feedRateKgph);
+   opt.thermoConfig = core.thermoConfig;
+   opt.crudeName = core.fluidName;
+   opt.trays = std::max(2, core.trays);
+   opt.feedRate_kgph = std::max(0.0, core.feedRateKgph);
 
    opt.components = &thermo.components;
    opt.kij = &thermo.kij;
 
    const size_t NC = thermo.components.size();
-   if (in.feedComposition.size() == NC) {
-      opt.feedZ = in.feedComposition;
+   if (core.feedComposition.size() == NC) {
+      opt.feedZ = core.feedComposition;
    }
    else if (thermo.hasZDefault && thermo.zDefault.size() == NC) {
       opt.feedZ = thermo.zDefault;
@@ -314,29 +301,31 @@ SolverOutputs solveColumn(
       opt.feedZ.assign(NC, NC ? 1.0 / (double)NC : 0.0);
    }
 
-   opt.feedTray = std::clamp(in.feedTray, 1, opt.trays);
-   opt.Tfeed = in.feedTempK;
-   opt.Ttop = in.topTsetK;
-   opt.Tbottom = in.bottomTsetK;
+   opt.feedTray = std::clamp(core.feedTray, 1, opt.trays);
+   opt.Tfeed = core.feedTempK;
+   opt.Ttop = boundary.topTsetK;
+   opt.maxIter = std::max(1, core.maxIter);
+   opt.outerConvergenceTolerance = std::max(1e-8, core.outerConvergenceTolerance);
+   opt.Tbottom = boundary.bottomTsetK;
 
-   opt.Ptop = in.topPressurePa;
-   opt.Pdrop = in.dpPerTrayPa;
+   opt.Ptop = core.topPressurePa;
+   opt.Pdrop = core.dpPerTrayPa;
 
-   opt.eosMode = in.eosMode;
-   opt.eosManual = in.eosManual;
+   opt.eosMode = core.eosMode;
+   opt.eosManual = core.eosManual;
 
-   const bool suppressLogs = in.suppressLogs;
-   opt.onLog = ((in.logLevel == LogLevel::None) || suppressLogs)
+   const bool suppressLogs = core.suppressLogs;
+   opt.onLog = ((core.logLevel == LogLevel::None) || suppressLogs)
       ? std::function<void(const std::string&)>{}
       : onLog;
    opt.onProgress = onProgress;
 
-   opt.logLevel = suppressLogs ? LogLevel::None : in.logLevel;
+   opt.logLevel = suppressLogs ? LogLevel::None : core.logLevel;
    opt.reportTrayFlashDiagnostics = true;
 
    opt.drawSpecs.clear();
-   opt.drawSpecs.reserve(in.drawSpecs.size());
-   for (const auto& ds : in.drawSpecs) {
+   opt.drawSpecs.reserve(core.drawSpecs.size());
+   for (const auto& ds : core.drawSpecs) {
       SimulationDrawSpec s;
       s.trayIndex0 = ds.trayIndex0;
       s.name = ds.name;
@@ -345,10 +334,11 @@ SolverOutputs solveColumn(
       s.value = ds.value;
       opt.drawSpecs.push_back(std::move(s));
    }
-   opt.drawLabels = in.drawLabelsByTray1;
+   opt.drawLabels = core.drawLabelsByTray1;
+   opt.attachedStripperSpecs = core.attachedStripperSpecs;
 
-   opt.condenserType = in.condenserType;
-   opt.reboilerType = in.reboilerType;
+   opt.condenserType = boundary.condenserType;
+   opt.reboilerType = boundary.reboilerType;
 
    auto trimLower = [](std::string s) {
       auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
@@ -358,24 +348,24 @@ SolverOutputs solveColumn(
       return s;
    };
 
-   const std::string cSpec = trimLower(in.condenserSpec);
-   const std::string rSpec = trimLower(in.reboilerSpec);
+   const std::string cSpec = trimLower(boundary.condenserSpec);
+   const std::string rSpec = trimLower(boundary.reboilerSpec);
 
    opt.condenserSpec = cSpec.empty() ? "none" : cSpec;
    opt.reboilerSpec = rSpec.empty() ? "none" : rSpec;
 
-   opt.refluxRatio = in.refluxRatio;
-   opt.reboilRatio = in.boilupRatio;
+   opt.refluxRatio = boundary.refluxRatio;
+   opt.reboilRatio = boundary.boilupRatio;
 
-   opt.Qc_kW_in = in.qcKW;
-   opt.Qr_kW_in = in.qrKW;
+   opt.Qc_kW_in = boundary.qcKW;
+   opt.Qr_kW_in = boundary.qrKW;
 
-   opt.murphree.etaV_top = in.etaVTop;
-   opt.murphree.etaV_mid = in.etaVMid;
-   opt.murphree.etaV_bot = in.etaVBot;
-   opt.murphree.etaL_top = in.enableEtaL ? in.etaLTop : 1.0;
-   opt.murphree.etaL_mid = in.enableEtaL ? in.etaLMid : 1.0;
-   opt.murphree.etaL_bot = in.enableEtaL ? in.etaLBot : 1.0;
+   opt.murphree.etaV_top = core.etaVTop;
+   opt.murphree.etaV_mid = core.etaVMid;
+   opt.murphree.etaV_bot = core.etaVBot;
+   opt.murphree.etaL_top = core.enableEtaL ? core.etaLTop : 1.0;
+   opt.murphree.etaL_mid = core.enableEtaL ? core.etaLMid : 1.0;
+   opt.murphree.etaL_bot = core.enableEtaL ? core.etaLBot : 1.0;
 
    SimulationResult sim;
    {
@@ -408,6 +398,7 @@ SolverOutputs solveColumn(
    out.condenserType = sim.energy.condenserType;
    out.energy = sim.energy;
    out.streams = sim.streams;
+   out.attachedStrippers = sim.attachedStrippers;
 
    if (opt.components) {
       out.componentNames.clear();
@@ -423,11 +414,61 @@ SolverOutputs solveColumn(
       const auto& e = sim.energy;
       const auto& mb = sim.energy.massBalance;
 
+      auto isInternalStripperReturn = [](const std::string& name) {
+         return name.find(" Vapor Return") != std::string::npos;
+      };
+
+      auto stripperBottomsBaseName = [](const std::string& name) -> std::string {
+         static constexpr const char* suffix = " Stripper Bottoms";
+         const std::size_t suffixLen = std::char_traits<char>::length(suffix);
+         if (name.size() >= suffixLen && name.compare(name.size() - suffixLen, suffixLen, suffix) == 0) {
+            return name.substr(0, name.size() - suffixLen);
+         }
+         return {};
+      };
+
+      std::unordered_set<std::string> strippedBaseNames;
+      strippedBaseNames.reserve(sim.streams.size());
+      for (const auto& s : sim.streams) {
+         const std::string baseName = stripperBottomsBaseName(s.name);
+         if (!baseName.empty()) strippedBaseNames.insert(baseName);
+      }
+
+      auto isFinalExternalProduct = [&](const StreamSnapshot& s) {
+         if (s.name == "Distillate" || s.name == "Bottoms") return true;
+         if (isInternalStripperReturn(s.name)) return false;
+         if (strippedBaseNames.find(s.name) != strippedBaseNames.end()) return false;
+         return true;
+      };
+
+      auto streamSortRank = [](const StreamSnapshot& s) {
+         if (s.name == "Distillate") return 0;
+         if (s.name == "Bottoms") return 2;
+         return 1;
+      };
+
+      std::vector<const StreamSnapshot*> displayedStreams;
+      displayedStreams.reserve(sim.streams.size());
+      double displayedProductsKgph = 0.0;
+      for (const auto& s : sim.streams) {
+         if (!isFinalExternalProduct(s)) continue;
+         displayedProductsKgph += s.kgph;
+         displayedStreams.push_back(&s);
+      }
+      std::sort(displayedStreams.begin(), displayedStreams.end(), [&](const StreamSnapshot* a, const StreamSnapshot* b) {
+         const int rankA = streamSortRank(*a);
+         const int rankB = streamSortRank(*b);
+         if (rankA != rankB) return rankA < rankB;
+         if (rankA == 1 && a->tray != b->tray) return a->tray > b->tray;
+         if (a->name != b->name) return a->name < b->name;
+         return a->kgph > b->kgph;
+      });
+
       rr << "Solve Summary\n";
       rr << "Key,Value\n";
       rr << "Status," << sim.status << "\n";
       rr << "DiagnosticsCount," << sim.diagnostics.size() << "\n";
-      rr << "FluidName," << in.fluidName << "\n";
+      rr << "FluidName," << core.fluidName << "\n";
       rr << "Trays," << opt.trays << "\n";
       rr << "FeedTray," << opt.feedTray << "\n";
       rr << "ComponentCount," << out.componentNames.size() << "\n";
@@ -462,8 +503,8 @@ SolverOutputs solveColumn(
       rr << "Feed_kgph," << mb.feed_kgph << "\n";
       rr << "Overhead_kgph," << mb.overhead_kgph << "\n";
       rr << "Bottoms_kgph," << mb.bottoms_kgph << "\n";
-      rr << "TotalProducts_kgph," << mb.totalProducts_kgph << "\n";
-      const double closureError = mb.feed_kgph - mb.totalProducts_kgph;
+      rr << "TotalProducts_kgph," << displayedProductsKgph << "\n";
+      const double closureError = mb.feed_kgph - displayedProductsKgph;
       const double closurePct = (std::abs(mb.feed_kgph) > 1e-12) ? (100.0 * closureError / mb.feed_kgph) : 0.0;
       rr << "MassClosureError_kgph," << closureError << "\n";
       rr << "MassClosureRelativePct," << closurePct << "\n\n";
@@ -471,7 +512,8 @@ SolverOutputs solveColumn(
       rr << "Side Draw Summary\n";
       rr << "Name,Tray,kgph\n";
       bool wroteSideDraw = false;
-      for (const auto& s : sim.streams) {
+      for (const auto* sp : displayedStreams) {
+         const auto& s = *sp;
          if (s.name == "Distillate" || s.name == "Bottoms") continue;
          rr << s.name << "," << s.tray << "," << s.kgph << "\n";
          wroteSideDraw = true;
@@ -495,7 +537,8 @@ SolverOutputs solveColumn(
       rr << "Feed,Feed," << opt.feedTray << "," << opt.feedRate_kgph << "," << opt.Tfeed << ","
          << ((opt.feedTray >= 1 && opt.feedTray <= (int)sim.trays.size()) ? sim.trays[(size_t)(opt.feedTray - 1)].P : opt.Ptop)
          << "," << 0.000000 << "," << 0.000000 << "," << 0.000000 << "\n";
-      for (const auto& s : sim.streams) {
+      for (const auto* sp : displayedStreams) {
+         const auto& s = *sp;
          std::string role = "SideDraw";
          if (s.name == "Distillate") role = "Distillate";
          else if (s.name == "Bottoms") role = "Bottoms";

@@ -798,7 +798,7 @@ Rectangle {
                             id: stripperPanel
                             visible: drawCard2.activeStripperIndex >= 0 && appState && appState.drawSpecs && appState.drawSpecs.length > drawCard2.activeStripperIndex
                             anchors { left: parent.left; right: parent.right; leftMargin: 6; rightMargin: 6; bottom: drawFooter2.top; bottomMargin: 6 }
-                            height: visible ? (selectedResult ? 400 : 210) : 0
+                            height: visible ? (selectedResult ? 340 : 210) : 0
 
                             property var selectedSpec: visible ? appState.drawSpecs[drawCard2.activeStripperIndex] : null
                             property var selectedResult: attachedStripperForSpec(selectedSpec)
@@ -904,24 +904,6 @@ Rectangle {
                                         Text { width: 90; text: stripperPanel.selectedResult ? (fmt0(Number(stripperPanel.selectedResult.topPressurePa)) + " Pa") : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
                                         Text { width: 92; text: "Diagnostics"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
                                         Text { text: stripperPanel.selectedResult ? String(stripperPanel.selectedResult.diagnosticCount || 0) : "0"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                    }
-                                    Row {
-                                        width: parent.width; height: rowH
-                                        Text { width: 110; text: "Solve Conv"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 90; text: stripperPanel.selectedResult ? ((stripperPanel.selectedResult.solveConverged === undefined) ? "—" : (stripperPanel.selectedResult.solveConverged ? "Yes" : "No")) : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 80; text: "Coupled"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 90; text: stripperPanel.selectedResult ? ((stripperPanel.selectedResult.coupledConverged === undefined) ? "—" : (stripperPanel.selectedResult.coupledConverged ? "Yes" : "No")) : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 92; text: "Iterations"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { text: stripperPanel.selectedResult ? (String(stripperPanel.selectedResult.coupledIterationsCompleted || 0) + "/" + String(stripperPanel.selectedResult.maxCoupledIterations || 0)) : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                    }
-                                    Row {
-                                        width: parent.width; height: rowH
-                                        Text { width: 110; text: "Residual"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 90; text: stripperPanel.selectedResult ? fmt3(Number(stripperPanel.selectedResult.coupledResidual)) : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 80; text: "Tol"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 90; text: stripperPanel.selectedResult ? Number(stripperPanel.selectedResult.couplingTolerance).toExponential(3) : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
-                                        Text { width: 92; text: "Mode"; font.pixelSize: fsLbl; color: textMuted; verticalAlignment: Text.AlignVCenter }
-                                        Text { text: stripperPanel.selectedResult ? String(stripperPanel.selectedResult.coupledMode || "—") : "—"; font.pixelSize: fsVal; color: valueBlue; verticalAlignment: Text.AlignVCenter }
                                     }
                                 }
 

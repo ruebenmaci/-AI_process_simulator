@@ -22,6 +22,10 @@ Item {
     property var memberComponentsForList: []
     property string selectedAvailableComponentId: ""
     property string selectedMemberComponentId: ""
+    property var selectedAvailableComponentIds: []
+    property var selectedMemberComponentIds: []
+    property int availableSelectionAnchorIndex: -1
+    property int memberSelectionAnchorIndex: -1
 
     implicitWidth: 980
     implicitHeight: 720
@@ -189,11 +193,20 @@ Item {
 
     function refreshListMembership() {
         memberComponentsForList = (manager && selectedListId !== "") ? manager.resolvedComponentsForList(selectedListId) : []
-        let found = false
+        const existingSelection = []
         for (let i = 0; i < memberComponentsForList.length; ++i) {
-            if (memberComponentsForList[i].id === selectedMemberComponentId) { found = true; break }
+            if (selectionContains(selectedMemberComponentIds, memberComponentsForList[i].id))
+                existingSelection.push(memberComponentsForList[i].id)
         }
-        if (!found) selectedMemberComponentId = memberComponentsForList.length > 0 ? memberComponentsForList[0].id : ""
+        selectedMemberComponentIds = existingSelection
+        if (selectedMemberComponentIds.length > 0)
+            selectedMemberComponentId = selectedMemberComponentIds[selectedMemberComponentIds.length - 1]
+        else
+            selectedMemberComponentId = memberComponentsForList.length > 0 ? memberComponentsForList[0].id : ""
+        if (selectedMemberComponentId !== "" && !selectionContains(selectedMemberComponentIds, selectedMemberComponentId))
+            selectedMemberComponentIds = [selectedMemberComponentId]
+        if (selectedMemberComponentId === "")
+            memberSelectionAnchorIndex = -1
     }
 
     function selectedListPseudoSources() {
@@ -243,11 +256,97 @@ Item {
         }
 
         availableComponentsForList = filtered
-        let found = false
+        const existingSelection = []
         for (let i = 0; i < availableComponentsForList.length; ++i) {
-            if (availableComponentsForList[i].id === selectedAvailableComponentId) { found = true; break }
+            if (selectionContains(selectedAvailableComponentIds, availableComponentsForList[i].id))
+                existingSelection.push(availableComponentsForList[i].id)
         }
-        if (!found) selectedAvailableComponentId = availableComponentsForList.length > 0 ? availableComponentsForList[0].id : ""
+        selectedAvailableComponentIds = existingSelection
+        if (selectedAvailableComponentIds.length > 0)
+            selectedAvailableComponentId = selectedAvailableComponentIds[selectedAvailableComponentIds.length - 1]
+        else
+            selectedAvailableComponentId = availableComponentsForList.length > 0 ? availableComponentsForList[0].id : ""
+        if (selectedAvailableComponentId !== "" && !selectionContains(selectedAvailableComponentIds, selectedAvailableComponentId))
+            selectedAvailableComponentIds = [selectedAvailableComponentId]
+        if (selectedAvailableComponentId === "")
+            availableSelectionAnchorIndex = -1
+    }
+
+    function selectionContains(ids, idValue) {
+        return ids.indexOf(idValue) >= 0
+    }
+
+    function selectionIndexesToIds(items, startIndex, endIndex) {
+        const out = []
+        if (!items || items.length === 0) return out
+        const lo = Math.max(0, Math.min(startIndex, endIndex))
+        const hi = Math.min(items.length - 1, Math.max(startIndex, endIndex))
+        for (let i = lo; i <= hi; ++i) {
+            if (items[i] && items[i].id !== undefined)
+                out.push(items[i].id)
+        }
+        return out
+    }
+
+    function handleAvailableSelection(clickedIndex, mouse) {
+        const clicked = availableComponentsForList[clickedIndex]
+        if (!clicked) return
+        const clickedId = clicked.id
+        const ctrl = !!(mouse.modifiers & Qt.ControlModifier)
+        const shift = !!(mouse.modifiers & Qt.ShiftModifier)
+
+        if (shift) {
+            const anchor = availableSelectionAnchorIndex >= 0 ? availableSelectionAnchorIndex : clickedIndex
+            selectedAvailableComponentIds = selectionIndexesToIds(availableComponentsForList, anchor, clickedIndex)
+            availableSelectionAnchorIndex = anchor
+        } else if (ctrl) {
+            const next = selectedAvailableComponentIds.slice()
+            const idx = next.indexOf(clickedId)
+            if (idx >= 0)
+                next.splice(idx, 1)
+            else
+                next.push(clickedId)
+            selectedAvailableComponentIds = next
+            availableSelectionAnchorIndex = clickedIndex
+        } else {
+            selectedAvailableComponentIds = [clickedId]
+            availableSelectionAnchorIndex = clickedIndex
+        }
+
+        selectedAvailableComponentId = selectionContains(selectedAvailableComponentIds, clickedId)
+                ? clickedId
+                : (selectedAvailableComponentIds.length > 0 ? selectedAvailableComponentIds[selectedAvailableComponentIds.length - 1] : "")
+    }
+
+    function handleMemberSelection(clickedIndex, mouse) {
+        const clicked = memberComponentsForList[clickedIndex]
+        if (!clicked) return
+        const clickedId = clicked.id
+        const ctrl = !!(mouse.modifiers & Qt.ControlModifier)
+        const shift = !!(mouse.modifiers & Qt.ShiftModifier)
+
+        if (shift) {
+            const anchor = memberSelectionAnchorIndex >= 0 ? memberSelectionAnchorIndex : clickedIndex
+            selectedMemberComponentIds = selectionIndexesToIds(memberComponentsForList, anchor, clickedIndex)
+            memberSelectionAnchorIndex = anchor
+        } else if (ctrl) {
+            const next = selectedMemberComponentIds.slice()
+            const idx = next.indexOf(clickedId)
+            if (idx >= 0)
+                next.splice(idx, 1)
+            else
+                next.push(clickedId)
+            selectedMemberComponentIds = next
+            memberSelectionAnchorIndex = clickedIndex
+        } else {
+            selectedMemberComponentIds = [clickedId]
+            memberSelectionAnchorIndex = clickedIndex
+        }
+
+        selectedMemberComponentId = selectionContains(selectedMemberComponentIds, clickedId)
+                ? clickedId
+                : (selectedMemberComponentIds.length > 0 ? selectedMemberComponentIds[selectedMemberComponentIds.length - 1] : "")
+        loadListMemberDetail()
     }
 
     function selectedMemberDetail() {
@@ -590,12 +689,12 @@ Item {
                                     ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
                                     delegate: Rectangle {
                                         width: availableListView.width - 2; height: 38
-                                        color: modelData.id === selectedAvailableComponentId ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
+                                        color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
                                         border.color: "#dfe5ea"; border.width: 1
-                                        MouseArea { anchors.fill: parent; onClicked: selectedAvailableComponentId = modelData.id }
+                                        MouseArea { anchors.fill: parent; onClicked: function(mouse) { handleAvailableSelection(index, mouse) } }
                                         Column {
                                             anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: modelData.id === selectedAvailableComponentId ? "white" : "#1f2a34" }
+                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "white" : "#1f2a34" }
                                             Text {
                                                 text: {
                                                     const fam = modelData.family || ""
@@ -605,7 +704,7 @@ Item {
                                                     return fam
                                                 }
                                                 font.pixelSize: 9
-                                                color: modelData.id === selectedAvailableComponentId ? "#cce4f8" : "#5b6b75"
+                                                color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "#cce4f8" : "#5b6b75"
                                             }
                                         }
                                     }
@@ -616,8 +715,8 @@ Item {
                                 Layout.preferredWidth: 90
                                 Layout.alignment: Qt.AlignVCenter
                                 spacing: 10
-                                CompactButton { text: "Add →"; width: 80; enabled_: selectedListId !== "" && selectedAvailableComponentId !== ""; onClicked: if (manager.addComponentToList(selectedListId, selectedAvailableComponentId)) { refreshListMembership(); refreshComponentLists(selectedListId) } }
-                                CompactButton { text: "← Remove"; width: 80; enabled_: selectedListId !== "" && selectedMemberComponentId !== ""; onClicked: if (manager.removeComponentFromList(selectedListId, selectedMemberComponentId)) { refreshListMembership(); refreshComponentLists(selectedListId) } }
+                                CompactButton { text: "Add →"; width: 80; enabled_: selectedListId !== "" && selectedAvailableComponentIds.length > 0; onClicked: { if (!manager || selectedListId === "" || selectedAvailableComponentIds.length === 0) return; let changed = false; for (let i = 0; i < selectedAvailableComponentIds.length; ++i) if (manager.addComponentToList(selectedListId, selectedAvailableComponentIds[i])) changed = true; if (changed) { refreshListMembership(); refreshComponentLists(selectedListId) } } }
+                                CompactButton { text: "← Remove"; width: 80; enabled_: selectedListId !== "" && selectedMemberComponentIds.length > 0; onClicked: { if (!manager || selectedListId === "" || selectedMemberComponentIds.length === 0) return; let changed = false; for (let i = 0; i < selectedMemberComponentIds.length; ++i) if (manager.removeComponentFromList(selectedListId, selectedMemberComponentIds[i])) changed = true; if (changed) { refreshListMembership(); refreshComponentLists(selectedListId); loadListMemberDetail() } } }
                             }
 
                             CompactFrame {
@@ -634,13 +733,13 @@ Item {
                                     ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
                                     delegate: Rectangle {
                                         width: memberListView.width - 2; height: 38
-                                        color: modelData.id === selectedMemberComponentId ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
+                                        color: selectionContains(selectedMemberComponentIds, modelData.id) ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
                                         border.color: "#dfe5ea"; border.width: 1
-                                        MouseArea { anchors.fill: parent; onClicked: { selectedMemberComponentId = modelData.id; loadListMemberDetail() } }
+                                        MouseArea { anchors.fill: parent; onClicked: function(mouse) { handleMemberSelection(index, mouse) } }
                                         Column {
                                             anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: modelData.id === selectedMemberComponentId ? "white" : "#1f2a34" }
-                                            Text { text: modelData.id || ""; font.pixelSize: 9; color: modelData.id === selectedMemberComponentId ? "#cce4f8" : "#5b6b75" }
+                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: selectionContains(selectedMemberComponentIds, modelData.id) ? "white" : "#1f2a34" }
+                                            Text { text: modelData.id || ""; font.pixelSize: 9; color: selectionContains(selectedMemberComponentIds, modelData.id) ? "#cce4f8" : "#5b6b75" }
                                         }
                                     }
                                 }
