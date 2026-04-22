@@ -14,6 +14,41 @@ $presetName = if ($Config -eq "debug") { "Debug-x64" } else { "Release-x64" }
 Write-Host ""
 Write-Host "=== rebuild.ps1 (config: $Config) ===" -ForegroundColor Cyan
 
+# [0] Ensure MSVC x64 environment. If not present or wrong arch, locate the
+# latest installed Visual Studio via vswhere and import its x64 dev shell
+# into the current PowerShell session.
+if ($env:VSCMD_ARG_TGT_ARCH -ne "x64") {
+    Write-Host "[0] MSVC env missing or wrong arch - importing x64 dev shell" -ForegroundColor Yellow
+
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        Write-Host "vswhere.exe not found at $vswhere" -ForegroundColor Red
+        exit 1
+    }
+
+    $vsInstall = & $vswhere -latest -prerelease -property installationPath
+    if (-not $vsInstall -or -not (Test-Path $vsInstall)) {
+        Write-Host "No Visual Studio installation found via vswhere." -ForegroundColor Red
+        exit 1
+    }
+
+    $vsDevShell = Join-Path $vsInstall "Common7\Tools\Launch-VsDevShell.ps1"
+    if (-not (Test-Path $vsDevShell)) {
+        Write-Host "Launch-VsDevShell.ps1 not found at $vsDevShell" -ForegroundColor Red
+        exit 1
+    }
+
+    & $vsDevShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+
+    if ($env:VSCMD_ARG_TGT_ARCH -ne "x64") {
+        Write-Host "Failed to initialize x64 MSVC environment" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "    x64 MSVC environment ready (VS at: $vsInstall)" -ForegroundColor Green
+} else {
+    Write-Host "[0] MSVC x64 environment already active" -ForegroundColor Green
+}
+
 $running = Get-Process -Name "appChatGPT5_ADT" -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "[1] Killing running app..." -ForegroundColor Yellow
