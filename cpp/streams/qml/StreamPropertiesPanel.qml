@@ -1,313 +1,372 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
+import "../../../qml/common"
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  StreamPropertiesPanel — read-only summary using PGrid + gUnits.
+//
+//  Replaces the 5 stacked SimpleSpreadsheets in the original.  Each cell now
+//  uses gUnits.format() so the user can change units without leaving the panel.
+// ─────────────────────────────────────────────────────────────────────────────
 
 Item {
     id: root
     property var streamObject: null
     property var unitObject:   null
 
-    readonly property color bg:       "#e8ebef"
-    readonly property color hdrBg:    "#c8d0d8"
-    readonly property color hdrBdr:   "#97a2ad"
-    readonly property color textMain: "#1f2a34"
-    readonly property color textMuted:"#526571"
+    // Per-quantity unit overrides (shared with Conditions if you want; this
+    // panel uses its own, but you could pass a parent property in).
+    property var unitOverrides: ({})
+    function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
+    function setUnit(q, u) { var c = Object.assign({}, unitOverrides); c[q] = u; unitOverrides = c }
 
-    property int headH: 20
-    property int secGap: 6
-
-    function fmt(v, dec) {
-        if (v === undefined || v === null) return "—"
-        const n = Number(v)
-        if (isNaN(n) || !isFinite(n)) return "—"
-        return n.toFixed(dec !== undefined ? dec : 3)
-    }
-    function fmtTK(K) {
-        if (!K || !isFinite(K) || K <= 0) return "—"
-        return fmt(K - 273.15, 1) + " °C   (" + fmt(K, 1) + " K)"
-    }
-    function fmtP(Pa) {
-        if (!Pa || !isFinite(Pa)) return "—"
-        return fmt(Pa / 1e5, 4) + " bar   (" + fmt(Pa / 1000, 1) + " kPa)"
-    }
-    function has() { return !!streamObject }
-
-    component SecHdr : Rectangle {
-        property alias text: lbl.text
-        width: parent.width; height: root.headH
-        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-        Text {
-            id: lbl
-            anchors.left: parent.left; anchors.leftMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: 10; font.bold: true; color: root.textMain
-        }
-    }
-
-    // ── Each sheet self-populates via its own Connections ──────────────
-    // This avoids the root-id-before-instantiation timing problem entirely.
+    // ── Stream-stored unit → SI conversion helpers ──
+    function _siMass(kgph)        { return kgph / 3600.0 }
+    function _siMolar(kmolph)     { return kmolph * 1000.0 / 3600.0 }
+    function _siVol(m3ph)         { return m3ph / 3600.0 }
+    function _siEnth(kJkg)        { return kJkg * 1000.0 }
+    function _siEntr(kJkgK)       { return kJkgK * 1000.0 }
+    function _siVisc(cP)          { return cP * 0.001 }
+    function _siCriticalP(kPa)    { return kPa * 1000.0 }
+    function _siMolarMass(kgkmol) { return kgkmol * 0.001 }   // → kg/mol
 
     Rectangle {
         anchors.fill: parent
-        color: root.bg; border.color: root.hdrBdr; border.width: 1
-
-        Rectangle {
-            id: panelHdr
-            x: 0; y: 0; width: parent.width; height: root.headH
-            color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-            Text {
-                anchors.left: parent.left; anchors.leftMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Properties"; font.pixelSize: 10; font.bold: true; color: root.textMain
-            }
-        }
+        color: "#e8ebef"
 
         Text {
             anchors.centerIn: parent
-            visible: !root.has()
-            text: "No stream selected"; font.pixelSize: 11; color: root.textMuted
+            visible: !root.streamObject
+            text: "No stream selected"; font.pixelSize: 11; color: "#526571"
         }
 
         Flickable {
-            id: panelFlick
-            x: 0; y: panelHdr.height
-            width: parent.width; height: parent.height - panelHdr.height
-            visible: root.has(); clip: true
+            anchors {
+                left: parent.left; right: parent.right
+                top: parent.top; bottom: parent.bottom
+                topMargin: 0; leftMargin: 4; rightMargin: 4; bottomMargin: 4
+            }
+            visible: !!root.streamObject
+            clip: true
             contentWidth: width
-            contentHeight: panelColumn.implicitHeight + root.secGap
-            boundsBehavior: Flickable.StopAtBounds
-            ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
-            }
+            contentHeight: contentColumn.implicitHeight
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            // Called by each child SimpleSpreadsheet when it has no internal scroll to do
-            function handleWheelPassthrough(deltaY, deltaX) {
-                var step = 60
-                if (deltaY !== 0) {
-                    var newY = panelFlick.contentY - (deltaY / 120) * step
-                    panelFlick.contentY = Math.max(0, Math.min(newY, Math.max(0, panelFlick.contentHeight - panelFlick.height)))
-                }
-            }
+            ColumnLayout {
+                id: contentColumn
+                width: parent.width
+                spacing: 6
 
-            Column {
-                id: panelColumn
-                width: panelFlick.width
-                spacing: root.secGap
+                // ════ Stream Summary ════
+                PGroupBox {
+                    id: sumGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Stream Summary"
+                    contentPadding: 8
 
-                // ── Stream Summary ────────────────────────────────────
-                SecHdr { text: "Stream Summary" }
-                SimpleSpreadsheet {
-                    id: sheetSummary
-                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
-                    readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 11; numCols: 1
-                    defaultColW: Math.max(180, width - hdrColW - 4)
-                    colLabels: ["Value"]
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+                    GridLayout {
+                        id: sumGrid
+                        width: sumGroup.width - (sumGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                    function refresh() {
-                        clearAll()
-                        if (!root.has()) return
-                        const s = root.streamObject
-                        const mf = s.flowRateKgph; const mol = s.molarFlowKmolph; const vf = s.volumetricFlowM3ph
-                        rowLabels = ["Fluid package", "Thermo method", "Package status", "Phase", "Vapour fraction", "Thermo region", "Flash method",
-                                     "Specification", "Molar flow", "Volumetric flow", "Std. vol. flow"]
-                        colLabels = ["Value"]
-                        const vals = [s.selectedFluidPackageName || s.selectedFluidPackageId || "—",
-                                      s.fluidPackageThermoMethod || "—",
-                                      s.fluidPackageStatus || "—",
-                                      s.phaseStatus || "—", root.fmt(s.vaporFraction, 4),
-                                      s.thermoRegionLabel || "—", s.flashMethod || "—",
-                                      s.specificationStatus || "—",
-                                      root.fmt(mol, 3) + " kmol/h",
-                                      root.fmt(vf,  3) + " m³/h",
-                                      root.fmt(s.calcStdVolFlowM3ph, 3) + " m³/h"]
-                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
-                    }
+                        // Text rows
+                        PGridLabel { Layout.preferredWidth: 128; text: "Fluid package" }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"
+                                     textValue: root.streamObject ? (root.streamObject.selectedFluidPackageName
+                                                                      || root.streamObject.selectedFluidPackageId
+                                                                      || "—") : "—" }
 
-                    Component.onCompleted: Qt.callLater(refresh)
-                    Connections {
-                        target: root
-                        function onStreamObjectChanged() { Qt.callLater(sheetSummary.refresh) }
-                    }
-                    Connections {
-                        target: root.streamObject
-                        function onDerivedConditionsChanged() { Qt.callLater(sheetSummary.refresh) }
-                        function onFlowRateKgphChanged()      { Qt.callLater(sheetSummary.refresh) }
-                        function onTemperatureKChanged()       { Qt.callLater(sheetSummary.refresh) }
-                        function onPressurePaChanged()         { Qt.callLater(sheetSummary.refresh) }
-                        ignoreUnknownSignals: true
-                    }
-                }
+                        PGridLabel { Layout.preferredWidth: 128; text: "Thermo method"; alt: true }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"; alt: true
+                                     textValue: root.streamObject ? (root.streamObject.fluidPackageThermoMethod || "—") : "—" }
 
-                // ── Molecular & Bulk ──────────────────────────────────
-                SecHdr { text: "Molecular & Bulk" }
-                SimpleSpreadsheet {
-                    id: sheetMolecular
-                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
-                    readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 6; numCols: 1
-                    defaultColW: Math.max(180, width - hdrColW - 4)
-                    colLabels: ["Value"]
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
 
-                    function refresh() {
-                        clearAll()
-                        if (!root.has()) return
-                        const s = root.streamObject
-                        const mf = s.flowRateKgph; const mol = s.molarFlowKmolph; const vf = s.volumetricFlowM3ph
-                        const avgMw   = (mol > 0 && mf > 0) ? mf / mol : 0
-                        const density = (vf  > 0 && mf > 0) ? mf / vf  : 0
-                        const sg      = density > 0 ? density / 999.0 : 0
-                        const api     = sg > 0 ? (141.5 / sg - 131.5) : 0
-                        rowLabels = ["Avg. molecular weight", "Bulk liquid density", "Vapour density",
-                                     "Specific gravity", "API gravity", "Watson K factor"]
-                        colLabels = ["Value"]
-                        const vals = [avgMw   > 0 ? root.fmt(avgMw,   2) + " kg/kmol" : "—",
-                                      density > 0 ? root.fmt(density, 2) + " kg/m³"   : "—",
-                                      root.fmt(s.vapourDensityKgM3, 2) + " kg/m³",
-                                      sg      > 0 ? root.fmt(sg,      4)               : "—",
-                                      sg      > 0 ? root.fmt(api,     1) + " °API"     : "—",
-                                      root.fmt(s.watsonKFactor, 3)]
-                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
-                    }
+                        PGridLabel { Layout.preferredWidth: 128; text: "Phase"; alt: true }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"; alt: true
+                                     textValue: root.streamObject ? (root.streamObject.phaseStatus || "—") : "—" }
 
-                    Component.onCompleted: Qt.callLater(refresh)
-                    Connections {
-                        target: root
-                        function onStreamObjectChanged() { Qt.callLater(sheetMolecular.refresh) }
-                    }
-                    Connections {
-                        target: root.streamObject
-                        function onDerivedConditionsChanged() { Qt.callLater(sheetMolecular.refresh) }
-                        function onFlowRateKgphChanged()      { Qt.callLater(sheetMolecular.refresh) }
-                        ignoreUnknownSignals: true
+                        // Vapour fraction (numeric, dimensionless)
+                        PGridLabel { Layout.preferredWidth: 128; text: "Vapour fraction" }
+                        PGridValue { quantity: "VapourFraction"
+                                     siValue: root.streamObject ? root.streamObject.vaporFraction : NaN }
+                        PGridUnit  { quantity: "Dimensionless" }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Thermo region"; alt: true }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"; alt: true
+                                     textValue: root.streamObject ? (root.streamObject.thermoRegionLabel || "—") : "—" }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Flash method" }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"
+                                     textValue: root.streamObject ? (root.streamObject.flashMethod || "—") : "—" }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Specification"; alt: true }
+                        PGridValue { Layout.columnSpan: 2; isText: true; alignText: "left"; alt: true
+                                     textValue: root.streamObject ? (root.streamObject.specificationStatus || "—") : "—" }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Molar flow" }
+                        PGridValue { quantity: "MolarFlow"
+                                     siValue: root.streamObject ? root._siMolar(root.streamObject.molarFlowKmolph) : NaN
+                                     displayUnit: root.unitFor("MolarFlow") }
+                        PGridUnit  { quantity: "MolarFlow"
+                                     siValue: root.streamObject ? root._siMolar(root.streamObject.molarFlowKmolph) : NaN
+                                     displayUnit: root.unitFor("MolarFlow")
+                                     onUnitOverride: function(u) { root.setUnit("MolarFlow", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Volumetric flow"; alt: true }
+                        PGridValue { quantity: "VolumeFlow"; alt: true
+                                     siValue: root.streamObject ? root._siVol(root.streamObject.volumetricFlowM3ph) : NaN
+                                     displayUnit: root.unitFor("VolumeFlow") }
+                        PGridUnit  { quantity: "VolumeFlow"; alt: true
+                                     siValue: root.streamObject ? root._siVol(root.streamObject.volumetricFlowM3ph) : NaN
+                                     displayUnit: root.unitFor("VolumeFlow")
+                                     onUnitOverride: function(u) { root.setUnit("VolumeFlow", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Std. vol. flow" }
+                        PGridValue { quantity: "VolumeFlow"
+                                     siValue: root.streamObject ? root._siVol(root.streamObject.calcStdVolFlowM3ph) : NaN
+                                     displayUnit: root.unitFor("VolumeFlow") }
+                        PGridUnit  { quantity: "VolumeFlow"
+                                     siValue: root.streamObject ? root._siVol(root.streamObject.calcStdVolFlowM3ph) : NaN
+                                     displayUnit: root.unitFor("VolumeFlow")
+                                     onUnitOverride: function(u) { root.setUnit("VolumeFlow", u) } }
                     }
                 }
 
-                // ── Thermodynamic Properties ──────────────────────────
-                SecHdr { text: "Thermodynamic Properties" }
-                SimpleSpreadsheet {
-                    id: sheetThermo
-                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
-                    readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 8; numCols: 1
-                    defaultColW: Math.max(180, width - hdrColW - 4)
-                    colLabels: ["Value"]
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+                // ════ Molecular & Bulk ════
+                PGroupBox {
+                    id: molGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Molecular & Bulk"
+                    contentPadding: 8
 
-                    function refresh() {
-                        clearAll()
-                        if (!root.has()) return
-                        const s = root.streamObject
-                        rowLabels = ["Enthalpy — liquid", "Enthalpy — vapour", "Enthalpy — mixture",
-                                     "Entropy — liquid",  "Entropy — vapour",
-                                     "Cp liquid", "Cp vapour", "Cp/Cv vapour"]
-                        colLabels = ["Value"]
-                        const vals = [root.fmt(s.liquidEnthalpyKJkg,  2) + " kJ/kg",
-                                      root.fmt(s.vapourEnthalpyKJkg,  2) + " kJ/kg",
-                                      root.fmt(s.enthalpyKJkg,        2) + " kJ/kg",
-                                      root.fmt(s.liquidEntropyKJkgK,  4) + " kJ/kg·K",
-                                      root.fmt(s.vapourEntropyKJkgK,  4) + " kJ/kg·K",
-                                      root.fmt(s.liquidCpKJkgK,       3) + " kJ/kg·K",
-                                      root.fmt(s.vapourCpKJkgK,       3) + " kJ/kg·K",
-                                      root.fmt(s.vapourCpCvRatio,     4)]
-                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
-                    }
+                    GridLayout {
+                        id: molGrid
+                        width: molGroup.width - (molGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                    Component.onCompleted: Qt.callLater(refresh)
-                    Connections {
-                        target: root
-                        function onStreamObjectChanged() { Qt.callLater(sheetThermo.refresh) }
-                    }
-                    Connections {
-                        target: root.streamObject
-                        function onDerivedConditionsChanged() { Qt.callLater(sheetThermo.refresh) }
-                        ignoreUnknownSignals: true
-                    }
-                }
+                        // Avg MW = mass flow / molar flow.  Compute from raw stream values.
+                        PGridLabel { Layout.preferredWidth: 128; text: "Avg. molecular weight" }
+                        PGridValue { quantity: "MolarMass"
+                                     siValue: {
+                                         if (!root.streamObject) return NaN
+                                         var mol = root.streamObject.molarFlowKmolph
+                                         var m   = root.streamObject.flowRateKgph
+                                         if (mol > 0 && m > 0) return root._siMolarMass(m / mol)   // kg/kmol → kg/mol
+                                         return NaN
+                                     }
+                                     displayUnit: root.unitFor("MolarMass") }
+                        PGridUnit  { quantity: "MolarMass"; displayUnit: root.unitFor("MolarMass")
+                                     onUnitOverride: function(u) { root.setUnit("MolarMass", u) } }
 
-                // ── Transport Properties ──────────────────────────────
-                SecHdr { text: "Transport Properties" }
-                SimpleSpreadsheet {
-                    id: sheetTransport
-                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
-                    readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 5; numCols: 1
-                    defaultColW: Math.max(180, width - hdrColW - 4)
-                    colLabels: ["Value"]
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+                        PGridLabel { Layout.preferredWidth: 128; text: "Bulk liquid density"; alt: true }
+                        PGridValue { quantity: "Density"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.liquidDensityKgM3 : NaN
+                                     displayUnit: root.unitFor("Density") }
+                        PGridUnit  { quantity: "Density"; alt: true; displayUnit: root.unitFor("Density")
+                                     onUnitOverride: function(u) { root.setUnit("Density", u) } }
 
-                    function refresh() {
-                        clearAll()
-                        if (!root.has()) return
-                        const s = root.streamObject
-                        rowLabels = ["Viscosity — liquid", "Viscosity — vapour",
-                                     "Thermal cond. liquid", "Thermal cond. vapour",
-                                     "Surface tension"]
-                        colLabels = ["Value"]
-                        const vals = [root.fmt(s.liquidViscosityCp,    4) + " cP",
-                                      root.fmt(s.vapourViscosityCp,    4) + " cP",
-                                      root.fmt(s.liquidThermalCondWmK, 4) + " W/m·K",
-                                      root.fmt(s.vapourThermalCondWmK, 4) + " W/m·K",
-                                      root.fmt(s.surfaceTensionNm,     5) + " N/m"]
-                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
-                    }
+                        PGridLabel { Layout.preferredWidth: 128; text: "Vapour density" }
+                        PGridValue { quantity: "Density"
+                                     siValue: root.streamObject ? root.streamObject.vapourDensityKgM3 : NaN
+                                     displayUnit: root.unitFor("Density") }
+                        PGridUnit  { quantity: "Density"; displayUnit: root.unitFor("Density")
+                                     onUnitOverride: function(u) { root.setUnit("Density", u) } }
 
-                    Component.onCompleted: Qt.callLater(refresh)
-                    Connections {
-                        target: root
-                        function onStreamObjectChanged() { Qt.callLater(sheetTransport.refresh) }
-                    }
-                    Connections {
-                        target: root.streamObject
-                        function onDerivedConditionsChanged() { Qt.callLater(sheetTransport.refresh) }
-                        ignoreUnknownSignals: true
+                        // Specific gravity = liq density / 999.  Dimensionless.
+                        PGridLabel { Layout.preferredWidth: 128; text: "Specific gravity"; alt: true }
+                        PGridValue { quantity: "SpecificGravity"; alt: true
+                                     siValue: {
+                                         if (!root.streamObject) return NaN
+                                         var d = root.streamObject.liquidDensityKgM3
+                                         return d > 0 ? d / 999.0 : NaN
+                                     } }
+                        PGridUnit  { quantity: "Dimensionless"; alt: true }
+
+                        // API gravity = 141.5/SG − 131.5
+                        PGridLabel { Layout.preferredWidth: 128; text: "API gravity" }
+                        PGridValue { quantity: "APIGravity"
+                                     siValue: {
+                                         if (!root.streamObject) return NaN
+                                         var d = root.streamObject.liquidDensityKgM3
+                                         var sg = d > 0 ? d / 999.0 : 0
+                                         return sg > 0 ? (141.5 / sg - 131.5) : NaN
+                                     } }
+                        PGridUnit  { quantity: "APIGravity" }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Watson K factor"; alt: true }
+                        PGridValue { quantity: "WatsonKFactor"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.watsonKFactor : NaN }
+                        PGridUnit  { quantity: "Dimensionless"; alt: true }
                     }
                 }
 
-                // ── Phase Envelope ────────────────────────────────────
-                SecHdr { text: "Phase Envelope" }
-                SimpleSpreadsheet {
-                    id: sheetEnvelope
-                    onWheelPassthrough: function(dy, dx) { panelFlick.handleWheelPassthrough(dy, dx) }
-                    readOnly: true
-                    x: 4; width: parent.width - 8; numRows: 4; numCols: 1
-                    defaultColW: Math.max(180, width - hdrColW - 4)
-                    colLabels: ["Value"]
-                    cellFont: Qt.font({ family: "Segoe UI", pixelSize: 11 })
+                // ════ Thermodynamic Properties ════
+                PGroupBox {
+                    id: thGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Thermodynamic Properties"
+                    contentPadding: 8
 
-                    function refresh() {
-                        clearAll()
-                        if (!root.has()) return
-                        const s = root.streamObject
-                        rowLabels = ["Bubble point", "Dew point",
-                                     "Critical temperature", "Critical pressure"]
-                        colLabels = ["Value"]
-                        const vals = [
-                            (s.bubblePointEstimateK > 0 && isFinite(s.bubblePointEstimateK))
-                                ? root.fmtTK(s.bubblePointEstimateK) : "—",
-                            (s.dewPointEstimateK > 0 && isFinite(s.dewPointEstimateK))
-                                ? root.fmtTK(s.dewPointEstimateK) : "—",
-                            root.fmtTK(s.criticalTemperatureK),
-                            root.fmtP(s.criticalPressureKPa * 1000)
-                        ]
-                        for (let i = 0; i < vals.length; ++i) setCell(i, 0, vals[i])
-                    }
+                    GridLayout {
+                        id: thGrid
+                        width: thGroup.width - (thGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                    Component.onCompleted: Qt.callLater(refresh)
-                    Connections {
-                        target: root
-                        function onStreamObjectChanged() { Qt.callLater(sheetEnvelope.refresh) }
-                    }
-                    Connections {
-                        target: root.streamObject
-                        function onDerivedConditionsChanged() { Qt.callLater(sheetEnvelope.refresh) }
-                        ignoreUnknownSignals: true
+                        PGridLabel { Layout.preferredWidth: 128; text: "Enthalpy — liquid" }
+                        PGridValue { quantity: "SpecificEnthalpy"
+                                     siValue: root.streamObject ? root._siEnth(root.streamObject.liquidEnthalpyKJkg) : NaN
+                                     displayUnit: root.unitFor("SpecificEnthalpy") }
+                        PGridUnit  { quantity: "SpecificEnthalpy"; displayUnit: root.unitFor("SpecificEnthalpy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Enthalpy — vapour"; alt: true }
+                        PGridValue { quantity: "SpecificEnthalpy"; alt: true
+                                     siValue: root.streamObject ? root._siEnth(root.streamObject.vapourEnthalpyKJkg) : NaN
+                                     displayUnit: root.unitFor("SpecificEnthalpy") }
+                        PGridUnit  { quantity: "SpecificEnthalpy"; alt: true; displayUnit: root.unitFor("SpecificEnthalpy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Enthalpy — mixture" }
+                        PGridValue { quantity: "SpecificEnthalpy"
+                                     siValue: root.streamObject ? root._siEnth(root.streamObject.enthalpyKJkg) : NaN
+                                     displayUnit: root.unitFor("SpecificEnthalpy") }
+                        PGridUnit  { quantity: "SpecificEnthalpy"; displayUnit: root.unitFor("SpecificEnthalpy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Entropy — liquid"; alt: true }
+                        PGridValue { quantity: "SpecificEntropy"; alt: true
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.liquidEntropyKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificEntropy") }
+                        PGridUnit  { quantity: "SpecificEntropy"; alt: true; displayUnit: root.unitFor("SpecificEntropy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEntropy", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Entropy — vapour" }
+                        PGridValue { quantity: "SpecificEntropy"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.vapourEntropyKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificEntropy") }
+                        PGridUnit  { quantity: "SpecificEntropy"; displayUnit: root.unitFor("SpecificEntropy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEntropy", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Cp liquid"; alt: true }
+                        PGridValue { quantity: "SpecificHeat"; alt: true
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.liquidCpKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificHeat") }
+                        PGridUnit  { quantity: "SpecificHeat"; alt: true; displayUnit: root.unitFor("SpecificHeat")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificHeat", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Cp vapour" }
+                        PGridValue { quantity: "SpecificHeat"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.vapourCpKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificHeat") }
+                        PGridUnit  { quantity: "SpecificHeat"; displayUnit: root.unitFor("SpecificHeat")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificHeat", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Cp/Cv vapour"; alt: true }
+                        PGridValue { quantity: "CpCvRatio"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.vapourCpCvRatio : NaN }
+                        PGridUnit  { quantity: "Dimensionless"; alt: true }
                     }
                 }
 
-                Item { height: root.secGap }
+                // ════ Transport Properties ════
+                PGroupBox {
+                    id: trGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Transport Properties"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: trGrid
+                        width: trGroup.width - (trGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Viscosity — liquid" }
+                        PGridValue { quantity: "Viscosity"
+                                     siValue: root.streamObject ? root._siVisc(root.streamObject.liquidViscosityCp) : NaN
+                                     displayUnit: root.unitFor("Viscosity") }
+                        PGridUnit  { quantity: "Viscosity"; displayUnit: root.unitFor("Viscosity")
+                                     onUnitOverride: function(u) { root.setUnit("Viscosity", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Viscosity — vapour"; alt: true }
+                        PGridValue { quantity: "Viscosity"; alt: true
+                                     siValue: root.streamObject ? root._siVisc(root.streamObject.vapourViscosityCp) : NaN
+                                     displayUnit: root.unitFor("Viscosity") }
+                        PGridUnit  { quantity: "Viscosity"; alt: true; displayUnit: root.unitFor("Viscosity")
+                                     onUnitOverride: function(u) { root.setUnit("Viscosity", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Thermal cond. liquid" }
+                        PGridValue { quantity: "ThermalConductivity"
+                                     siValue: root.streamObject ? root.streamObject.liquidThermalCondWmK : NaN
+                                     displayUnit: root.unitFor("ThermalConductivity") }
+                        PGridUnit  { quantity: "ThermalConductivity"; displayUnit: root.unitFor("ThermalConductivity")
+                                     onUnitOverride: function(u) { root.setUnit("ThermalConductivity", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Thermal cond. vapour"; alt: true }
+                        PGridValue { quantity: "ThermalConductivity"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.vapourThermalCondWmK : NaN
+                                     displayUnit: root.unitFor("ThermalConductivity") }
+                        PGridUnit  { quantity: "ThermalConductivity"; alt: true; displayUnit: root.unitFor("ThermalConductivity")
+                                     onUnitOverride: function(u) { root.setUnit("ThermalConductivity", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Surface tension" }
+                        PGridValue { quantity: "SurfaceTension"
+                                     siValue: root.streamObject ? root.streamObject.surfaceTensionNm : NaN
+                                     displayUnit: root.unitFor("SurfaceTension") }
+                        PGridUnit  { quantity: "SurfaceTension"; displayUnit: root.unitFor("SurfaceTension")
+                                     onUnitOverride: function(u) { root.setUnit("SurfaceTension", u) } }
+                    }
+                }
+
+                // ════ Phase Envelope ════
+                PGroupBox {
+                    id: enGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Phase Envelope"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: enGrid
+                        width: enGroup.width - (enGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Bubble point" }
+                        PGridValue { quantity: "Temperature"
+                                     siValue: root.streamObject ? root.streamObject.bubblePointEstimateK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Dew point"; alt: true }
+                        PGridValue { quantity: "Temperature"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.dewPointEstimateK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; alt: true; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Critical temperature" }
+                        PGridValue { quantity: "Temperature"
+                                     siValue: root.streamObject ? root.streamObject.criticalTemperatureK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 128; text: "Critical pressure"; alt: true }
+                        PGridValue { quantity: "Pressure"; alt: true
+                                     siValue: root.streamObject ? root._siCriticalP(root.streamObject.criticalPressureKPa) : NaN
+                                     displayUnit: root.unitFor("Pressure") }
+                        PGridUnit  { quantity: "Pressure"; alt: true; displayUnit: root.unitFor("Pressure")
+                                     onUnitOverride: function(u) { root.setUnit("Pressure", u) } }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
             }
         }
     }

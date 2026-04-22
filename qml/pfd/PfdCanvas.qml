@@ -42,23 +42,59 @@ Pane {
         return Math.max(lo, Math.min(hi, v))
     }
 
+    function iconBoxSizeForItem(item) {
+        return item && item.iconNodeBoxSize ? item.iconNodeBoxSize : 50
+    }
+
     function usableWidthForItem(item) {
-        return Math.max(0, drawingBorder.width - item.width)
+        // Use the stable icon box width, not the variable full delegate width.
+        return Math.max(0, drawingBorder.width - iconBoxSizeForItem(item))
     }
 
     function usableHeightForItem(item) {
-        return Math.max(0, drawingBorder.height - item.height)
+        // Use the stable icon box height, not the full delegate height including label area.
+        return Math.max(0, drawingBorder.height - iconBoxSizeForItem(item))
+    }
+
+    function iconBoxCenterFor(absX, absY, item) {
+        const box = iconBoxSizeForItem(item)
+        return {
+            x: absX + (item ? item.width / 2 : box / 2),
+            y: absY + box / 2
+        }
+    }
+
+    function relPosForIconCenter(centerX, centerY, boxSize) {
+        const box = boxSize > 0 ? boxSize : 50
+        const usableW = Math.max(1, drawingBorder.width - box)
+        const usableH = Math.max(1, drawingBorder.height - box)
+        const clampedCenterX = clamp(centerX, drawingBorder.x + box / 2, drawingBorder.x + drawingBorder.width - box / 2)
+        const clampedCenterY = clamp(centerY, drawingBorder.y + box / 2, drawingBorder.y + drawingBorder.height - box / 2)
+        return {
+            x: clamp((clampedCenterX - drawingBorder.x - box / 2) / usableW, 0, 1),
+            y: clamp((clampedCenterY - drawingBorder.y - box / 2) / usableH, 0, 1)
+        }
+    }
+
+    function seedUnitRelPosFromClick(unitId, sheetX, sheetY, boxSize) {
+        if (!unitId || unitId === "")
+            return
+        const copy = Object.assign({}, unitRelPos)
+        copy[unitId] = relPosForIconCenter(sheetX, sheetY, boxSize)
+        unitRelPos = copy
     }
 
     function ensureUnitRelPos(unitId, absX, absY, item) {
         if (unitRelPos[unitId] !== undefined)
             return unitRelPos[unitId]
 
-        const w = item ? usableWidthForItem(item) : Math.max(1, drawingBorder.width)
-        const h = item ? usableHeightForItem(item) : Math.max(1, drawingBorder.height)
+        const box = iconBoxSizeForItem(item)
+        const center = iconBoxCenterFor(absX, absY, item)
+        const w = usableWidthForItem(item)
+        const h = usableHeightForItem(item)
         const rel = {
-            x: clamp((absX - drawingBorder.x) / Math.max(1, w), 0, 1),
-            y: clamp((absY - drawingBorder.y) / Math.max(1, h), 0, 1)
+            x: clamp((center.x - drawingBorder.x - box / 2) / Math.max(1, w), 0, 1),
+            y: clamp((center.y - drawingBorder.y - box / 2) / Math.max(1, h), 0, 1)
         }
 
         const copy = Object.assign({}, unitRelPos)
@@ -68,12 +104,14 @@ Pane {
     }
 
     function updateUnitRelPos(unitId, absX, absY, item) {
-        const w = item ? usableWidthForItem(item) : Math.max(1, drawingBorder.width)
-        const h = item ? usableHeightForItem(item) : Math.max(1, drawingBorder.height)
+        const box = iconBoxSizeForItem(item)
+        const center = iconBoxCenterFor(absX, absY, item)
+        const w = usableWidthForItem(item)
+        const h = usableHeightForItem(item)
         const copy = Object.assign({}, unitRelPos)
         copy[unitId] = {
-            x: clamp((absX - drawingBorder.x) / Math.max(1, w), 0, 1),
-            y: clamp((absY - drawingBorder.y) / Math.max(1, h), 0, 1)
+            x: clamp((center.x - drawingBorder.x - box / 2) / Math.max(1, w), 0, 1),
+            y: clamp((center.y - drawingBorder.y - box / 2) / Math.max(1, h), 0, 1)
         }
         unitRelPos = copy
     }
@@ -86,8 +124,11 @@ Pane {
             ? unitRelPos[unitId]
             : ensureUnitRelPos(unitId, item.x, item.y, item)
 
-        const nx = drawingBorder.x + rel.x * usableWidthForItem(item)
-        const ny = drawingBorder.y + rel.y * usableHeightForItem(item)
+        const box = iconBoxSizeForItem(item)
+        const centerX = drawingBorder.x + box / 2 + rel.x * usableWidthForItem(item)
+        const centerY = drawingBorder.y + box / 2 + rel.y * usableHeightForItem(item)
+        const nx = centerX - item.width / 2
+        const ny = centerY - box / 2
         item.applyConstrainedPosition(nx, ny)
     }
 
@@ -556,19 +597,24 @@ Pane {
                         root.cancelPlacement()
                         return
                     }
-                    // Place the unit at the clicked position (clamped to drawing border)
-                    const px = Math.max(drawingBorder.x, Math.min(mouse.x, drawingBorder.x + drawingBorder.width  - 10))
-                    const py = Math.max(drawingBorder.y, Math.min(mouse.y, drawingBorder.y + drawingBorder.height - 10))
+                    // Place the unit so the click lands on the center of the stable 50x50 icon box.
+                    const clickX = Math.max(drawingBorder.x, Math.min(mouse.x, drawingBorder.x + drawingBorder.width))
+                    const clickY = Math.max(drawingBorder.y, Math.min(mouse.y, drawingBorder.y + drawingBorder.height))
+                    const seedBox = 50
+                    const seedX = clickX - seedBox / 2
+                    const seedY = clickY - seedBox / 2
+                    let unitId = ""
                     if (root.placementType === "column")
-                        root.flowsheet.addColumn(px, py)
+                        unitId = root.flowsheet.addColumnAndReturnId(seedX, seedY)
                     else if (root.placementType === "stream")
-                        root.flowsheet.addStream(px, py)
+                        unitId = root.flowsheet.addStreamAndReturnId(seedX, seedY)
                     else if (root.placementType === "heater")
-                        root.flowsheet.addHeater(px, py)
+                        unitId = root.flowsheet.addHeaterAndReturnId(seedX, seedY)
                     else if (root.placementType === "cooler")
-                        root.flowsheet.addCooler(px, py)
+                        unitId = root.flowsheet.addCoolerAndReturnId(seedX, seedY)
                     else if (root.placementType === "heat_exchanger")
-                        root.flowsheet.addHeatExchanger(px, py)
+                        unitId = root.flowsheet.addHeatExchangerAndReturnId(seedX, seedY)
+                    root.seedUnitRelPosFromClick(unitId, clickX, clickY, seedBox)
                     root.cancelPlacement()
                 }
             }

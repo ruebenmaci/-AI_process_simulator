@@ -110,6 +110,7 @@ ApplicationWindow {
             font.pixelSize: 12
 
             MenuItem { text: "Display"; font.pixelSize: 12; onTriggered: pfdView.openDisplaySettings() }
+            MenuItem { text: "Units && Number Formats"; font.pixelSize: 12; onTriggered: pfdView.openUnitsFormatSettings() }
 
             Menu {
                 title: "App Themes"

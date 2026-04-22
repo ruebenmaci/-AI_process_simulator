@@ -23,6 +23,9 @@
 #include "fluid/FluidPackageManager.h"
 #include "AppTheme.h"
 
+#include "units/UnitRegistry.h"
+#include "units/FormatRegistry.h"
+
 # define QT_QML_DEBUG
 
 // ── Display settings exposed to QML ───────────────────────────────────────────
@@ -149,6 +152,33 @@ int main(int argc, char* argv[]) {
 
    QQmlApplicationEngine engine;
 
+   UnitRegistry* gUnits = new UnitRegistry(&engine);
+   FormatRegistry* gFormats = new FormatRegistry(&engine);
+
+   // Mutual injection — required so format() and unitOptionsFor() can
+   // see each other's registry without going through the QML context.
+   // qmlEngine(this) returns nullptr for QObjects parented in C++,
+   // so explicit injection is the only path that works reliably.
+
+   gUnits->setFormatRegistry(gFormats);
+   gFormats->setUnitRegistry(gUnits);
+
+   engine.rootContext()->setContextProperty("gUnits",   gUnits);
+   engine.rootContext()->setContextProperty("gFormats", gFormats);
+
+   // (Optional) restore the active Unit Set from QSettings:
+   //
+   //   QSettings settings;
+   //   QString lastSet = settings.value("units/activeSet", "SI").toString();
+   //   gUnits->setActiveUnitSet(lastSet);
+   //
+   // And on shutdown:
+   //
+   //   QObject::connect(&app, &QGuiApplication::aboutToQuit, [&]() {
+   //       QSettings s;
+   //       s.setValue("units/activeSet", gUnits->activeUnitSet());
+   //   });
+
    ClipboardHelper clipboardHelper;
    engine.rootContext()->setContextProperty("gClipboard", &clipboardHelper);
 
@@ -260,6 +290,7 @@ int main(int argc, char* argv[]) {
       Qt::QueuedConnection);
 
    engine.loadFromModule("ChatGPT5.ADT", "Main");
+   //engine.loadFromModule("ChatGPT5.ADT", "PGroupBoxTest");
 
    if (engine.rootObjects().isEmpty()) {
       qDebug() << "Failed to load QML from module";

@@ -2,488 +2,690 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
+import "../../../../qml/common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HeatExchangerView  —  compact Phase-1 panel
-// Width target: 350 px (same as heater/cooler)
+//  HeatExchangerView — REFACTORED to the PPropertyView + PGroupBox + GridLayout
+//  standard (same template as HeaterCoolerView / Stream panels).
+//
+//  Layout:
+//    ┌─ PPropertyView ────────────────────────────────────────────────────┐
+//    │ [icon] [Design] [Results]                       Unit Set: [SI ▾]  │
+//    │ ╔════════════════════════════════════════════════════════════════╗ │
+//    │ ║  ( Design tab )                                                ║ │
+//    │ ║    PGroupBox "Connections"  (hot/cold in/out)                  ║ │
+//    │ ║    PGroupBox "Specifications"  (spec mode + active value)      ║ │
+//    │ ║    PGroupBox "Conditions"      (hot ΔP, cold ΔP)               ║ │
+//    │ ║  ( Results tab )                                               ║ │
+//    │ ║    PGroupBox "Calculated Results"                              ║ │
+//    │ ║    PGroupBox "Solver Status"                                   ║ │
+//    │ ╚════════════════════════════════════════════════════════════════╝ │
+//    └────────────────────────────────────────────────────────────────────┘
+//    [▶ Solve]  [Reset]                                 Solved  ✓
+//
+//  Unit handling:
+//    State stores mixed-scale values (K, kW, Pa). PGridValue/PGridUnit work
+//    in true SI, so small helpers convert on read/write:
+//      duty:        kW ⇄ W
+//      pressure:    already Pa, no conversion
+//      temperature: already K,  no conversion
+//
+//  UA and approach temperature are shown as isText cells with local
+//  formatting, because:
+//    - UA doesn't have a registered gUnits quantity (W/K).
+//    - Approach T is a temperature DIFFERENCE, and converting K→°C via
+//      gUnits would subtract 273.15 which is wrong for deltas.
 // ─────────────────────────────────────────────────────────────────────────────
 
-Rectangle {
+Item {
     id: root
-    width:  350
-    height: 560
 
     property var appState: null
+    property int currentTab: 0
 
-    // ── Palette ───────────────────────────────────────────────────────────────
-    readonly property color bgOuter:    "#d8dde2"
-    readonly property color cmdBar:     "#c8d0d8"
-    readonly property color frameInner: "#e8ebef"
-    readonly property color hdrBg:      "#c8d0d8"
-    readonly property color borderOut:  "#6d7883"
-    readonly property color borderIn:   "#97a2ad"
-    readonly property color textMain:   "#1f2a34"
-    readonly property color textMuted:  "#526571"
-    readonly property color valueBlue:  "#1c4ea7"
-    readonly property color warnAmber:  "#d6b74a"
-    readonly property color errorRed:   "#b23b3b"
-    readonly property color okGreen:    "#1a7a3c"
-    readonly property color hotColor:   "#a73c1c"
-    readonly property color coldColor:  "#1c6ea7"
-    readonly property color accentColor:"#2a6070"   // teal for HEX title bar
+    implicitWidth:  410
+    implicitHeight: 420
 
-    // ── Metrics ───────────────────────────────────────────────────────────────
-    readonly property int headH: 20
-    readonly property int rowH:  24
-    readonly property int lblW:  148
-    readonly property int unitW: 44
-    readonly property int fsLbl: 10
-    readonly property int fsVal: 10
-    readonly property int fsSm:  9
+    // ── Type-aware helpers ───────────────────────────────────────────────────
+    readonly property color hotColor:  "#a73c1c"
+    readonly property color coldColor: "#1c6ea7"
+    readonly property url iconPath: (typeof gAppTheme !== "undefined")
+                                    ? Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("heat_exchanger"))
+                                    : ""
 
-    color: bgOuter
+    // Label column width matches HeaterCoolerView for visual consistency.
+    readonly property int labelColWidth: 180
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    function fmt2(x)  { const n = Number(x); return isFinite(n) ? n.toFixed(2) : "\u2014" }
-    function fmt1(x)  { const n = Number(x); return isFinite(n) ? n.toFixed(1) : "\u2014" }
-    function fmtPa(p) { const n = Number(p); return isFinite(n) ? Math.round(n).toString() : "\u2014" }
-    function fmtK(k)  { const n = Number(k); return isFinite(n) ? n.toFixed(2) : "\u2014" }
-    function fmtUA(u) {
-        const n = Number(u)
+    // ── Per-quantity unit overrides (same pattern as stream/heater panels) ──
+    property var unitOverrides: ({
+        "Temperature":   "",
+        "Pressure":      "",
+        "Power":         "",
+        "Dimensionless": ""
+    })
+    function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
+    function setUnit(q, u) {
+        var copy = Object.assign({}, unitOverrides)
+        copy[q] = u
+        unitOverrides = copy
+    }
+
+    // ── kW ⇄ W helpers ───────────────────────────────────────────────────────
+    function _siPower(kW)   { return kW * 1000.0 }
+    function _kWfromSI(siW) { return siW / 1000.0 }
+
+    // ── Local formatting for non-gUnits cells ───────────────────────────────
+    function _fmtNum(x, digits) {
+        var n = Number(x)
+        if (!isFinite(n)) return "\u2014"
+        return n.toFixed(digits)
+    }
+    function _fmtUA(siWperK) {
+        // Smart scaling: show kW/K if magnitude >= 1000 W/K, else W/K
+        var n = Number(siWperK)
         if (!isFinite(n)) return "\u2014"
         return n >= 1000 ? (n / 1000).toFixed(2) + " kW/K" : n.toFixed(1) + " W/K"
     }
-    function connStr(id) { return id !== "" ? id : "\u2014 not connected \u2014" }
-    function connColor(id) { return id !== "" ? valueBlue : warnAmber }
+    function _fmtDeltaK(siK) {
+        // Temperature DIFFERENCE — always shown in K. Converting to °C would
+        // subtract 273.15 which is incorrect for a delta.
+        var n = Number(siK)
+        if (!isFinite(n)) return "\u2014"
+        return n.toFixed(2) + " K"
+    }
 
+    // ── Solve-status helpers ─────────────────────────────────────────────────
     function solveStatusText() {
-        if (!appState)           return "\u2014"
-        if (appState.solved)     return "Solved  \u2713"
+        if (!appState)       return "\u2014"
+        if (appState.solved) return "Solved  \u2713"
         if (appState.solveStatus && appState.solveStatus !== "") return appState.solveStatus
         return "Not solved"
     }
     function solveStatusColor() {
-        if (!appState)       return textMuted
-        if (appState.solved) return okGreen
-        return errorRed
+        if (!appState)       return "#526571"
+        if (appState.solved) return "#1a7a3c"
+        return "#b23b3b"
     }
 
-    // ── Inline components ─────────────────────────────────────────────────────
+    // Convenience: is the active spec mode "duty" / "hotOutletT" / "coldOutletT"?
+    readonly property string _specMode: appState ? appState.specMode : "duty"
 
-    component SectionHeader : Rectangle {
-        property alias text: lbl.text
-        property color  accent: root.accentColor
-        Layout.fillWidth: true
-        height: headH
-        color: hdrBg
-        border.color: borderIn; border.width: 1
-        Rectangle { width: 3; height: parent.height; color: parent.accent }
-        Text {
-            id: lbl
-            anchors.left: parent.left; anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: fsLbl; font.bold: true; color: textMain
-        }
-    }
+    // ── Property view shell ──────────────────────────────────────────────────
+    PPropertyView {
+        id: pview
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: bottomBar.top
 
-    component ValueRow : Item {
-        property string label:  ""
-        property string value:  "\u2014"
-        property string unit:   ""
-        property color  vColor: valueBlue
-        Layout.fillWidth: true
-        height: rowH
-        Text {
-            x: 6; width: lblW
-            anchors.verticalCenter: parent.verticalCenter
-            text: parent.label; font.pixelSize: fsLbl; color: textMuted
-            elide: Text.ElideRight
-        }
-        Text {
-            anchors {
-                left: parent.left; leftMargin: lblW + 6
-                right: unitLbl.visible ? unitLbl.left : parent.right; rightMargin: 4
-                verticalCenter: parent.verticalCenter
-            }
-            text: parent.value; font.pixelSize: fsVal; color: parent.vColor
-            elide: Text.ElideRight
-        }
-        Text {
-            id: unitLbl
-            visible: parent.unit !== ""
-            text: parent.unit; width: unitW
-            anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-            font.pixelSize: fsSm; color: textMuted
-            horizontalAlignment: Text.AlignRight
-        }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
-    }
+        tabs: [ { text: "Design" }, { text: "Results" } ]
+        currentIndex: root.currentTab
+        onTabClicked: function(i) { root.currentTab = i }
 
-    component FormRow : Item {
-        property string label: ""
-        property string unit:  ""
-        property alias  control: slot.data
-        Layout.fillWidth: true
-        height: rowH
-        Text {
-            x: 6; width: lblW
-            anchors.verticalCenter: parent.verticalCenter
-            text: parent.label; font.pixelSize: fsLbl; color: textMuted
-            elide: Text.ElideRight
+        // Left accessory — the heat_exchanger icon.
+        leftAccessory: Image {
+            width: 16; height: 16
+            source: root.iconPath
+            sourceSize.width: 32
+            sourceSize.height: 32
+            fillMode: Image.PreserveAspectFit
+            smooth: true
         }
-        Item {
-            id: slot
-            anchors {
-                left: parent.left; leftMargin: lblW + 6
-                right: unitSlot.visible ? unitSlot.left : parent.right; rightMargin: 4
-                verticalCenter: parent.verticalCenter
-            }
-            height: rowH - 6
-        }
-        Text {
-            id: unitSlot
-            visible: parent.unit !== ""
-            text: parent.unit; width: unitW
-            anchors { right: parent.right; rightMargin: 4; verticalCenter: parent.verticalCenter }
-            font.pixelSize: fsSm; color: textMuted
-            horizontalAlignment: Text.AlignRight
-        }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
-    }
 
-    // ── Title bar ─────────────────────────────────────────────────────────────
-    Rectangle {
-        id: titleBar
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 32; color: accentColor
+        // Right accessory — Unit Set selector (matches StreamView / HeaterCoolerView).
+        rightAccessory: Row {
+            spacing: 4
 
-        Text {
-            anchors.left: parent.left; anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Heat Exchanger" + (appState ? "  \u2014  " + (appState.name || appState.id || "") : "")
-            color: "white"; font.pixelSize: 12; font.bold: true
-        }
-        Rectangle {
-            anchors.right: parent.right; anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            width: pillTxt.implicitWidth + 16; height: 20; radius: 10
-            color: (appState && appState.solved) ? "#1a7a3c" : "#3a2a1a"
             Text {
-                id: pillTxt
-                anchors.centerIn: parent
-                text: solveStatusText()
-                color: "white"; font.pixelSize: 9
+                text: "Unit Set:"
+                font.pixelSize: 11
+                color: "#526571"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            PComboBox {
+                id: unitSetCombo
+                width: 100
+                fontSize: 11
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                model: typeof gUnits !== "undefined" ? gUnits.availableUnitSets : ["SI", "Field", "British"]
+                currentIndex: {
+                    var s = (typeof gUnits !== "undefined") ? gUnits.activeUnitSet : "SI"
+                    var idx = model.indexOf(s)
+                    return idx >= 0 ? idx : 0
+                }
+                onActivated: function(index) {
+                    if (typeof gUnits !== "undefined")
+                        gUnits.activeUnitSet = model[index]
+                }
+                Connections {
+                    target: typeof gUnits !== "undefined" ? gUnits : null
+                    ignoreUnknownSignals: true
+                    function onActiveUnitSetChanged() {
+                        var i = unitSetCombo.model.indexOf(gUnits.activeUnitSet)
+                        if (i >= 0 && unitSetCombo.currentIndex !== i)
+                            unitSetCombo.currentIndex = i
+                    }
+                }
             }
         }
-    }
 
-    // ── Scrollable body ───────────────────────────────────────────────────────
-    ScrollView {
-        anchors {
-            top: titleBar.bottom; topMargin: 6
-            left: parent.left;    leftMargin: 6
-            right: parent.right;  rightMargin: 6
-            bottom: bottomBar.top; bottomMargin: 6
-        }
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy:   ScrollBar.AsNeeded
-        contentWidth: availableWidth
+        // ── Design tab ─────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 0
 
-        ColumnLayout {
-            width: parent.width
-            spacing: 5
-
-            // ── Connections ───────────────────────────────────────────────────
             Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: connCol.implicitHeight
-
-                ColumnLayout {
-                    id: connCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Connections"; accent: accentColor }
-
-                    ValueRow {
-                        label: "Hot in"
-                        value: appState ? connStr(appState.connectedHotInStreamUnitId) : "\u2014"
-                        vColor: appState ? connColor(appState.connectedHotInStreamUnitId) : warnAmber
-                    }
-                    ValueRow {
-                        label: "Hot out"
-                        value: appState ? connStr(appState.connectedHotOutStreamUnitId) : "\u2014"
-                        vColor: appState ? connColor(appState.connectedHotOutStreamUnitId) : warnAmber
-                    }
-                    ValueRow {
-                        label: "Cold in"
-                        value: appState ? connStr(appState.connectedColdInStreamUnitId) : "\u2014"
-                        vColor: appState ? connColor(appState.connectedColdInStreamUnitId) : warnAmber
-                    }
-                    ValueRow {
-                        label: "Cold out"
-                        value: appState ? connStr(appState.connectedColdOutStreamUnitId) : "\u2014"
-                        vColor: appState ? connColor(appState.connectedColdOutStreamUnitId) : warnAmber
-                    }
-                }
-            }
-
-            // ── Specifications ────────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: specCol.implicitHeight
-
-                ColumnLayout {
-                    id: specCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Specifications"; accent: accentColor }
-
-                    FormRow {
-                        label: "Specification"
-                        control: ComboBox {
-                            anchors.fill: parent
-                            model: ["Duty", "Hot outlet T", "Cold outlet T"]
-                            currentIndex: {
-                                if (!appState) return 0
-                                if (appState.specMode === "hotOutletT")  return 1
-                                if (appState.specMode === "coldOutletT") return 2
-                                return 0
-                            }
-                            font.pixelSize: fsVal
-                            onActivated: {
-                                if (!appState) return
-                                const modes = ["duty", "hotOutletT", "coldOutletT"]
-                                appState.specMode = modes[currentIndex]
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Duty"
-                        unit:    "kW"
-                        visible: !appState || appState.specMode === "duty"
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmt2(appState.dutyKW) : ""
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v)) appState.dutyKW = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState) text = fmt2(appState.dutyKW)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Hot outlet T"
-                        unit:    "K"
-                        visible: appState ? appState.specMode === "hotOutletT" : false
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmtK(appState.hotOutletTK) : ""
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v)) appState.hotOutletTK = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState) text = fmtK(appState.hotOutletTK)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Cold outlet T"
-                        unit:    "K"
-                        visible: appState ? appState.specMode === "coldOutletT" : false
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmtK(appState.coldOutletTK) : ""
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v)) appState.coldOutletTK = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState) text = fmtK(appState.coldOutletTK)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Hot-side \u0394P"
-                        unit:    "Pa"
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? Math.round(appState.hotSidePressureDropPa).toString() : "0"
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v)) appState.hotSidePressureDropPa = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState)
-                                    text = Math.round(appState.hotSidePressureDropPa).toString()
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Cold-side \u0394P"
-                        unit:    "Pa"
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? Math.round(appState.coldSidePressureDropPa).toString() : "0"
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v)) appState.coldSidePressureDropPa = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState)
-                                    text = Math.round(appState.coldSidePressureDropPa).toString()
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Calculated results ────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: resultsCol.implicitHeight
-
-                ColumnLayout {
-                    id: resultsCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Results"; accent: accentColor }
-
-                    // Duty row — coloured by side that was specified
-                    ValueRow {
-                        label:  "Duty"
-                        unit:   "kW"
-                        value:  (appState && appState.solved) ? fmt2(appState.calcDutyKW) : "\u2014"
-                        vColor: (appState && appState.solved) ? accentColor : textMuted
-                    }
-
-                    // Hot side
-                    ValueRow {
-                        label: "Hot outlet T"
-                        unit:  "K"
-                        value: (appState && appState.solved) ? fmtK(appState.calcHotOutTK) : "\u2014"
-                        vColor: hotColor
-                    }
-                    ValueRow {
-                        label: "Hot outlet VF"
-                        unit:  ""
-                        value: (appState && appState.solved) ? fmt2(appState.calcHotOutVapFrac) : "\u2014"
-                        vColor: hotColor
-                    }
-
-                    // Cold side
-                    ValueRow {
-                        label: "Cold outlet T"
-                        unit:  "K"
-                        value: (appState && appState.solved) ? fmtK(appState.calcColdOutTK) : "\u2014"
-                        vColor: coldColor
-                    }
-                    ValueRow {
-                        label: "Cold outlet VF"
-                        unit:  ""
-                        value: (appState && appState.solved) ? fmt2(appState.calcColdOutVapFrac) : "\u2014"
-                        vColor: coldColor
-                    }
-
-                    // Exchanger performance
-                    ValueRow {
-                        label: "LMTD"
-                        unit:  "K"
-                        value: (appState && appState.solved) ? fmt1(appState.calcLMTD) : "\u2014"
-                    }
-                    ValueRow {
-                        label: "UA"
-                        unit:  ""
-                        value: (appState && appState.solved) ? fmtUA(appState.calcUA) : "\u2014"
-                    }
-                    ValueRow {
-                        label: "Approach \u0394T"
-                        unit:  "K"
-                        value: (appState && appState.solved) ? fmt1(appState.calcApproachT) : "\u2014"
-                        vColor: {
-                            if (!appState || !appState.solved) return textMuted
-                            return appState.calcApproachT < 5 ? errorRed : valueBlue
-                        }
-                    }
-                }
-            }
-
-            // ── Error ─────────────────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: errorRed; border.width: 1
-                height: errTxt.implicitHeight + 10
-                visible: appState ? (!appState.solved && appState.solveStatus !== "") : false
+                anchors.fill: parent
+                color: "#e8ebef"
 
                 Text {
-                    id: errTxt
-                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                    anchors.leftMargin: 8; anchors.rightMargin: 8
-                    text: appState ? appState.solveStatus : ""
-                    font.pixelSize: fsSm; color: errorRed
-                    wrapMode: Text.WordWrap
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                ScrollView {
+                    id: designScroll
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    visible: !!root.appState
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                    ColumnLayout {
+                        width: designScroll.availableWidth
+                        spacing: 6
+
+                        // ── Connections ────────────────────────────────────
+                        PGroupBox {
+                            id: connBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Connections"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: connGrid
+                                width: connBox.width - (connBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot stream (in)" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedHotInStreamUnitId !== "")
+                                                ? root.appState.connectedHotInStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedHotInStreamUnitId !== "")
+                                                ? root.hotColor : "#d6b74a"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot stream (out)"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedHotOutStreamUnitId !== "")
+                                                ? root.appState.connectedHotOutStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedHotOutStreamUnitId !== "")
+                                                ? root.hotColor : "#d6b74a"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold stream (in)" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedColdInStreamUnitId !== "")
+                                                ? root.appState.connectedColdInStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedColdInStreamUnitId !== "")
+                                                ? root.coldColor : "#d6b74a"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold stream (out)"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedColdOutStreamUnitId !== "")
+                                                ? root.appState.connectedColdOutStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedColdOutStreamUnitId !== "")
+                                                ? root.coldColor : "#d6b74a"
+                                }
+                            }
+                        }
+
+                        // ── Specifications ─────────────────────────────────
+                        PGroupBox {
+                            id: specBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Specifications"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: specGrid
+                                width: specBox.width - (specBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                // Spec mode picker
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Specification" }
+                                PComboBox {
+                                    id: specCombo
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 22
+                                    widthMode: "fill"
+                                    model: ["Duty", "Hot outlet T", "Cold outlet T"]
+                                    enabled: !!root.appState
+                                    currentIndex: {
+                                        if (!root.appState) return 0
+                                        if (root.appState.specMode === "hotOutletT")  return 1
+                                        if (root.appState.specMode === "coldOutletT") return 2
+                                        return 0
+                                    }
+                                    onActivated: function(index) {
+                                        if (!root.appState) return
+                                        var modes = ["duty", "hotOutletT", "coldOutletT"]
+                                        root.appState.specMode = modes[index]
+                                    }
+                                }
+
+                                // Duty row — visible only in duty spec mode
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Duty"
+                                    alt: true
+                                    visible: root._specMode === "duty"
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Power"
+                                    siValue: root.appState ? root._siPower(root.appState.dutyKW) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    editable: !!root.appState
+                                    visible: root._specMode === "duty"
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.dutyKW = root._kWfromSI(siVal)
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Power"
+                                    siValue: root.appState ? root._siPower(root.appState.dutyKW) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    visible: root._specMode === "duty"
+                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                }
+
+                                // Hot outlet T row — visible only in hotOutletT spec mode
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Hot outlet temperature"
+                                    alt: true
+                                    visible: root._specMode === "hotOutletT"
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.hotOutletTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: !!root.appState
+                                    visible: root._specMode === "hotOutletT"
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.hotOutletTK = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.hotOutletTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    visible: root._specMode === "hotOutletT"
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+
+                                // Cold outlet T row — visible only in coldOutletT spec mode
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Cold outlet temperature"
+                                    alt: true
+                                    visible: root._specMode === "coldOutletT"
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.coldOutletTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: !!root.appState
+                                    visible: root._specMode === "coldOutletT"
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.coldOutletTK = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.coldOutletTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    visible: root._specMode === "coldOutletT"
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+                            }
+                        }
+
+                        // ── Conditions ─────────────────────────────────────
+                        // Hot-side and cold-side pressure drops (always visible).
+                        PGroupBox {
+                            id: condBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Conditions"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: condGrid
+                                width: condBox.width - (condBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot side ΔP" }
+                                PGridValue {
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.hotSidePressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    editable: !!root.appState
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.hotSidePressureDropPa = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.hotSidePressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold side ΔP"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.coldSidePressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    editable: !!root.appState
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.coldSidePressureDropPa = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.coldSidePressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillHeight: true }
+                    }
                 }
             }
+        }
 
-            Item { Layout.fillWidth: true; height: 4 }
+        // ── Results tab ────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 1
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#e8ebef"
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                ScrollView {
+                    id: resultsScroll
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    visible: !!root.appState
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                    ColumnLayout {
+                        width: resultsScroll.availableWidth
+                        spacing: 6
+
+                        // ── Calculated Results ─────────────────────────────
+                        PGroupBox {
+                            id: resultsBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Calculated Results"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: resultsGrid
+                                width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                // Duty
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Duty" }
+                                PGridValue {
+                                    quantity: "Power"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root._siPower(root.appState.calcDutyKW) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    editable: false
+                                }
+                                PGridUnit {
+                                    quantity: "Power"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root._siPower(root.appState.calcDutyKW) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                }
+
+                                // Hot outlet T
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet T"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcHotOutTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: false
+                                    valueColor: root.hotColor
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcHotOutTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+
+                                // Cold outlet T
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet T" }
+                                PGridValue {
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcColdOutTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: false
+                                    valueColor: root.coldColor
+                                }
+                                PGridUnit {
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcColdOutTK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+
+                                // Hot outlet vapor fraction
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet vap. frac."; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Dimensionless"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcHotOutVapFrac : NaN
+                                    editable: false
+                                }
+                                PGridUnit { alt: true; quantity: "Dimensionless" }
+
+                                // Cold outlet vapor fraction
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet vap. frac." }
+                                PGridValue {
+                                    quantity: "Dimensionless"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcColdOutVapFrac : NaN
+                                    editable: false
+                                }
+                                PGridUnit { quantity: "Dimensionless" }
+
+                                // LMTD — text cell (temperature delta, not absolute)
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "LMTD"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    textValue: (root.appState && root.appState.solved)
+                                               ? root._fmtDeltaK(root.appState.calcLMTD) : "\u2014"
+                                }
+
+                                // UA — text cell (no registered gUnits quantity for W/K)
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "UA" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    textValue: (root.appState && root.appState.solved)
+                                               ? root._fmtUA(root.appState.calcUA) : "\u2014"
+                                }
+
+                                // Approach temperature — text cell (delta)
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Approach ΔT"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    textValue: (root.appState && root.appState.solved)
+                                               ? root._fmtDeltaK(root.appState.calcApproachT) : "\u2014"
+                                }
+                            }
+                        }
+
+                        // ── Solver Status ──────────────────────────────────
+                        PGroupBox {
+                            id: statusBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Solver Status"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: statusGrid
+                                width: statusBox.width - (statusBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Status" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: root.solveStatusText()
+                                    valueColor: root.solveStatusColor()
+                                }
+
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Message"
+                                    alt: true
+                                    visible: !!(root.appState
+                                                && !root.appState.solved
+                                                && root.appState.solveStatus !== "")
+                                }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: root.appState ? root.appState.solveStatus : ""
+                                    valueColor: "#b23b3b"
+                                    visible: !!(root.appState
+                                                && !root.appState.solved
+                                                && root.appState.solveStatus !== "")
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+            }
         }
     }
 
-    // ── Bottom action bar ─────────────────────────────────────────────────────
+    // ── Bottom action bar (Solve / Reset + status text) ──────────────────────
     Rectangle {
         id: bottomBar
-        anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-        height: 40; color: cmdBar
-        border.color: borderOut; border.width: 1
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 40
+        color: "#c8d0d8"
+        border.color: "#6d7883"
+        border.width: 1
 
         RowLayout {
-            anchors.fill: parent; anchors.margins: 6; spacing: 8
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 8
 
-            Rectangle {
-                width: 100; height: 28; radius: 4
-                color: solveMA.containsMouse ? Qt.lighter(accentColor, 1.2) : accentColor
-                Text { anchors.centerIn: parent; text: "\u25b6  Solve"
-                       color: "white"; font.pixelSize: 11; font.bold: true }
-                MouseArea {
-                    id: solveMA; anchors.fill: parent
-                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: if (appState) appState.solve()
-                }
+            PButton {
+                text: "\u25b6  Solve"
+                minButtonWidth: 100
+                enabled: !!root.appState
+                onClicked: if (root.appState) root.appState.solve()
             }
 
-            Rectangle {
-                width: 70; height: 28; radius: 4
-                color: resetMA.containsMouse ? "#b0bac5" : "#97a2ad"
-                Text { anchors.centerIn: parent; text: "Reset"
-                       color: textMain; font.pixelSize: 11 }
-                MouseArea {
-                    id: resetMA; anchors.fill: parent
-                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: if (appState) appState.reset()
-                }
+            PButton {
+                text: "Reset"
+                minButtonWidth: 80
+                enabled: !!root.appState
+                onClicked: if (root.appState) root.appState.reset()
             }
 
             Item { Layout.fillWidth: true }
 
             Text {
-                text: solveStatusText()
-                color: solveStatusColor()
+                text: root.solveStatusText()
+                color: root.solveStatusColor()
                 font.pixelSize: 10
-                font.bold: appState ? appState.solved : false
+                font.bold: !!(root.appState && root.appState.solved)
             }
         }
     }

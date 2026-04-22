@@ -2,318 +2,340 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
+import "../../../qml/common"
 
 Item {
     id: root
     property var streamObject: null
     property var unitObject:   null
 
-    readonly property color bg:      "#e8ebef"
-    readonly property color hdrBg:   "#c8d0d8"
-    readonly property color hdrBdr:  "#97a2ad"
-    readonly property color textMain:"#1f2a34"
-    readonly property color textMuted: "#526571"
-    readonly property color calcCol: "#1c4ea7"
-    readonly property color warnCol: "#a05a00"
-    readonly property color errCol:  "#b23b3b"
+    readonly property bool isProduct: !!streamObject && streamObject.productStream
+    readonly property bool canEdit:   !!streamObject && !isProduct
+    readonly property var thermoSpecNames:
+        ["Temperature", "Pressure", "Enthalpy", "Entropy", "Vapour fraction"]
 
-    property int headH: 20
-    property int rowH:  22
+    // Label column width — matches StreamPropertiesPanel for visual consistency.
+    readonly property int labelColWidth: 180
 
-    readonly property bool isProduct:   !!streamObject && streamObject.productStream
-    readonly property bool canEdit:     !!streamObject && !isProduct
-    readonly property var thermoSpecNames: ["Temperature", "Pressure", "Enthalpy", "Entropy", "Vapour fraction"]
+    property var unitOverrides: ({
+        "Temperature":      "",
+        "Pressure":         "",
+        "MassFlow":         "",
+        "MolarFlow":        "",
+        "VolumeFlow":       "",
+        "SpecificEnthalpy": "",
+        "SpecificEntropy":  "",
+        "Dimensionless":    ""
+    })
 
-    property string packageStatusText: ""
-
-    function fmt(v, dec) {
-        if (v === undefined || v === null) return "—"
-        const n = Number(v)
-        if (isNaN(n) || !isFinite(n)) return "—"
-        return n.toFixed(dec !== undefined ? dec : 3)
+    function unitFor(q) {
+        return unitOverrides[q] !== undefined ? unitOverrides[q] : ""
+    }
+    function setUnit(q, u) {
+        var copy = Object.assign({}, unitOverrides)
+        copy[q] = u
+        unitOverrides = copy
     }
 
-    function fluidPackageStatusText() {
-        if (root.packageStatusText && root.packageStatusText !== "")
-            return root.packageStatusText
-        if (!root.streamObject) return ""
-        return root.streamObject.fluidPackageStatus || ""
-    }
-
-    function refreshPackageStatusText() {
-        if (!root.streamObject) {
-            root.packageStatusText = ""
-            return
-        }
-        root.packageStatusText = root.streamObject.fluidPackageStatus || ""
-    }
+    function _siMassFlow(kgph)   { return kgph / 3600.0 }
+    function _siMolarFlow(kmolph){ return kmolph * 1000.0 / 3600.0 }
+    function _siVolFlow(m3ph)    { return m3ph / 3600.0 }
+    function _siEnthalpy(kJkg)   { return kJkg * 1000.0 }
+    function _siEntropy(kJkgK)   { return kJkgK * 1000.0 }
+    function _kgphFromSI(siMassFlow)    { return siMassFlow * 3600.0 }
+    function _kmolphFromSI(siMolarFlow) { return siMolarFlow * 3600.0 / 1000.0 }
+    function _m3phFromSI(siVolFlow)     { return siVolFlow * 3600.0 }
+    function _kJkgFromSI(siH)           { return siH / 1000.0 }
+    function _kJkgKFromSI(siS)          { return siS / 1000.0 }
 
     Rectangle {
         anchors.fill: parent
-        color: root.bg
-
-        Rectangle {
-            id: panelHeader
-            x: 0; y: 0; width: parent.width; height: root.headH
-            color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-            Text {
-                anchors.left: parent.left; anchors.leftMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Conditions"; font.pixelSize: 10; font.bold: true; color: root.textMain
-            }
-        }
-
-        Rectangle {
-            id: controlStrip
-            x: 0; y: panelHeader.height
-            width: parent.width
-            color: root.bg
-
-            Column {
-                x: 6; y: 4; width: parent.width - 12; spacing: 3
-
-                Row {
-                    spacing: 8; height: root.rowH
-
-                    Text {
-                        width: 130;
-                        text: "Name";
-                        font.pixelSize: 10;
-                        color: root.textMuted;
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    TextField {
-                        width: 320;
-                        height: root.rowH - 4
-                        text: root.unitObject ? (root.unitObject.name || root.unitObject.id || "") : ""
-                        enabled: !!root.streamObject
-                        font.pixelSize: 10;
-                        selectByMouse: true
-                        padding: 2;
-                        leftPadding: 4
-
-                        background: Rectangle {
-                            color: "white";
-                            border.color: "#dfe5ea";
-                            border.width: 1
-                        }
-                        onEditingFinished: {
-                            if (!root.unitObject)
-                            return
-                            let v = text.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9_\-.]/g, "")
-                            if (v === "")
-                                v = root.unitObject.id
-                            if (text !== v)
-                                text = v
-                            root.unitObject.name = v
-                        }
-                    }
-                }
-
-                Column {
-                    width: parent.width - 12
-                    spacing: 2
-
-                    Row {
-                        spacing: 8; height: root.rowH
-                        Text { width: 130; text: "Fluid package"; font.pixelSize: 10; color: root.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                        ComboBox {
-                            id: packageCombo
-                            width: 220; height: root.rowH - 2
-                            model: root.streamObject ? root.streamObject.availableFluidPackageIds : []
-                            enabled: root.canEdit
-                            font.pixelSize: 10
-                            Component.onCompleted: {
-                                if (!root.streamObject || !model) return
-                                const i = model.indexOf(root.streamObject.selectedFluidPackageId)
-                                if (i >= 0) currentIndex = i
-                            }
-                            onActivated: if (root.streamObject) root.streamObject.selectedFluidPackageId = model[index]
-                            Connections {
-                                target: root.streamObject
-                                function onSelectedFluidPackageChanged() {
-                                    if (!root.streamObject || !packageCombo.model) return
-                                    const i = packageCombo.model.indexOf(root.streamObject.selectedFluidPackageId)
-                                    if (i >= 0 && packageCombo.currentIndex !== i) packageCombo.currentIndex = i
-                                }
-                                ignoreUnknownSignals: true
-                            }
-                        }
-                    }
-
-                    Row {
-                        spacing: 8; height: root.rowH
-
-                        Text {
-                            width: 130;
-                            text: "Package thermo method";
-                            font.pixelSize: 10;
-                            color: root.textMuted;
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Text {
-                            width: 140
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.streamObject.fluidPackageThermoMethod
-                            font.pixelSize: 10
-                            color: root.textMuted
-                        }
-                    }
-
-                    Row {
-                        spacing: 8; height: root.rowH
-                        Text { width: 130; text: "Package Status"; font.pixelSize: 10; color: root.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                        Text {
-                            width: 250
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: root.fluidPackageStatusText()
-                            font.pixelSize: 10
-                            color: root.streamObject && root.streamObject.fluidPackageValid ? root.textMuted : root.errCol
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-
-                Row {
-                    spacing: 8; height: root.rowH
-                    Text { width: 130; text: "Thermo specs"; font.pixelSize: 10; color: root.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                    ComboBox {
-                        width: 150; height: root.rowH - 2
-                        model: root.thermoSpecNames
-                        currentIndex: root.streamObject ? root.streamObject.primaryThermoSpec : 0
-                        enabled: root.canEdit
-                        font.pixelSize: 10
-                        onActivated: if (root.streamObject) root.streamObject.primaryThermoSpec = currentIndex
-                    }
-                    Text { text: "+"; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 10; color: root.textMuted }
-                    ComboBox {
-                        width: 150; height: root.rowH - 2
-                        model: root.thermoSpecNames
-                        currentIndex: root.streamObject ? root.streamObject.secondaryThermoSpec : 1
-                        enabled: root.canEdit
-                        font.pixelSize: 10
-                        onActivated: if (root.streamObject) root.streamObject.secondaryThermoSpec = currentIndex
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: root.streamObject ? root.streamObject.packageSupportMismatchText : ""
-                        font.pixelSize: 9
-                        color: root.warnCol
-                    }
-                }
-
-
-                Row {
-                    spacing: 8; height: root.rowH
-                    Text { width: 130; text: "Flash mode"; font.pixelSize: 10; color: root.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                    Rectangle {
-                        width: 100; height: root.rowH - 4
-                        color: "#f8fafc"; border.color: "#dfe5ea"; border.width: 1
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.streamObject ? root.streamObject.inferredFlashSpecLabel : ""
-                            font.pixelSize: 10; color: root.calcCol; font.bold: true
-                        }
-                    }
-                }
-
-                Row {
-                    spacing: 24; height: root.rowH
-                    Row {
-                        spacing: 8; height: parent.height
-                        Text { width: 130; text: "Flow basis"; font.pixelSize: 10; color: root.textMuted; anchors.verticalCenter: parent.verticalCenter }
-                        ComboBox {
-                            width: 160; height: root.rowH - 2
-                            model: ["Mass flow", "Molar flow", "Std. liquid vol. flow"]
-                            currentIndex: root.streamObject ? root.streamObject.flowSpecMode : 0
-                            enabled: root.canEdit; font.pixelSize: 10
-                            onActivated: if (root.streamObject) root.streamObject.flowSpecMode = currentIndex
-                        }
-                    }
-                }
-
-                Repeater {
-                    model: [
-                        { lbl: "Mass flow (kg/h)",      prop: "flowRateKgph",                  fmt: 0, editProp: "massFlowEditable" },
-                        { lbl: "Molar flow (kmol/h)",   prop: "molarFlowKmolph",               fmt: 3, editProp: "molarFlowEditable" },
-                        { lbl: "Std. vol. flow (m³/h)", prop: "standardLiquidVolumeFlowM3ph",  fmt: 3, editProp: "standardLiquidVolumeFlowEditable" },
-                        { lbl: "Temperature (K)",       prop: "temperatureK",                  fmt: 3, editProp: "temperatureEditable" },
-                        { lbl: "Pressure (bar)",        prop: "_pressureBar",                  fmt: 3, editProp: "pressureEditable" },
-                        { lbl: "Vapour fraction (-)",   prop: "specifiedVaporFraction",        fmt: 4, editProp: "vaporFractionEditable" },
-                        { lbl: "Enthalpy (kJ/kg)",      prop: "enthalpyKJkg",                  fmt: 3, editProp: "enthalpyEditable" },
-                        { lbl: "Entropy (kJ/kg·K)",     prop: "entropyKJkgK",                  fmt: 6, editProp: "entropyEditable" }
-                    ]
-
-                    Row {
-                        spacing: 8; height: root.rowH
-                        Text {
-                            width: 130; text: modelData.lbl
-                            font.pixelSize: 10; color: root.textMuted
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        TextField {
-                            width: 140; height: root.rowH - 4
-                            font.pixelSize: 10; selectByMouse: true
-                            padding: 2; leftPadding: 4; horizontalAlignment: Text.AlignRight
-                            enabled: root.canEdit && !!root.streamObject && !!root.streamObject[modelData.editProp]
-                            background: Rectangle { color: "white"; border.color: "#dfe5ea"; border.width: 1 }
-                            text: {
-                                if (!root.streamObject) return ""
-                                if (modelData.prop === "_pressureBar")
-                                    return (Number(root.streamObject.pressurePa || 0) / 1e5).toFixed(3)
-                                const v = root.streamObject[modelData.prop]
-                                if (v === undefined || !isFinite(v)) return ""
-                                return Number(v).toFixed(modelData.fmt)
-                            }
-                            onEditingFinished: {
-                                if (!root.streamObject) return
-                                const n = Number(text)
-                                if (isNaN(n)) return
-                                if (modelData.prop === "_pressureBar")
-                                    root.streamObject.pressurePa = n * 1e5
-                                else
-                                    root.streamObject[modelData.prop] = n
-                            }
-                        }
-                    }
-                }
-                Item { height: 4 }
-            }
-
-            height: {
-                let h = 4
-                h += root.rowH + 3 // name
-                h += (2 * root.rowH) + 5 // fluid package + package status rows
-                h += root.rowH + 3 // flow basis
-                h += root.rowH + 3 // thermo spec pair
-                h += root.rowH + 3 // flash mode
-                h += 8 * (root.rowH + 3) // numeric rows
-                h += 8
-                return h
-            }
-        }
+        color: "#e8ebef"
 
         Text {
             anchors.centerIn: parent
             visible: !root.streamObject
-            text: "No stream selected"; font.pixelSize: 11; color: root.textMuted
+            text: "No stream selected"; font.pixelSize: 11; color: "#526571"
         }
 
-        Connections {
-            target: root
-            function onStreamObjectChanged() { root.refreshPackageStatusText() }
-        }
+        ScrollView {
+            id: scrollArea
+            anchors {
+                left: parent.left; right: parent.right
+                top: parent.top; bottom: parent.bottom
+                topMargin: 4; leftMargin: 4; rightMargin: 4; bottomMargin: 4
+            }
+            visible: !!root.streamObject
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-        Connections {
-            target: root.streamObject
-            function onDerivedConditionsChanged() { root.refreshPackageStatusText() }
-            function onSelectedFluidPackageChanged() { root.refreshPackageStatusText() }
-            function onFluidPackageStatusChanged() { root.refreshPackageStatusText() }
-            ignoreUnknownSignals: true
-        }
+            ColumnLayout {
+                width: scrollArea.availableWidth
+                spacing: 6
 
-        Component.onCompleted: Qt.callLater(root.refreshPackageStatusText)
+                // ── Identification & Fluid Package ────────────────────────
+                PGroupBox {
+                    id: identBox
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Identification & Fluid Package"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: identGrid
+                        width: identBox.width - (identBox.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Name" }
+                        PTextField {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 22
+                            readOnly: !root.streamObject
+                            text: root.unitObject ? (root.unitObject.name || root.unitObject.id || "") : ""
+                            onEditingFinished: {
+                                if (!root.unitObject) return
+                                var v = text.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9_\-.]/g, "")
+                                if (!v.length)
+                                    v = root.unitObject.id || "stream"
+                                root.unitObject.name = v
+                                text = v
+                            }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Fluid package"; alt: true }
+                        PComboBox {
+                            id: packageCombo
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 22
+                            widthMode: "fill"
+                            model: root.streamObject ? root.streamObject.availableFluidPackageIds : []
+                            enabled: root.canEdit
+                            currentIndex: {
+                                if (!root.streamObject || !model) return -1
+                                var i = model.indexOf(root.streamObject.selectedFluidPackageId)
+                                return i >= 0 ? i : -1
+                            }
+                            onActivated: function(index) {
+                                if (root.streamObject) root.streamObject.selectedFluidPackageId = model[index]
+                            }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Package thermo method" }
+                        PGridValue {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            isText: true
+                            textValue: root.streamObject ? root.streamObject.fluidPackageThermoMethod : ""
+                            alignText: "left"
+                        }
+                    }
+                }
+
+                // ── Thermodynamic Specifications ──────────────────────────
+                PGroupBox {
+                    id: thermoBox
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Thermodynamic Specifications"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: thermoGrid
+                        width: thermoBox.width - (thermoBox.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Thermo specs (primary)" }
+                        PComboBox {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 22
+                            widthMode: "fill"
+                            model: root.thermoSpecNames
+                            currentIndex: root.streamObject ? root.streamObject.primaryThermoSpec : 0
+                            enabled: root.canEdit
+                            onActivated: function(index) { if (root.streamObject) root.streamObject.primaryThermoSpec = index }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Thermo specs (secondary)"; alt: true }
+                        PComboBox {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 22
+                            widthMode: "fill"
+                            model: root.thermoSpecNames
+                            currentIndex: root.streamObject ? root.streamObject.secondaryThermoSpec : 1
+                            enabled: root.canEdit
+                            onActivated: function(index) { if (root.streamObject) root.streamObject.secondaryThermoSpec = index }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Flash mode" }
+                        PGridValue {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            isText: true
+                            textValue: root.streamObject ? root.streamObject.inferredFlashSpecLabel : ""
+                            alignText: "left"
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Flow basis"; alt: true }
+                        PComboBox {
+                            Layout.columnSpan: 2
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 22
+                            widthMode: "fill"
+                            model: ["Mass flow", "Molar flow", "Std. liquid vol. flow"]
+                            currentIndex: root.streamObject ? root.streamObject.flowSpecMode : 0
+                            enabled: root.canEdit
+                            onActivated: function(index) { if (root.streamObject) root.streamObject.flowSpecMode = index }
+                        }
+                    }
+                }
+
+                // ── Conditions ───────────────────────────────────────────
+                // Reorganized from the previous 6-column dual layout into a
+                // 3-column (label | value | unit) layout matching the
+                // StreamPropertiesPanel pattern, so all three groupboxes on
+                // this panel have a consistent visual structure and fill
+                // the available width.
+                PGroupBox {
+                    id: conditionsBox
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Conditions"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: condGrid
+                        width: conditionsBox.width - (conditionsBox.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Mass flow" }
+                        PGridValue {
+                            quantity: "MassFlow"
+                            siValue: root.streamObject ? root._siMassFlow(root.streamObject.flowRateKgph) : NaN
+                            displayUnit: root.unitFor("MassFlow")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.massFlowEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.flowRateKgph = root._kgphFromSI(siVal) }
+                        }
+                        PGridUnit {
+                            quantity: "MassFlow"
+                            siValue: root.streamObject ? root._siMassFlow(root.streamObject.flowRateKgph) : NaN
+                            displayUnit: root.unitFor("MassFlow")
+                            onUnitOverride: function(u) { root.setUnit("MassFlow", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Molar flow"; alt: true }
+                        PGridValue {
+                            alt: true
+                            quantity: "MolarFlow"
+                            siValue: root.streamObject ? root._siMolarFlow(root.streamObject.molarFlowKmolph) : NaN
+                            displayUnit: root.unitFor("MolarFlow")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.molarFlowEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.molarFlowKmolph = root._kmolphFromSI(siVal) }
+                        }
+                        PGridUnit {
+                            alt: true
+                            quantity: "MolarFlow"
+                            siValue: root.streamObject ? root._siMolarFlow(root.streamObject.molarFlowKmolph) : NaN
+                            displayUnit: root.unitFor("MolarFlow")
+                            onUnitOverride: function(u) { root.setUnit("MolarFlow", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Std. liq. vol." }
+                        PGridValue {
+                            quantity: "VolumeFlow"
+                            siValue: root.streamObject ? root._siVolFlow(root.streamObject.standardLiquidVolumeFlowM3ph) : NaN
+                            displayUnit: root.unitFor("VolumeFlow")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.standardLiquidVolumeFlowEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.standardLiquidVolumeFlowM3ph = root._m3phFromSI(siVal) }
+                        }
+                        PGridUnit {
+                            quantity: "VolumeFlow"
+                            siValue: root.streamObject ? root._siVolFlow(root.streamObject.standardLiquidVolumeFlowM3ph) : NaN
+                            displayUnit: root.unitFor("VolumeFlow")
+                            onUnitOverride: function(u) { root.setUnit("VolumeFlow", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Temperature"; alt: true }
+                        PGridValue {
+                            alt: true
+                            quantity: "Temperature"
+                            siValue: root.streamObject ? root.streamObject.temperatureK : NaN
+                            displayUnit: root.unitFor("Temperature")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.temperatureEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.temperatureK = siVal }
+                        }
+                        PGridUnit {
+                            alt: true
+                            quantity: "Temperature"
+                            siValue: root.streamObject ? root.streamObject.temperatureK : NaN
+                            displayUnit: root.unitFor("Temperature")
+                            onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Pressure" }
+                        PGridValue {
+                            quantity: "Pressure"
+                            siValue: root.streamObject ? root.streamObject.pressurePa : NaN
+                            displayUnit: root.unitFor("Pressure")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.pressureEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.pressurePa = siVal }
+                        }
+                        PGridUnit {
+                            quantity: "Pressure"
+                            siValue: root.streamObject ? root.streamObject.pressurePa : NaN
+                            displayUnit: root.unitFor("Pressure")
+                            onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Vap. fraction"; alt: true }
+                        PGridValue {
+                            alt: true
+                            quantity: "VapourFraction"
+                            siValue: root.streamObject ? root.streamObject.specifiedVaporFraction : NaN
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.vaporFractionEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.specifiedVaporFraction = siVal }
+                        }
+                        PGridUnit { alt: true; quantity: "Dimensionless" }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Enthalpy" }
+                        PGridValue {
+                            quantity: "SpecificEnthalpy"
+                            siValue: root.streamObject ? root._siEnthalpy(root.streamObject.enthalpyKJkg) : NaN
+                            displayUnit: root.unitFor("SpecificEnthalpy")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.enthalpyEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.enthalpyKJkg = root._kJkgFromSI(siVal) }
+                        }
+                        PGridUnit {
+                            quantity: "SpecificEnthalpy"
+                            siValue: root.streamObject ? root._siEnthalpy(root.streamObject.enthalpyKJkg) : NaN
+                            displayUnit: root.unitFor("SpecificEnthalpy")
+                            onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) }
+                        }
+
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Entropy"; alt: true }
+                        PGridValue {
+                            alt: true
+                            quantity: "SpecificEntropy"
+                            siValue: root.streamObject ? root._siEntropy(root.streamObject.entropyKJkgK) : NaN
+                            displayUnit: root.unitFor("SpecificEntropy")
+                            editable: root.canEdit && !!root.streamObject && root.streamObject.entropyEditable
+                            onEdited: function(siVal) { if (root.streamObject) root.streamObject.entropyKJkgK = root._kJkgKFromSI(siVal) }
+                        }
+                        PGridUnit {
+                            alt: true
+                            quantity: "SpecificEntropy"
+                            siValue: root.streamObject ? root._siEntropy(root.streamObject.entropyKJkgK) : NaN
+                            displayUnit: root.unitFor("SpecificEntropy")
+                            onUnitOverride: function(u) { root.setUnit("SpecificEntropy", u) }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+        }
     }
 }

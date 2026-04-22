@@ -1,352 +1,366 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
+import "../../../qml/common"
 
-// StreamPhasesPanel — restyled to ComponentManagerView palette.
-// The phase cards and K-values table are kept as custom renderers
-// since they have structured multi-column layouts; everything else
-// uses CompactFrame / SectionHeader style rectangles.
+// ─────────────────────────────────────────────────────────────────────────────
+//  StreamPhasesPanel — HYSYS-style 3-column phase comparison.
+//
+//  Column layout:  [label]  [liquid]  [vapour]  [unit ▾]
+// ─────────────────────────────────────────────────────────────────────────────
 
 Item {
     id: root
     property var streamObject: null
     property var unitObject:   null
 
-    // ── Palette ────────────────────────────────────────────────────────
-    readonly property color bg:       "#e8ebef"
-    readonly property color hdrBg:    "#c8d0d8"
-    readonly property color hdrBdr:   "#97a2ad"
-    readonly property color rowEven:  "#f4f6f8"
-    readonly property color rowOdd:   "#ffffff"
-    readonly property color textMain: "#1f2a34"
-    readonly property color textMuted:"#526571"
-    readonly property color calcCol:  "#1c4ea7"
-    readonly property color dashCol:  "#aaaaaa"
-    readonly property color liqHdr:   "#dbeafe"
-    readonly property color vapHdr:   "#fef9c3"
-    readonly property color warnBg:   "#fff4db"
-    readonly property color warnText: "#744f00"
+    property var unitOverrides: ({})
+    function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
+    function setUnit(q, u) { var c = Object.assign({}, unitOverrides); c[q] = u; unitOverrides = c }
 
-    readonly property int rh:   22
-    readonly property int lpad: 8
-    readonly property int headH: 20
+    function _siMass(kgph)        { return kgph / 3600.0 }
+    function _siMolar(kmolph)     { return kmolph * 1000.0 / 3600.0 }
+    function _siVol(m3ph)         { return m3ph / 3600.0 }
+    function _siEnth(kJkg)        { return kJkg * 1000.0 }
+    function _siEntr(kJkgK)       { return kJkgK * 1000.0 }
+    function _siVisc(cP)          { return cP * 0.001 }
+    function _siCriticalP(kPa)    { return kPa * 1000.0 }
 
-    function fmt(v, dec) {
-        if (v === undefined || v === null) return "—"
-        const n = Number(v)
-        if (isNaN(n) || !isFinite(n)) return "—"
-        return n.toFixed(dec !== undefined ? dec : 3)
-    }
-    function fmtTK(K) {
-        if (!K || !isFinite(K) || K <= 0) return "—"
-        return fmt(K - 273.15, 1) + " °C   (" + fmt(K, 1) + " K)"
-    }
-    function has() { return !!streamObject }
-
-    readonly property real massFlow:  has() ? streamObject.flowRateKgph       : 0
-    readonly property real molarFlow: has() ? streamObject.molarFlowKmolph     : 0
-    readonly property real volFlow:   has() ? streamObject.volumetricFlowM3ph  : 0
-    readonly property real vf:        has() ? streamObject.vaporFraction        : 0
-    readonly property real lf:        1.0 - vf
-    readonly property string phase:   has() ? streamObject.phaseStatus          : "—"
-    readonly property string thermoR: has() ? streamObject.thermoRegionLabel    : "—"
-    readonly property real bpK:       has() ? streamObject.bubblePointEstimateK : 0
-    readonly property real dpK:       has() ? streamObject.dewPointEstimateK    : 0
-
-    // Comparison table rows
-    function buildCompRows() {
-        if (!has()) return [
-            { label: "Density",              liq: "—", vap: "—", unit: "kg/m³"   },
-            { label: "Viscosity",            liq: "—", vap: "—", unit: "cP"       },
-            { label: "Thermal conductivity", liq: "—", vap: "—", unit: "W/m·K"   },
-            { label: "Heat capacity Cp",     liq: "—", vap: "—", unit: "kJ/kg·K" },
-            { label: "Enthalpy",             liq: "—", vap: "—", unit: "kJ/kg"   },
-            { label: "Entropy",              liq: "—", vap: "—", unit: "kJ/kg·K" },
-            { label: "Surface tension",      liq: "—", vap: "—", unit: "N/m"     },
-        ]
-        const s = streamObject
-        return [
-            { label: "Density",              liq: fmt(s.liquidDensityKgM3,    2), vap: fmt(s.vapourDensityKgM3,    2), unit: "kg/m³"   },
-            { label: "Viscosity",            liq: fmt(s.liquidViscosityCp,    4), vap: fmt(s.vapourViscosityCp,    4), unit: "cP"       },
-            { label: "Thermal conductivity", liq: fmt(s.liquidThermalCondWmK, 4), vap: fmt(s.vapourThermalCondWmK, 4), unit: "W/m·K"   },
-            { label: "Heat capacity Cp",     liq: fmt(s.liquidCpKJkgK,        3), vap: fmt(s.vapourCpKJkgK,        3), unit: "kJ/kg·K" },
-            { label: "Enthalpy",             liq: fmt(s.liquidEnthalpyKJkg,   2), vap: fmt(s.vapourEnthalpyKJkg,   2), unit: "kJ/kg"   },
-            { label: "Entropy",              liq: fmt(s.liquidEntropyKJkgK,   4), vap: fmt(s.vapourEntropyKJkgK,   4), unit: "kJ/kg·K" },
-            { label: "Surface tension",      liq: fmt(s.surfaceTensionNm,     5), vap: "—",                            unit: "N/m"     },
-        ]
+    // Helper: format a K value safely (avoids parent.parent chains in delegates)
+    function _fmtK(k) {
+        if (k === undefined || !isFinite(k) || k < 0) return "—"
+        return k.toFixed(4)
     }
 
-    property var compRows: []
-    function refreshCompRows() { compRows = buildCompRows() }
+    readonly property real vf: streamObject ? streamObject.vaporFraction : 0
+    readonly property real lf: 1.0 - vf
+    readonly property string phase: streamObject ? streamObject.phaseStatus : "—"
 
-    onStreamObjectChanged: Qt.callLater(refreshCompRows)
-    Component.onCompleted:  Qt.callLater(refreshCompRows)
-    Connections {
-        target: root.streamObject
-        function onDerivedConditionsChanged() { Qt.callLater(refreshCompRows) }
-        ignoreUnknownSignals: true
-    }
-
-    // ── UI ─────────────────────────────────────────────────────────────
     Rectangle {
         anchors.fill: parent
-        color: root.bg; border.color: root.hdrBdr; border.width: 1
+        color: "#e8ebef"
 
-        // Panel header
         Rectangle {
             id: panelHdr
-            x: 0; y: 0; width: parent.width; height: root.headH
-            color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            height: 20
+            color: "#c8d0d8"; border.color: "#97a2ad"; border.width: 1
             Text {
                 anchors.left: parent.left; anchors.leftMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Phases"; font.pixelSize: 10; font.bold: true; color: root.textMain
+                text: "Phases"; font.pixelSize: 11; font.bold: true; color: "#1f2a34"
             }
         }
-
-        Text {
-            anchors.centerIn: parent; visible: !root.has()
-            text: "No stream selected"; font.pixelSize: 11; color: root.textMuted
-        }
+        Text { anchors.centerIn: parent; visible: !root.streamObject
+               text: "No stream selected"; font.pixelSize: 11; color: "#526571" }
 
         ScrollView {
-            x: 0; y: panelHdr.height
-            width: parent.width; height: parent.height - panelHdr.height
-            visible: root.has(); clip: true
-            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-            ScrollBar.vertical.policy:   ScrollBar.AsNeeded
+            id: phasesScroll
+            anchors {
+                left: parent.left; right: parent.right
+                top: panelHdr.bottom; bottom: parent.bottom
+                topMargin: 4; leftMargin: 4; rightMargin: 4; bottomMargin: 4
+            }
+            visible: !!root.streamObject; clip: true
 
-            Column {
-                width: Math.max(parent.width, 480)
-                spacing: 4
-                topPadding: 4
-                leftPadding: 4
-                rightPadding: 4
-                bottomPadding: 4
+            ColumnLayout {
+                width: Math.min(parent.width - 8, 760)
+                spacing: 6
 
-                // ── Phase status banner ────────────────────────────────
+                // ── Phase status banner ──
                 Rectangle {
-                    width: parent.width - 8; height: root.rh + 6
-                    color: {
-                        if (root.phase === "Liquid")    return "#dbeafe"
-                        if (root.phase === "Vapor")     return "#fef9c3"
-                        if (root.phase === "Two-Phase") return "#dcfce7"
-                        return root.bg
-                    }
-                    border.color: root.hdrBdr; border.width: 1
+                    Layout.fillWidth: true; Layout.preferredHeight: 24
+                    color: root.phase === "Liquid"    ? "#dbeafe"
+                         : root.phase === "Vapor"     ? "#fef9c3"
+                         : root.phase === "Two-Phase" ? "#dcfce7" : "#e8ebef"
+                    border.color: "#97a2ad"; border.width: 1
                     Text {
-                        x: root.lpad; width: parent.width - root.lpad*2; height: parent.height
+                        anchors.left: parent.left; anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
                         text: "Phase:  " + root.phase
-                              + "     |     Vapour fraction:  " + root.fmt(root.vf, 4)
-                              + "     |     " + root.thermoR
-                        font.pixelSize: 10; font.bold: true; color: root.textMain
-                        verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+                              + "     |     Vapour fraction:  " + (root.streamObject ? Number(root.vf).toFixed(4) : "—")
+                              + "     |     " + (root.streamObject ? root.streamObject.thermoRegionLabel : "—")
+                        font.pixelSize: 11; font.bold: true; color: "#1f2a34"
                     }
                 }
 
-                // ── Phase cards (liquid | vapour side-by-side) ─────────
-                Item {
-                    width: parent.width - 8
-                    height: 28 + 6 * root.rh + 4
+                // ── Per-phase comparison: Liquid + Vapour columns ──
+                PGroupBox {
+                    id: compGroup
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 500
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Per-Phase Properties"
+                    contentPadding: 8
 
-                    // Liquid card
+                    // Sub-header row (column titles) — direct child of PGroupBox
                     Rectangle {
-                        id: liqCard
-                        x: 0; y: 0
-                        width: Math.floor((parent.width - 6) / 2)
-                        height: parent.height
-                        color: root.bg; border.color: root.hdrBdr; border.width: 1
-                        opacity: root.lf > 0.0001 ? 1.0 : 0.4
-
-                        Rectangle {
-                            x: 1; y: 1; width: parent.width - 2; height: root.headH
-                            color: root.liqHdr; border.color: root.hdrBdr; border.width: 1
-                            Text { x: root.lpad; width: parent.width - root.lpad*2; height: parent.height
-                                   text: "Liquid phase  (" + root.fmt(root.lf * 100, 1) + " %)"
-                                   font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                        }
-
-                        Repeater {
-                            model: [
-                                ["Mass flow",  root.fmt(root.massFlow  * root.lf, 1) + " kg/h"],
-                                ["Molar flow", root.fmt(root.molarFlow * root.lf, 3) + " kmol/h"],
-                                ["Vol. flow",  root.fmt(root.volFlow   * root.lf, 3) + " m³/h"],
-                                ["Density",    root.has() ? root.fmt(root.streamObject.liquidDensityKgM3,  2) + " kg/m³" : "—"],
-                                ["Viscosity",  root.has() ? root.fmt(root.streamObject.liquidViscosityCp,  4) + " cP"    : "—"],
-                                ["Enthalpy",   root.has() ? root.fmt(root.streamObject.liquidEnthalpyKJkg, 2) + " kJ/kg" : "—"],
-                            ]
-                            Rectangle {
-                                x: 1; y: root.headH + index * root.rh
-                                width: liqCard.width - 2; height: root.rh
-                                color: index % 2 === 0 ? root.rowEven : root.rowOdd
-                                border.color: root.hdrBdr; border.width: 1
-                                Text { x: root.lpad; width: 90; height: parent.height; text: modelData[0]; color: root.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter }
-                                Text { x: 96; width: parent.width - 100; height: parent.height; text: modelData[1];
-                                       color: modelData[1] === "—" ? root.dashCol : root.calcCol
-                                       font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight; elide: Text.ElideRight }
-                            }
-                        }
-                    }
-
-                    // Vapour card
-                    Rectangle {
-                        id: vapCard
-                        x: Math.floor((parent.width - 6) / 2) + 6
+                        id: compHeader
+                        width: compGroup.width - (compGroup.contentPadding * 2) - 2
                         y: 0
-                        width: Math.floor((parent.width - 6) / 2)
-                        height: parent.height
-                        color: root.bg; border.color: root.hdrBdr; border.width: 1
-                        opacity: root.vf > 0.0001 ? 1.0 : 0.4
+                        height: 22; color: "#c8d0d8"
+                        Row {
+                            anchors.fill: parent
+                            Item { width: 148; height: parent.height
+                                Text { anchors.left: parent.left; anchors.leftMargin: 6
+                                       anchors.verticalCenter: parent.verticalCenter
+                                       text: "Property"; font.pixelSize: 11; font.bold: true; color: "#1f2a34" }
+                            }
+                            Rectangle { width: parent.width - 148 - 72; height: parent.height
+                                color: "transparent"
+                                Row {
+                                    anchors.fill: parent
+                                    Item { width: parent.width / 2; height: parent.height
+                                        Rectangle { anchors.fill: parent; color: "#dbeafe"; border.color: "#97a2ad"; border.width: 1 }
+                                        Text { anchors.centerIn: parent; text: "Liquid"; font.pixelSize: 11; font.bold: true; color: "#1f2a34" }
+                                    }
+                                    Item { width: parent.width / 2; height: parent.height
+                                        Rectangle { anchors.fill: parent; color: "#fef9c3"; border.color: "#97a2ad"; border.width: 1 }
+                                        Text { anchors.centerIn: parent; text: "Vapour"; font.pixelSize: 11; font.bold: true; color: "#1f2a34" }
+                                    }
+                                }
+                            }
+                            Item { width: 72; height: parent.height
+                                Rectangle { anchors.fill: parent; color: "#c8d0d8"; border.color: "#97a2ad"; border.width: 1 }
+                                Text { anchors.centerIn: parent; text: "Unit"; font.pixelSize: 11; font.bold: true; color: "#1f2a34" }
+                            }
+                        }
+                    }
+
+                    GridLayout {
+                        id: cmpGrid
+                        width: compGroup.width - (compGroup.contentPadding * 2) - 2
+                        y: compHeader.height
+                        columns: 4; columnSpacing: 0; rowSpacing: 0
+
+                        // ── Density ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Density" }
+                        PGridValue { quantity: "Density"; alignText: "center"
+                                     siValue: root.streamObject ? root.streamObject.liquidDensityKgM3 : NaN
+                                     displayUnit: root.unitFor("Density") }
+                        PGridValue { quantity: "Density"; alignText: "center"
+                                     siValue: root.streamObject ? root.streamObject.vapourDensityKgM3 : NaN
+                                     displayUnit: root.unitFor("Density") }
+                        PGridUnit  { quantity: "Density"; displayUnit: root.unitFor("Density")
+                                     onUnitOverride: function(u) { root.setUnit("Density", u) } }
+
+                        // ── Viscosity ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Viscosity"; alt: true }
+                        PGridValue { quantity: "Viscosity"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siVisc(root.streamObject.liquidViscosityCp) : NaN
+                                     displayUnit: root.unitFor("Viscosity") }
+                        PGridValue { quantity: "Viscosity"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siVisc(root.streamObject.vapourViscosityCp) : NaN
+                                     displayUnit: root.unitFor("Viscosity") }
+                        PGridUnit  { quantity: "Viscosity"; alt: true; displayUnit: root.unitFor("Viscosity")
+                                     onUnitOverride: function(u) { root.setUnit("Viscosity", u) } }
+
+                        // ── Thermal conductivity ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Thermal conductivity" }
+                        PGridValue { quantity: "ThermalConductivity"; alignText: "center"
+                                     siValue: root.streamObject ? root.streamObject.liquidThermalCondWmK : NaN
+                                     displayUnit: root.unitFor("ThermalConductivity") }
+                        PGridValue { quantity: "ThermalConductivity"; alignText: "center"
+                                     siValue: root.streamObject ? root.streamObject.vapourThermalCondWmK : NaN
+                                     displayUnit: root.unitFor("ThermalConductivity") }
+                        PGridUnit  { quantity: "ThermalConductivity"; displayUnit: root.unitFor("ThermalConductivity")
+                                     onUnitOverride: function(u) { root.setUnit("ThermalConductivity", u) } }
+
+                        // ── Cp ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Heat capacity Cp"; alt: true }
+                        PGridValue { quantity: "SpecificHeat"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.liquidCpKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificHeat") }
+                        PGridValue { quantity: "SpecificHeat"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.vapourCpKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificHeat") }
+                        PGridUnit  { quantity: "SpecificHeat"; alt: true; displayUnit: root.unitFor("SpecificHeat")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificHeat", u) } }
+
+                        // ── Enthalpy ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Enthalpy" }
+                        PGridValue { quantity: "SpecificEnthalpy"; alignText: "center"
+                                     siValue: root.streamObject ? root._siEnth(root.streamObject.liquidEnthalpyKJkg) : NaN
+                                     displayUnit: root.unitFor("SpecificEnthalpy") }
+                        PGridValue { quantity: "SpecificEnthalpy"; alignText: "center"
+                                     siValue: root.streamObject ? root._siEnth(root.streamObject.vapourEnthalpyKJkg) : NaN
+                                     displayUnit: root.unitFor("SpecificEnthalpy") }
+                        PGridUnit  { quantity: "SpecificEnthalpy"; displayUnit: root.unitFor("SpecificEnthalpy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) } }
+
+                        // ── Entropy ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Entropy"; alt: true }
+                        PGridValue { quantity: "SpecificEntropy"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.liquidEntropyKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificEntropy") }
+                        PGridValue { quantity: "SpecificEntropy"; alt: true; alignText: "center"
+                                     siValue: root.streamObject ? root._siEntr(root.streamObject.vapourEntropyKJkgK) : NaN
+                                     displayUnit: root.unitFor("SpecificEntropy") }
+                        PGridUnit  { quantity: "SpecificEntropy"; alt: true; displayUnit: root.unitFor("SpecificEntropy")
+                                     onUnitOverride: function(u) { root.setUnit("SpecificEntropy", u) } }
+
+                        // ── Surface tension (only liquid; vapour is "—") ──
+                        PGridLabel { Layout.preferredWidth: 148; text: "Surface tension" }
+                        PGridValue { quantity: "SurfaceTension"; alignText: "center"
+                                     siValue: root.streamObject ? root.streamObject.surfaceTensionNm : NaN
+                                     displayUnit: root.unitFor("SurfaceTension") }
+                        PGridValue { quantity: "SurfaceTension"; alignText: "center"
+                                     isText: true; textValue: "—"; valueColor: "#aaaaaa" }
+                        PGridUnit  { quantity: "SurfaceTension"; displayUnit: root.unitFor("SurfaceTension")
+                                     onUnitOverride: function(u) { root.setUnit("SurfaceTension", u) } }
+                    }
+                }
+
+                // ── Phase envelope ──
+                PGroupBox {
+                    id: envGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Phase Envelope"
+                    contentPadding: 8
+
+                    GridLayout {
+                        id: envGrid
+                        width: envGroup.width - (envGroup.contentPadding * 2) - 2
+                        columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                        PGridLabel { Layout.preferredWidth: 148; text: "Bubble point" }
+                        PGridValue { quantity: "Temperature"
+                                     siValue: root.streamObject ? root.streamObject.bubblePointEstimateK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 148; text: "Dew point"; alt: true }
+                        PGridValue { quantity: "Temperature"; alt: true
+                                     siValue: root.streamObject ? root.streamObject.dewPointEstimateK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; alt: true; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 148; text: "Critical temperature" }
+                        PGridValue { quantity: "Temperature"
+                                     siValue: root.streamObject ? root.streamObject.criticalTemperatureK : NaN
+                                     displayUnit: root.unitFor("Temperature") }
+                        PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
+                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
+
+                        PGridLabel { Layout.preferredWidth: 148; text: "Critical pressure"; alt: true }
+                        PGridValue { quantity: "Pressure"; alt: true
+                                     siValue: root.streamObject ? root._siCriticalP(root.streamObject.criticalPressureKPa) : NaN
+                                     displayUnit: root.unitFor("Pressure") }
+                        PGridUnit  { quantity: "Pressure"; alt: true; displayUnit: root.unitFor("Pressure")
+                                     onUnitOverride: function(u) { root.setUnit("Pressure", u) } }
+                    }
+                }
+
+                // ── K-values spreadsheet (Composition-panel style) ──
+                PGroupBox {
+                    id: kGroup
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Equilibrium K-values  (y / x per component)"
+                    contentPadding: 8
+
+                    ColumnLayout {
+                        width: kGroup.width - (kGroup.contentPadding * 2) - 2
+                        spacing: 4
 
                         Rectangle {
-                            x: 1; y: 1; width: parent.width - 2; height: root.headH
-                            color: root.vapHdr; border.color: root.hdrBdr; border.width: 1
-                            Text { x: root.lpad; width: parent.width - root.lpad*2; height: parent.height
-                                   text: "Vapour phase  (" + root.fmt(root.vf * 100, 1) + " %)"
-                                   font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
+                            id: kWarning
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: visible ? 22 : 0
+                            visible: root.vf <= 0.0001 || root.vf >= 0.9999
+                            color: "#fff4db"; border.color: "#d19a1c"; border.width: 1
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "K-values are only meaningful in the two-phase region.  Current phase: " + root.phase
+                            color: "#744f00"; font.pixelSize: 11
                         }
+                    }
 
-                        Repeater {
-                            model: [
-                                ["Mass flow",  root.fmt(root.massFlow  * root.vf, 1) + " kg/h"],
-                                ["Molar flow", root.fmt(root.molarFlow * root.vf, 3) + " kmol/h"],
-                                ["Vol. flow",  root.fmt(root.volFlow   * root.vf, 3) + " m³/h"],
-                                ["Density",    root.has() ? root.fmt(root.streamObject.vapourDensityKgM3,  2) + " kg/m³" : "—"],
-                                ["Viscosity",  root.has() ? root.fmt(root.streamObject.vapourViscosityCp,  4) + " cP"    : "—"],
-                                ["Enthalpy",   root.has() ? root.fmt(root.streamObject.vapourEnthalpyKJkg, 2) + " kJ/kg" : "—"],
-                            ]
-                            Rectangle {
-                                x: 1; y: root.headH + index * root.rh
-                                width: vapCard.width - 2; height: root.rh
-                                color: index % 2 === 0 ? root.rowEven : root.rowOdd
-                                border.color: root.hdrBdr; border.width: 1
-                                Text { x: root.lpad; width: 90; height: parent.height; text: modelData[0]; color: root.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter }
-                                Text { x: 96; width: parent.width - 100; height: parent.height; text: modelData[1];
-                                       color: modelData[1] === "—" ? root.dashCol : root.calcCol
-                                       font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight; elide: Text.ElideRight }
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: kSheet.implicitHeight
+                            clip: true
+
+                            PSpreadsheet {
+                                id: kSheet
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                height: implicitHeight
+
+                            readOnly: true
+                            readOnlyCols: [0, 1, 2]
+                            numericOnlyCells: false
+                            alternatingRows: true
+                            stretchToWidth: true
+                            verticalScrollBarPolicy: ScrollBar.AlwaysOff
+                            horizontalScrollBarPolicy: ScrollBar.AlwaysOff
+                            cornerLabel: "Component"
+                            numCols: 3
+                            numRows: 0
+                            colLabels: ["x  (liquid)", "y  (vapour)", "K = y/x"]
+                            defaultColW: 88
+
+                            function refresh() {
+                                var rows = (root.vf > 0.0001 && root.vf < 0.9999 && root.streamObject)
+                                           ? root.streamObject.kValuesData : []
+                                numRows = rows ? rows.length : 0
+                                rowLabels = []
+                                clearAll()
+                                if (!rows || rows.length === 0)
+                                    return
+
+                                var labels = []
+                                for (var r = 0; r < rows.length; ++r) {
+                                    var row = rows[r] || ({})
+                                    labels.push(row["name"] || "")
+                                    setCell(r, 0, row["x"] !== undefined ? Number(row["x"]).toFixed(5) : "—")
+                                    setCell(r, 1, row["y"] !== undefined ? Number(row["y"]).toFixed(5) : "—")
+                                    setCell(r, 2, root._fmtK(row["K"]))
+                                }
+                                rowLabels = labels
+                                Qt.callLater(function() { kSheet.fitToWidth() })
+                            }
+
+                            onWheelPassthrough: function(deltaY, deltaX) {
+                                var outer = phasesScroll.contentItem
+                                if (!outer || outer.contentY === undefined)
+                                    return
+                                var step = 60
+                                if (deltaY !== 0) {
+                                    var maxY = Math.max(0, outer.contentHeight - outer.height)
+                                    var nextY = outer.contentY - (deltaY / 120) * step
+                                    outer.contentY = Math.max(0, Math.min(nextY, maxY))
+                                }
+                                if (deltaX !== 0 && outer.contentX !== undefined) {
+                                    var maxX = Math.max(0, outer.contentWidth - outer.width)
+                                    var nextX = outer.contentX - (deltaX / 120) * step
+                                    outer.contentX = Math.max(0, Math.min(nextX, maxX))
+                                }
+                            }
+
+                            Component.onCompleted: Qt.callLater(refresh)
+                            Connections {
+                                target: root
+                                function onStreamObjectChanged()       { Qt.callLater(kSheet.refresh) }
+                                function onVfChanged()                  { Qt.callLater(kSheet.refresh) }
+                            }
+                            Connections {
+                                target: root.streamObject
+                                ignoreUnknownSignals: true
+                                function onDerivedConditionsChanged() { Qt.callLater(kSheet.refresh) }
+                            }
                             }
                         }
                     }
                 }
 
-                // ── Phase comparison table ─────────────────────────────
-                Column {
-                    width: parent.width - 8; spacing: 0
-
-                    // Section header
-                    Rectangle {
-                        width: parent.width; height: root.headH
-                        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-                        Text { x: root.lpad; width: parent.width - root.lpad*2; height: parent.height
-                               text: "Phase property comparison"; font.pixelSize: 10; font.bold: true
-                               color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                    }
-                    // Column headers
-                    Rectangle {
-                        width: parent.width; height: root.rh
-                        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-                        readonly property real cw: (parent.width - 160 - root.lpad) / 3
-                        Text { x: root.lpad;              width: 160;         height: parent.height; text: "Property"; font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                        Text { x: 160 + root.lpad;        width: parent.cw;   height: parent.height; text: "Liquid";   font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                        Text { x: 160 + root.lpad + parent.cw;     width: parent.cw;   height: parent.height; text: "Vapour";  font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                        Text { x: 160 + root.lpad + 2*parent.cw;   width: parent.cw-4; height: parent.height; text: "Unit";    font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
-                    }
-                    Repeater {
-                        model: root.compRows
-                        Rectangle {
-                            width: parent.width; height: root.rh
-                            color: index % 2 === 0 ? root.rowEven : root.rowOdd
-                            border.color: root.hdrBdr; border.width: 1
-                            readonly property real cw: (parent.width - 160 - root.lpad) / 3
-                            Text { x: root.lpad;             width: 160;         height: parent.height; text: modelData.label; color: root.textMuted;  font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-                            Text { x: 160+root.lpad;         width: parent.cw;   height: parent.height; text: modelData.liq; color: modelData.liq === "—" ? root.dashCol : root.calcCol; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                            Text { x: 160+root.lpad+parent.cw;     width: parent.cw;   height: parent.height; text: modelData.vap; color: modelData.vap === "—" ? root.dashCol : root.calcCol; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                            Text { x: 160+root.lpad+2*parent.cw;   width: parent.cw-4; height: parent.height; text: modelData.unit; color: root.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
-                        }
-                    }
-                }
-
-                // ── Phase envelope ─────────────────────────────────────
-                Column {
-                    width: parent.width - 8; spacing: 0
-
-                    Rectangle {
-                        width: parent.width; height: root.headH
-                        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-                        Text { x: root.lpad; width: parent.width-root.lpad*2; height: parent.height
-                               text: "Phase envelope"; font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                    }
-                    Repeater {
-                        model: [
-                            { label: "Bubble point",         val: (root.bpK > 0 && isFinite(root.bpK)) ? root.fmtTK(root.bpK) : "—" },
-                            { label: "Dew point",            val: (root.dpK > 0 && isFinite(root.dpK)) ? root.fmtTK(root.dpK) : "—" },
-                            { label: "Critical temperature", val: root.has() ? root.fmtTK(root.streamObject.criticalTemperatureK) : "—" },
-                            { label: "Critical pressure",    val: root.has() ? (root.fmt(root.streamObject.criticalPressureKPa/100, 4) + " bar   (" + root.fmt(root.streamObject.criticalPressureKPa, 1) + " kPa)") : "—" },
-                        ]
-                        Rectangle {
-                            width: parent.width; height: root.rh
-                            color: index % 2 === 0 ? root.rowEven : root.rowOdd
-                            border.color: root.hdrBdr; border.width: 1
-                            Text { x: root.lpad; width: 160; height: parent.height; text: modelData.label; color: root.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter }
-                            Text { x: 160+root.lpad; width: parent.width-164-root.lpad; height: parent.height; text: modelData.val;
-                                   color: modelData.val === "—" ? root.dashCol : root.calcCol
-                                   font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-                        }
-                    }
-                }
-
-                // ── K-values table ─────────────────────────────────────
-                Column {
-                    width: parent.width - 8; spacing: 0
-
-                    Rectangle {
-                        width: parent.width; height: root.headH
-                        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-                        Text { x: root.lpad; width: parent.width-root.lpad*2; height: parent.height
-                               text: "Equilibrium K-values  (y / x per component)"
-                               font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                    }
-                    // Column headers
-                    Rectangle {
-                        width: parent.width; height: root.rh
-                        color: root.hdrBg; border.color: root.hdrBdr; border.width: 1
-                        readonly property real cw: (parent.width - 160 - root.lpad) / 3
-                        Text { x: root.lpad;               width: 160;         height: parent.height; text: "Component";  font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter }
-                        Text { x: 160+root.lpad;           width: parent.cw;   height: parent.height; text: "x  (liquid)"; font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                        Text { x: 160+root.lpad+parent.cw; width: parent.cw;   height: parent.height; text: "y  (vapour)"; font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                        Text { x: 160+root.lpad+2*parent.cw; width: parent.cw-4; height: parent.height; text: "K = y/x";  font.pixelSize: 10; font.bold: true; color: root.textMain; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
-                    }
-                    // Single-phase notice
-                    Rectangle {
-                        visible: root.vf <= 0.0001 || root.vf >= 0.9999
-                        width: parent.width; height: root.rh + 4
-                        color: root.warnBg; border.color: "#d19a1c"; border.width: 1
-                        Text { x: root.lpad; width: parent.width-root.lpad*2; height: parent.height
-                               text: "K-values are only meaningful in the two-phase region.  Current phase: " + root.phase
-                               color: root.warnText; font.pixelSize: 10; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignVCenter }
-                    }
-                    Repeater {
-                        model: (root.vf > 0.0001 && root.vf < 0.9999 && root.has())
-                               ? root.streamObject.kValuesData : []
-                        Rectangle {
-                            width: parent.width; height: root.rh
-                            color: index % 2 === 0 ? root.rowEven : root.rowOdd
-                            border.color: root.hdrBdr; border.width: 1
-                            readonly property real cw: (parent.width - 160 - root.lpad) / 3
-                            readonly property string kStr: {
-                                const k = modelData["K"]
-                                return (k !== undefined && isFinite(k) && k >= 0) ? k.toFixed(4) : "—"
-                            }
-                            Text { x: root.lpad;               width: 160;     height: parent.height; text: modelData["name"] || ""; color: root.textMuted; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-                            Text { x: 160+root.lpad;           width: parent.cw; height: parent.height; text: modelData["x"] !== undefined ? Number(modelData["x"]).toFixed(5) : "—"; color: root.calcCol; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                            Text { x: 160+root.lpad+parent.cw; width: parent.cw; height: parent.height; text: modelData["y"] !== undefined ? Number(modelData["y"]).toFixed(5) : "—"; color: root.calcCol; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignHCenter }
-                            Text { x: 160+root.lpad+2*parent.cw; width: parent.cw-4; height: parent.height; text: parent.kStr;
-                                   color: parent.kStr === "—" ? root.dashCol : root.calcCol; font.pixelSize: 10; verticalAlignment: Text.AlignVCenter; horizontalAlignment: Text.AlignRight }
-                        }
-                    }
-                }
-
-                Item { height: 8 }
+                Item { Layout.fillHeight: true }
             }
         }
     }

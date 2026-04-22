@@ -24,7 +24,7 @@ Item {
     z: panelZ + (active ? 1 : 0)
 
     readonly property int titleBarH: 32
-    readonly property int cornerR: 0   // sharp corners (HYSYS-style)
+    readonly property int cornerR: 8
 
     function clampX(v) {
         if (!boundsItem) return v

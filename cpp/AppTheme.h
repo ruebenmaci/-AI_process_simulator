@@ -77,6 +77,85 @@ class AppTheme : public QObject
       Q_PROPERTY(QColor  toolbarBg           READ toolbarBg           NOTIFY themeChanged)
       Q_PROPERTY(QColor  toolbarBorder       READ toolbarBorder       NOTIFY themeChanged)
 
+      // ═════════════════════════════════════════════════════════════════════════════
+      //  AppTheme.h PATCH  —  Property-view dimensional theme tokens
+      // ═════════════════════════════════════════════════════════════════════════════
+      //
+      //  Add the Q_PROPERTY declarations below to the existing block of
+      //  Q_PROPERTY declarations in AppTheme.h (around line 78, after the
+      //  toolbar properties).
+      //
+      //  Add the corresponding accessor methods to the public section of
+      //  the class (around line 160, with the other QColor accessors).
+      //
+      //  No existing code needs to be modified — these are pure additions
+      //  alongside what already exists.
+      //
+      //  The token set is exhaustive for the whole control vocabulary
+      //  (PPropertyView, PTabBar, PGroupBox, PGridLabel, PGridValue,
+      //  PGridUnit, PCheckBox, PComboBox, PButton, PIconButton, PSpreadsheet)
+      //  so we don't have to revisit AppTheme as we build each control.
+      //
+      //  THREE THEMES SHIPPED:
+      //    "Default"      — compact grey (the one you approved in the mockup)
+      //    "HYSYS"        — beige Win32 legacy
+      //    "AspenPlus"    — placeholder, copy of Default for now
+      //
+      //  Adding a new theme later is purely a matter of adding more
+      //  if-branches in each accessor. No new code in any QML control.
+      // ═════════════════════════════════════════════════════════════════════════════
+
+
+      // ──────────────────────────────────────────────────────────────────────────────
+      //  STEP 1 — Q_PROPERTY DECLARATIONS
+      //  Add this entire block inside the Q_OBJECT block, after the existing
+      //  toolbar Q_PROPERTYs (around line 78) and before "public:" on line 80.
+      // ──────────────────────────────────────────────────────────────────────────────
+
+      // ── Property View chrome (window frame, page area, tab strip) ───────────
+      Q_PROPERTY(QColor  pvFrame             READ pvFrame             NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvFrameHi           READ pvFrameHi           NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvFrameLo           READ pvFrameLo           NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTitleBg           READ pvTitleBg           NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTitleText         READ pvTitleText         NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTabStripBg        READ pvTabStripBg        NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTabActive         READ pvTabActive         NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTabInactive       READ pvTabInactive       NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTabActiveText     READ pvTabActiveText     NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvTabInactiveText   READ pvTabInactiveText   NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvPageBg            READ pvPageBg            NOTIFY themeChanged)
+
+      // ── GroupBox (etched border + embedded caption) ────────────────────────
+      Q_PROPERTY(QColor  pvGroupBorder       READ pvGroupBorder       NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvGroupBorderHi     READ pvGroupBorderHi     NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvGroupCaption      READ pvGroupCaption      NOTIFY themeChanged)
+
+      // ── Form cells (sunken/raised cell chrome, label + value + unit) ──────
+      Q_PROPERTY(QColor  pvLabelText         READ pvLabelText         NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellSunkenHi      READ pvCellSunkenHi      NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellSunkenLo      READ pvCellSunkenLo      NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellCalcBg        READ pvCellCalcBg        NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellCalcText      READ pvCellCalcText      NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellEditBg        READ pvCellEditBg        NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellEditText      READ pvCellEditText      NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvCellFocusBorder   READ pvCellFocusBorder   NOTIFY themeChanged)
+
+      // ── Unit token (raised chrome, distinct from value cells) ─────────────
+      Q_PROPERTY(QColor  pvUnitBg            READ pvUnitBg            NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvUnitText          READ pvUnitText          NOTIFY themeChanged)
+
+      // ── Buttons / interactive (raised chrome, pressed inverts) ────────────
+      Q_PROPERTY(QColor  pvButtonBg          READ pvButtonBg          NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvButtonHover       READ pvButtonHover       NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvButtonPressed     READ pvButtonPressed     NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvButtonText        READ pvButtonText        NOTIFY themeChanged)
+      Q_PROPERTY(QColor  pvButtonDisabled    READ pvButtonDisabled    NOTIFY themeChanged)
+
+      // ── Numeric font sizes (so the whole vocabulary uses one source) ──────
+      Q_PROPERTY(int     pvFontSize          READ pvFontSize          CONSTANT)
+      Q_PROPERTY(int     pvFontSizeSmall     READ pvFontSizeSmall     CONSTANT)
+      Q_PROPERTY(int     pvFontSizeCaption   READ pvFontSizeCaption   CONSTANT)
+
 public:
    explicit AppTheme(QObject* parent = nullptr) : QObject(parent) {}
 
@@ -275,6 +354,183 @@ public:
       if (m_theme == "AspenPlus") return QColor("#8aaac8");
       return QColor("#2a3b49");
    }
+
+   // ──────────────────────────────────────────────────────────────────────────────
+   //  STEP 2 — ACCESSOR METHODS
+   //  Add this block to the public section, after the existing toolbar accessors
+   //  (around line 250 or wherever the existing accessors end, before any
+   //  "private:" or "signals:" sections).
+   // ──────────────────────────────────────────────────────────────────────────────
+
+   // ─── Property View chrome ──────────────────────────────────────────────────
+   QColor pvFrame() const {
+      if (m_theme == "HYSYS")     return QColor("#ece9d8");
+      if (m_theme == "AspenPlus") return QColor("#d8dade");
+      return QColor("#d8dade");
+   }
+   QColor pvFrameHi() const {
+      if (m_theme == "HYSYS")     return QColor("#ffffff");
+      if (m_theme == "AspenPlus") return QColor("#ffffff");
+      return QColor("#ffffff");
+   }
+   QColor pvFrameLo() const {
+      if (m_theme == "HYSYS")     return QColor("#5a6573");
+      if (m_theme == "AspenPlus") return QColor("#5a5e66");
+      return QColor("#5a5e66");
+   }
+   QColor pvTitleBg() const {
+      if (m_theme == "HYSYS")     return QColor("#d6d3c2");
+      if (m_theme == "AspenPlus") return QColor("#c2c5cb");
+      return QColor("#c2c5cb");
+   }
+   QColor pvTitleText() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+   QColor pvTabStripBg() const {
+      if (m_theme == "HYSYS")     return QColor("#ece9d8");
+      if (m_theme == "AspenPlus") return QColor("#d8dade");
+      return QColor("#d8dade");
+   }
+   QColor pvTabActive() const {
+      if (m_theme == "HYSYS")     return QColor("#f5f4ec");
+      if (m_theme == "AspenPlus") return QColor("#ebedf0");
+      return QColor("#ebedf0");
+   }
+   QColor pvTabInactive() const {
+      if (m_theme == "HYSYS")     return QColor("#d6d3c2");
+      if (m_theme == "AspenPlus") return QColor("#c5c8ce");
+      return QColor("#c5c8ce");
+   }
+   QColor pvTabActiveText() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+   QColor pvTabInactiveText() const {
+      if (m_theme == "HYSYS")     return QColor("#4a5260");
+      if (m_theme == "AspenPlus") return QColor("#555a64");
+      return QColor("#555a64");
+   }
+   QColor pvPageBg() const {
+      if (m_theme == "HYSYS")     return QColor("#f5f4ec");
+      if (m_theme == "AspenPlus") return QColor("#ebedf0");
+      return QColor("#ebedf0");
+   }
+
+   // ─── GroupBox ─────────────────────────────────────────────────────────────
+   QColor pvGroupBorder() const {
+      if (m_theme == "HYSYS")     return QColor("#8a8275");
+      if (m_theme == "AspenPlus") return QColor("#8a8e96");
+      return QColor("#8a8e96");
+   }
+   QColor pvGroupBorderHi() const {
+      // The 1-px highlight that gives the etched border its "engraved" look.
+      // Always near-white regardless of theme; the contrast against pvGroupBorder
+      // is what creates the bevel illusion.
+      return QColor("#ffffff");
+   }
+   QColor pvGroupCaption() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+
+   // ─── Form cells ───────────────────────────────────────────────────────────
+   QColor pvLabelText() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+   QColor pvCellSunkenHi() const {
+      // Bottom-right of sunken cell border (highlight side of inset bevel).
+      return QColor("#ffffff");
+   }
+   QColor pvCellSunkenLo() const {
+      // Top-left of sunken cell border (shadow side of inset bevel).
+      if (m_theme == "HYSYS")     return QColor("#6e7280");
+      if (m_theme == "AspenPlus") return QColor("#6c7079");
+      return QColor("#6c7079");
+   }
+   QColor pvCellCalcBg() const {
+      if (m_theme == "HYSYS")     return QColor("#ffffff");
+      if (m_theme == "AspenPlus") return QColor("#ffffff");
+      return QColor("#ffffff");
+   }
+   QColor pvCellCalcText() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+   QColor pvCellEditBg() const {
+      // Whisper-pale tint to distinguish editable cells from calculated.
+      if (m_theme == "HYSYS")     return QColor("#fbfdff");
+      if (m_theme == "AspenPlus") return QColor("#fbfdff");
+      return QColor("#fbfdff");
+   }
+   QColor pvCellEditText() const {
+      if (m_theme == "HYSYS")     return QColor("#1c4ea7");
+      if (m_theme == "AspenPlus") return QColor("#1c4ea7");
+      return QColor("#1c4ea7");
+   }
+   QColor pvCellFocusBorder() const {
+      // 1-px border drawn around the focused cell, on top of the chiseled inset.
+      if (m_theme == "HYSYS")     return QColor("#1c4ea7");
+      if (m_theme == "AspenPlus") return QColor("#1c4ea7");
+      return QColor("#1c4ea7");
+   }
+
+   // ─── Unit token ───────────────────────────────────────────────────────────
+   QColor pvUnitBg() const {
+      // Same as the panel frame chrome — the unit token shares that "raised
+      // chrome" feel rather than looking like another data cell.
+      if (m_theme == "HYSYS")     return QColor("#ece9d8");
+      if (m_theme == "AspenPlus") return QColor("#d8dade");
+      return QColor("#d8dade");
+   }
+   QColor pvUnitText() const {
+      if (m_theme == "HYSYS")     return QColor("#2b5d8a");
+      if (m_theme == "AspenPlus") return QColor("#2b5d8a");
+      return QColor("#2b5d8a");
+   }
+
+   // ─── Buttons ──────────────────────────────────────────────────────────────
+   QColor pvButtonBg() const {
+      if (m_theme == "HYSYS")     return QColor("#ece9d8");
+      if (m_theme == "AspenPlus") return QColor("#d8dade");
+      return QColor("#d8dade");
+   }
+   QColor pvButtonHover() const {
+      if (m_theme == "HYSYS")     return QColor("#f0eee2");
+      if (m_theme == "AspenPlus") return QColor("#e2e4e8");
+      return QColor("#e2e4e8");
+   }
+   QColor pvButtonPressed() const {
+      // Slightly darker — combined with bevel inversion this reads as "pressed in"
+      if (m_theme == "HYSYS")     return QColor("#d6d3c2");
+      if (m_theme == "AspenPlus") return QColor("#c2c5cb");
+      return QColor("#c2c5cb");
+   }
+   QColor pvButtonText() const {
+      if (m_theme == "HYSYS")     return QColor("#1f2a34");
+      if (m_theme == "AspenPlus") return QColor("#1f2226");
+      return QColor("#1f2226");
+   }
+   QColor pvButtonDisabled() const {
+      if (m_theme == "HYSYS")     return QColor("#9aa0a8");
+      if (m_theme == "AspenPlus") return QColor("#9098a0");
+      return QColor("#9098a0");
+   }
+
+   // ─── Font sizes (constants — same across themes for consistency) ──────────
+   int pvFontSize() const { return 11; }   // Body text in cells, labels, tab text
+   int pvFontSizeSmall() const { return 10; }   // Unit tokens, secondary text
+   int pvFontSizeCaption() const { return 11; }   // GroupBox captions
+
+   // ═════════════════════════════════════════════════════════════════════════════
+   //  END OF PATCH
+   // ═════════════════════════════════════════════════════════════════════════════
 
 signals:
    void themeChanged();

@@ -188,6 +188,11 @@ Item {
         displaySettingsPopup.visible = true
     }
 
+    function openUnitsFormatSettings() {
+        unitsFormatSettingsDialog.visible = true
+        unitsFormatSettingsDialog.forceActiveFocus()
+    }
+
     function setTheme(themeKey) {
         gAppTheme.currentTheme = themeKey
         pfdCanvas.requestPaint()
@@ -444,9 +449,19 @@ Item {
         visible: root.floatingWorkspaceVisible && !!root.activeUnit
         onVisibleChanged: if (visible) { root.raisePanel(floatingWorkspace); Qt.callLater(function() { root.applyPanelRelativePosition(floatingWorkspace, "floatingWorkspacePos", "floatingWorkspaceRelPos", 40, 40) }) }
         panelTitle: root.workspaceTitle()
-        panelIconSource: root.activeUnit && root.activeUnit.type === "stream"
-                         ? Qt.resolvedUrl(gAppTheme.iconPath("Material_Stream"))
-                         : Qt.resolvedUrl(gAppTheme.iconPath("dist_column"))
+        // Drive the title-bar icon from the active unit's iconKey so every
+        // unit-op type (heater, cooler, heat_exchanger, etc.) picks up its
+        // own SVG automatically. Streams and columns keep their existing
+        // legacy-key behaviour so their icons don't change.
+        panelIconSource: {
+            if (!root.activeUnit) return ""
+            var t = root.activeUnit.type
+            var key
+            if (t === "stream")      key = "Material_Stream"
+            else if (t === "column") key = "dist_column"
+            else                     key = root.activeUnit.iconKey || "dist_column"
+            return Qt.resolvedUrl(gAppTheme.iconPath(key))
+        }
         boundsItem: root
 
         // Update title whenever the selected unit changes (type switch stream↔column)
@@ -469,10 +484,17 @@ Item {
 
         readonly property int columnNormalWidth:  960
         readonly property int columnNormalHeight: 780
-        readonly property int streamWidth:        664
+        readonly property int streamWidth:        530
         readonly property int streamHeight:       652
-        readonly property int heaterWidth:        350
-        readonly property int heaterHeight:       465
+        // Heater/Cooler/HEX panel size derived from ground-up row math:
+        //   PGridLabel 180 + PGridValue ~120 + PGridUnit 72 = 372 px row
+        //   + PGroupBox padding/bevel (~18) + ScrollView margin (8)
+        //   + FloatingPanel contentHost margin (8) = ~410 px wide.
+        //   Height accommodates tab strip (32) + Connections (~130)
+        //   + Specifications (~90) + Conditions (~55) + paddings/spacings
+        //   + bottom bar (40) + chrome + breathing room ≈ 420.
+        readonly property int heaterWidth:        410
+        readonly property int heaterHeight:       420
 
         readonly property bool streamMode:  !!root.activeUnit && root.activeUnit.type === "stream"
         readonly property bool heaterMode:  !!root.activeUnit && root.activeUnit.type === "heater"
@@ -643,6 +665,900 @@ Item {
         }
     }
 
+
+
+    Item {
+        id: unitsFormatSettingsDialog
+        visible: false
+        z: 560
+        width: 760
+        height: Math.min(root.height - 48, 560)
+        x: Math.max(24, Math.min(root.width - width - 24, (root.width - width) / 2))
+        y: Math.max(24, Math.min(root.height - height - 24, (root.height - height) / 2))
+        focus: visible
+
+        property int currentTab: 0
+        property string unitsStatusText: ""
+        property string formatsStatusText: ""
+
+        function refreshSetModels() {
+            if (typeof gUnits !== "undefined")
+                unitsSetCombo.model = gUnits.unitSetNames()
+            if (typeof gFormats !== "undefined")
+                formatSetCombo.model = gFormats.formatSetNames()
+        }
+
+        function close() {
+            visible = false
+        }
+
+        onVisibleChanged: if (visible) refreshSetModels()
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: "#eef3f6"
+            border.color: "#7f8f9b"
+            border.width: 1
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 8
+
+            Rectangle {
+                Layout.fillWidth: true
+                height: 36
+                radius: 6
+                color: "#d8e1e7"
+                border.color: "#93a3ae"
+
+                Label {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Units & Number Formats"
+                    font.pixelSize: 13
+                    font.bold: true
+                    color: "#17212b"
+                }
+
+                Rectangle {
+                    width: 22; height: 22
+                    radius: 4
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: closeUnitsSettingsMouse.containsMouse ? "#cdd7de" : "transparent"
+                    border.color: closeUnitsSettingsMouse.containsMouse ? "#8fa0ac" : "transparent"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✕"
+                        font.pixelSize: 11
+                        color: "#31414d"
+                    }
+                    MouseArea {
+                        id: closeUnitsSettingsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: unitsFormatSettingsDialog.close()
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Rectangle {
+                    Layout.preferredWidth: 124
+                    Layout.preferredHeight: 26
+                    radius: 4
+                    color: unitsFormatSettingsDialog.currentTab === 0 ? "#ffffff" : "#d7e0e6"
+                    border.color: unitsFormatSettingsDialog.currentTab === 0 ? "#7f8f9b" : "#a3b0b9"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Units"
+                        font.pixelSize: 11
+                        font.bold: unitsFormatSettingsDialog.currentTab === 0
+                        color: "#17212b"
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: unitsFormatSettingsDialog.currentTab = 0 }
+                }
+                Rectangle {
+                    Layout.preferredWidth: 170
+                    Layout.preferredHeight: 26
+                    radius: 4
+                    color: unitsFormatSettingsDialog.currentTab === 1 ? "#ffffff" : "#d7e0e6"
+                    border.color: unitsFormatSettingsDialog.currentTab === 1 ? "#7f8f9b" : "#a3b0b9"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Number Formats"
+                        font.pixelSize: 11
+                        font.bold: unitsFormatSettingsDialog.currentTab === 1
+                        color: "#17212b"
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: unitsFormatSettingsDialog.currentTab = 1 }
+                }
+                Item { Layout.fillWidth: true }
+            }
+
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: unitsFormatSettingsDialog.currentTab
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Text {
+                                text: "Active unit set"
+                                font.pixelSize: 11
+                                color: "#344451"
+                            }
+                            ComboBox {
+                                id: unitsSetCombo
+                                Layout.preferredWidth: 160
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                model: []
+                                background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                                contentItem: Text {
+                                    leftPadding: 4
+                                    rightPadding: 18
+                                    text: unitsSetCombo.displayText
+                                    color: "#1c4ea7"
+                                    font.pixelSize: 11
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                Component.onCompleted: unitsFormatSettingsDialog.refreshSetModels()
+                                onActivated: {
+                                    if (typeof gUnits !== "undefined")
+                                        gUnits.activeUnitSet = model[index]
+                                }
+                                Connections {
+                                    target: (typeof gUnits !== "undefined") ? gUnits : null
+                                    ignoreUnknownSignals: true
+                                    function onActiveUnitSetChanged() {
+                                        if (typeof gUnits === "undefined") return
+                                        var names = gUnits.unitSetNames()
+                                        unitsSetCombo.model = names
+                                        var i = names.indexOf(gUnits.activeUnitSet)
+                                        unitsSetCombo.currentIndex = i >= 0 ? i : 0
+                                    }
+                                }
+                            }
+                            TextField {
+                                id: cloneUnitSetField
+                                Layout.preferredWidth: 140
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                placeholderText: "New set name"
+                                selectByMouse: true
+                                background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 50
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: cloneUnitSetMouse.containsMouse ? "#d6e6f5" : "#e7edf2"
+                                border.color: "#8ea0ad"
+                                Text { anchors.centerIn: parent; text: "Clone"; font.pixelSize: 11; color: "#22303a" }
+                                MouseArea {
+                                    id: cloneUnitSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (typeof gUnits === "undefined") return
+                                        var newName = cloneUnitSetField.text.trim()
+                                        if (newName.length === 0) {
+                                            unitsFormatSettingsDialog.unitsStatusText = "Enter a new unit-set name."
+                                        } else if (gUnits.cloneUnitSet(gUnits.activeUnitSet, newName)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            gUnits.activeUnitSet = newName
+                                            cloneUnitSetField.text = ""
+                                            unitsFormatSettingsDialog.unitsStatusText = "Cloned unit set."
+                                        } else {
+                                            unitsFormatSettingsDialog.unitsStatusText = "Clone failed. Name may already exist."
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 56
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: renameUnitSetMouse.containsMouse ? "#d6e6f5" : "#e7edf2"
+                                border.color: "#8ea0ad"
+                                Text { anchors.centerIn: parent; text: "Rename"; font.pixelSize: 11; color: "#22303a" }
+                                MouseArea {
+                                    id: renameUnitSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (typeof gUnits === "undefined") return
+                                        var newName = cloneUnitSetField.text.trim()
+                                        if (newName.length === 0) {
+                                            unitsFormatSettingsDialog.unitsStatusText = "Enter a new unit-set name."
+                                        } else if (gUnits.renameUnitSet(gUnits.activeUnitSet, newName)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            gUnits.activeUnitSet = newName
+                                            cloneUnitSetField.text = ""
+                                            unitsFormatSettingsDialog.unitsStatusText = "Renamed unit set."
+                                        } else {
+                                            unitsFormatSettingsDialog.unitsStatusText = "Rename failed. Built-in sets cannot be renamed."
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 50
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: deleteUnitSetMouse.containsMouse ? "#f1d9d9" : "#f7e8e8"
+                                border.color: "#b88f8f"
+                                opacity: (typeof gUnits !== "undefined" && !gUnits.isBuiltInUnitSet(gUnits.activeUnitSet)) ? 1.0 : 0.55
+                                Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 11; color: "#7a2d2d" }
+                                MouseArea {
+                                    id: deleteUnitSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: (typeof gUnits !== "undefined" && !gUnits.isBuiltInUnitSet(gUnits.activeUnitSet))
+                                    onClicked: {
+                                        if (typeof gUnits === "undefined") return
+                                        var doomed = gUnits.activeUnitSet
+                                        if (gUnits.deleteUnitSet(doomed)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            unitsFormatSettingsDialog.unitsStatusText = "Deleted unit set."
+                                        } else {
+                                            unitsFormatSettingsDialog.unitsStatusText = "Delete failed."
+                                        }
+                                    }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.maximumWidth: 150
+                                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                horizontalAlignment: Text.AlignRight
+                                text: (typeof gUnits !== "undefined" && gUnits.isBuiltInUnitSet(gUnits.activeUnitSet))
+                                      ? "Built-in sets are read-only — clone to edit"
+                                      : "Editing active custom set"
+                                font.pixelSize: 10
+                                color: "#526571"
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: unitsFormatSettingsDialog.unitsStatusText
+                            visible: text.length > 0
+                            font.pixelSize: 10
+                            color: text.indexOf("failed") >= 0 ? "#9c2f2f" : "#526571"
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: "#f8fbfc"
+                            border.color: "#a8b5bf"
+                            border.width: 1
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                spacing: 0
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 24
+                                    color: "#dfe7ec"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 12
+                                        Text { width: 200; anchors.verticalCenter: parent.verticalCenter; text: "Quantity"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                        Text { width: 140; anchors.verticalCenter: parent.verticalCenter; text: "Display Unit"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                    }
+                                }
+
+                                ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+
+                                    Column {
+                                        width: parent.width
+                                        Repeater {
+                                            model: (typeof gUnits !== "undefined") ? gUnits.knownQuantities() : []
+                                            delegate: Rectangle {
+                                                width: parent ? parent.width : 0
+                                                height: 22
+                                                color: index % 2 === 0 ? "#ffffff" : "#f3f7f9"
+                                                Row {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 8
+                                                    anchors.rightMargin: 8
+                                                    spacing: 12
+                                                    Text {
+                                                        width: 200
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: modelData
+                                                        font.pixelSize: 11
+                                                        color: "#17212b"
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    Loader {
+                                                        width: 140
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        sourceComponent: (typeof gUnits !== "undefined" && !gUnits.isBuiltInUnitSet(gUnits.activeUnitSet)) ? unitEditorComponent : unitReadOnlyComponent
+                                                        onLoaded: {
+                                                            if (item) item.quantityName = modelData
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Text {
+                                text: "Active format set"
+                                font.pixelSize: 11
+                                color: "#344451"
+                            }
+                            ComboBox {
+                                id: formatSetCombo
+                                Layout.preferredWidth: 170
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                model: []
+                                background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                                contentItem: Text {
+                                    leftPadding: 4
+                                    rightPadding: 18
+                                    text: formatSetCombo.displayText
+                                    color: "#1c4ea7"
+                                    font.pixelSize: 11
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                Component.onCompleted: unitsFormatSettingsDialog.refreshSetModels()
+                                onActivated: {
+                                    if (typeof gFormats !== "undefined")
+                                        gFormats.activeFormatSet = model[index]
+                                }
+                                Connections {
+                                    target: (typeof gFormats !== "undefined") ? gFormats : null
+                                    ignoreUnknownSignals: true
+                                    function onActiveFormatSetChanged() {
+                                        if (typeof gFormats === "undefined") return
+                                        var names = gFormats.formatSetNames()
+                                        formatSetCombo.model = names
+                                        var i = names.indexOf(gFormats.activeFormatSet)
+                                        formatSetCombo.currentIndex = i >= 0 ? i : 0
+                                    }
+                                    function onFormatsChanged() {
+                                        formatSetCombo.model = (typeof gFormats !== "undefined") ? gFormats.formatSetNames() : []
+                                    }
+                                }
+                            }
+                            TextField {
+                                id: cloneFormatSetField
+                                Layout.preferredWidth: 140
+                                implicitHeight: 22
+                                font.pixelSize: 11
+                                placeholderText: "New set name"
+                                selectByMouse: true
+                                background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 50
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: cloneFormatSetMouse.containsMouse ? "#d6e6f5" : "#e7edf2"
+                                border.color: "#8ea0ad"
+                                Text { anchors.centerIn: parent; text: "Clone"; font.pixelSize: 11; color: "#22303a" }
+                                MouseArea {
+                                    id: cloneFormatSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (typeof gFormats === "undefined") return
+                                        var newName = cloneFormatSetField.text.trim()
+                                        if (newName.length === 0) {
+                                            unitsFormatSettingsDialog.formatsStatusText = "Enter a new format-set name."
+                                        } else if (gFormats.cloneFormatSet(gFormats.activeFormatSet, newName)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            gFormats.activeFormatSet = newName
+                                            cloneFormatSetField.text = ""
+                                            unitsFormatSettingsDialog.formatsStatusText = "Cloned format set."
+                                        } else {
+                                            unitsFormatSettingsDialog.formatsStatusText = "Clone failed. Name may already exist."
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 56
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: renameFormatSetMouse.containsMouse ? "#d6e6f5" : "#e7edf2"
+                                border.color: "#8ea0ad"
+                                Text { anchors.centerIn: parent; text: "Rename"; font.pixelSize: 11; color: "#22303a" }
+                                MouseArea {
+                                    id: renameFormatSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: {
+                                        if (typeof gFormats === "undefined") return
+                                        var newName = cloneFormatSetField.text.trim()
+                                        if (newName.length === 0) {
+                                            unitsFormatSettingsDialog.formatsStatusText = "Enter a new format-set name."
+                                        } else if (gFormats.renameFormatSet(gFormats.activeFormatSet, newName)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            gFormats.activeFormatSet = newName
+                                            cloneFormatSetField.text = ""
+                                            unitsFormatSettingsDialog.formatsStatusText = "Renamed format set."
+                                        } else {
+                                            unitsFormatSettingsDialog.formatsStatusText = "Rename failed. Built-in sets cannot be renamed."
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.preferredWidth: 50
+                                Layout.preferredHeight: 22
+                                radius: 4
+                                color: deleteFormatSetMouse.containsMouse ? "#f1d9d9" : "#f7e8e8"
+                                border.color: "#b88f8f"
+                                opacity: (typeof gFormats !== "undefined" && !gFormats.isBuiltInFormatSet(gFormats.activeFormatSet)) ? 1.0 : 0.55
+                                Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 11; color: "#7a2d2d" }
+                                MouseArea {
+                                    id: deleteFormatSetMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: (typeof gFormats !== "undefined" && !gFormats.isBuiltInFormatSet(gFormats.activeFormatSet))
+                                    onClicked: {
+                                        if (typeof gFormats === "undefined") return
+                                        if (gFormats.deleteFormatSet(gFormats.activeFormatSet)) {
+                                            unitsFormatSettingsDialog.refreshSetModels()
+                                            unitsFormatSettingsDialog.formatsStatusText = "Deleted format set."
+                                        } else {
+                                            unitsFormatSettingsDialog.formatsStatusText = "Delete failed."
+                                        }
+                                    }
+                                }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.maximumWidth: 150
+                                Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                horizontalAlignment: Text.AlignRight
+                                text: (typeof gFormats !== "undefined" && gFormats.isBuiltInFormatSet(gFormats.activeFormatSet))
+                                      ? "Built-in sets are read-only — clone to edit"
+                                      : "Editing active custom set"
+                                font.pixelSize: 10
+                                color: "#526571"
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: unitsFormatSettingsDialog.formatsStatusText
+                            visible: text.length > 0
+                            font.pixelSize: 10
+                            color: text.indexOf("failed") >= 0 ? "#9c2f2f" : "#526571"
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            color: "#f8fbfc"
+                            border.color: "#a8b5bf"
+                            border.width: 1
+                            clip: true
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                spacing: 0
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 24
+                                    color: "#dfe7ec"
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        spacing: 10
+                                        Text { width: 160; anchors.verticalCenter: parent.verticalCenter; text: "Quantity"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                        Text { width: 80; anchors.verticalCenter: parent.verticalCenter; text: "Mode"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                        Text { width: 50; anchors.verticalCenter: parent.verticalCenter; text: "Digits"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                        Text { width: 60; anchors.verticalCenter: parent.verticalCenter; text: "Exp sw"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                        Text { width: 100; anchors.verticalCenter: parent.verticalCenter; text: "Sample"; font.pixelSize: 11; font.bold: true; color: "#22303a" }
+                                    }
+                                }
+
+                                ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+
+                                    Column {
+                                        width: parent.width
+                                        Repeater {
+                                            model: (typeof gFormats !== "undefined") ? gFormats.knownQuantities() : []
+                                            delegate: Rectangle {
+                                                width: parent ? parent.width : 0
+                                                height: 22
+                                                color: index % 2 === 0 ? "#ffffff" : "#f3f7f9"
+
+                                                function modeText(kind) {
+                                                    if (kind === 0) return "Fixed"
+                                                    if (kind === 1) return "SigFig"
+                                                    if (kind === 2) return "Exp"
+                                                    return "—"
+                                                }
+
+                                                function sampleValueFor(quantity) {
+                                                    switch (quantity) {
+                                                    case "Temperature": return 25.0
+                                                    case "Pressure": return 2175.0
+                                                    case "MassFlow": return 100000.0
+                                                    case "MolarFlow": return 467.575
+                                                    case "VolumeFlow": return 0.1299
+                                                    case "MassFraction": return 0.045
+                                                    case "MoleFraction": return 0.045
+                                                    case "VapourFraction": return 0.5
+                                                    case "MolarMass": return 78.11
+                                                    case "Density": return 876.45
+                                                    case "SpecificEnthalpy": return 123456.0
+                                                    case "SpecificEntropy": return 1.765
+                                                    case "SpecificHeat": return 2.314
+                                                    case "Viscosity": return 0.0008945
+                                                    case "ThermalConductivity": return 0.1234
+                                                    case "SurfaceTension": return 0.0725
+                                                    case "KValue": return 0.001234
+                                                    case "SpecificGravity": return 0.543
+                                                    case "Acentric": return 0.047
+                                                    case "Omega": return 0.047
+                                                    default: return 12.3456
+                                                    }
+                                                }
+
+                                                Row {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 8
+                                                    anchors.rightMargin: 8
+                                                    spacing: 10
+                                                    Text {
+                                                        width: 160
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: modelData
+                                                        font.pixelSize: 11
+                                                        color: "#17212b"
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    Loader {
+                                                        width: 80
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        sourceComponent: (typeof gFormats !== "undefined" && !gFormats.isBuiltInFormatSet(gFormats.activeFormatSet)) ? formatModeEditorComponent : formatReadOnlyModeComponent
+                                                        onLoaded: {
+                                                            if (item) item.quantityName = modelData
+                                                        }
+                                                    }
+                                                    Loader {
+                                                        width: 50
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        sourceComponent: (typeof gFormats !== "undefined" && !gFormats.isBuiltInFormatSet(gFormats.activeFormatSet)) ? digitsEditorComponent : digitsReadOnlyComponent
+                                                        onLoaded: {
+                                                            if (item) item.quantityName = modelData
+                                                        }
+                                                    }
+                                                    Loader {
+                                                        width: 60
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        sourceComponent: (typeof gFormats !== "undefined" && !gFormats.isBuiltInFormatSet(gFormats.activeFormatSet)) ? expEditorComponent : expReadOnlyComponent
+                                                        onLoaded: {
+                                                            if (item) item.quantityName = modelData
+                                                        }
+                                                    }
+                                                    Text {
+                                                        width: 100
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        text: (typeof gFormats !== "undefined") ? gFormats.formatValue(modelData, sampleValueFor(modelData)) : ""
+                                                        font.pixelSize: 11
+                                                        color: "#1c4ea7"
+                                                        elide: Text.ElideRight
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Component {
+                id: unitReadOnlyComponent
+                Text {
+                    property string quantityName: ""
+                    text: (typeof gUnits !== "undefined" && quantityName !== "") ? gUnits.unitForSet(gUnits.activeUnitSet, quantityName) : ""
+                    font.pixelSize: 11
+                    color: "#1c4ea7"
+                    elide: Text.ElideRight
+                }
+            }
+
+            Component {
+                id: unitEditorComponent
+                ComboBox {
+                    id: unitSetEditorCombo
+                    property string quantityName: ""
+                    width: 140
+                    implicitHeight: 20
+                    font.pixelSize: 11
+                    model: (typeof gUnits !== "undefined" && quantityName !== "") ? gUnits.unitsFor(quantityName) : []
+
+                    function refreshSelection() {
+                        if (typeof gUnits === "undefined" || quantityName === "") {
+                            currentIndex = -1
+                            return
+                        }
+                        var u = gUnits.unitForSet(gUnits.activeUnitSet, quantityName)
+                        currentIndex = model.indexOf(u)
+                    }
+
+                    Component.onCompleted: refreshSelection()
+                    onModelChanged: refreshSelection()
+                    onQuantityNameChanged: refreshSelection()
+
+                    background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                    contentItem: Text {
+                        leftPadding: 4; rightPadding: 18
+                        text: (unitSetEditorCombo.currentIndex >= 0 && unitSetEditorCombo.currentIndex < unitSetEditorCombo.model.length) ? unitSetEditorCombo.model[unitSetEditorCombo.currentIndex] : ""
+                        font.pixelSize: 11
+                        color: "#1c4ea7"
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onActivated: {
+                        if (typeof gUnits !== "undefined" && quantityName !== "") {
+                            gUnits.setUnitForQuantity(gUnits.activeUnitSet, quantityName, model[index])
+                            refreshSelection()
+                        }
+                    }
+                    Connections {
+                        target: (typeof gUnits !== "undefined") ? gUnits : null
+                        ignoreUnknownSignals: true
+                        function onActiveUnitSetChanged() { unitSetEditorCombo.refreshSelection() }
+                        function onUnitsChanged() { unitSetEditorCombo.refreshSelection() }
+                    }
+                }
+            }
+
+            Component {
+                id: formatReadOnlyModeComponent
+                Text {
+                    property string quantityName: ""
+                    text: {
+                        if (typeof gFormats === "undefined" || quantityName === "") return ""
+                        var k = gFormats.formatKind(quantityName)
+                        return k === 0 ? "Fixed" : (k === 1 ? "SigFig" : (k === 2 ? "Exp" : "—"))
+                    }
+                    font.pixelSize: 11
+                    color: "#17212b"
+                }
+            }
+
+            Component {
+                id: formatModeEditorComponent
+                ComboBox {
+                    id: formatModeCombo
+                    property string quantityName: ""
+                    width: 80
+                    implicitHeight: 20
+                    font.pixelSize: 11
+                    model: ["Fixed", "SigFig", "Exp"]
+
+                    function refreshSelection() {
+                        if (typeof gFormats === "undefined" || quantityName === "") {
+                            currentIndex = 0
+                            return
+                        }
+                        currentIndex = gFormats.formatKind(quantityName)
+                    }
+
+                    Component.onCompleted: refreshSelection()
+                    onModelChanged: refreshSelection()
+                    onQuantityNameChanged: refreshSelection()
+
+                    background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
+                    contentItem: Text {
+                        leftPadding: 4; rightPadding: 18
+                        text: (formatModeCombo.currentIndex >= 0 && formatModeCombo.currentIndex < formatModeCombo.model.length) ? formatModeCombo.model[formatModeCombo.currentIndex] : ""
+                        font.pixelSize: 11
+                        color: "#17212b"
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onActivated: if (typeof gFormats !== "undefined" && quantityName !== "") gFormats.setSpec(gFormats.activeFormatSet, quantityName, index, gFormats.decimals(quantityName), gFormats.expSwitch(quantityName))
+                    Connections {
+                        target: (typeof gFormats !== "undefined") ? gFormats : null
+                        ignoreUnknownSignals: true
+                        function onActiveFormatSetChanged() { formatModeCombo.refreshSelection() }
+                        function onFormatsChanged() { formatModeCombo.refreshSelection() }
+                    }
+                }
+            }
+
+            Component {
+                id: digitsReadOnlyComponent
+                Text {
+                    property string quantityName: ""
+                    text: (typeof gFormats !== "undefined" && quantityName !== "") ? String(gFormats.decimals(quantityName)) : ""
+                    font.pixelSize: 11
+                    color: "#17212b"
+                }
+            }
+
+            Component {
+                id: digitsEditorComponent
+                SpinBox {
+                    id: digitsSpin
+                    property string quantityName: ""
+                    width: 50
+                    implicitHeight: 20
+                    from: 0; to: 12
+                    editable: true
+                    font.pixelSize: 11
+
+                    function refreshValue() {
+                        if (typeof gFormats === "undefined" || quantityName === "") {
+                            value = 0
+                            return
+                        }
+                        value = gFormats.decimals(quantityName)
+                    }
+
+                    Component.onCompleted: refreshValue()
+                    onQuantityNameChanged: refreshValue()
+
+                    contentItem: TextInput {
+                        text: digitsSpin.textFromValue(digitsSpin.value, digitsSpin.locale)
+                        font.pixelSize: 11
+                        color: "#17212b"
+                        horizontalAlignment: Qt.AlignHCenter
+                        verticalAlignment: Qt.AlignVCenter
+                        readOnly: !digitsSpin.editable
+                        validator: digitsSpin.validator
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        selectByMouse: true
+                    }
+
+                    onValueModified: if (typeof gFormats !== "undefined" && quantityName !== "") gFormats.setSpec(gFormats.activeFormatSet, quantityName, gFormats.formatKind(quantityName), value, gFormats.expSwitch(quantityName))
+                    Connections {
+                        target: (typeof gFormats !== "undefined") ? gFormats : null
+                        ignoreUnknownSignals: true
+                        function onActiveFormatSetChanged() { digitsSpin.refreshValue() }
+                        function onFormatsChanged() { digitsSpin.refreshValue() }
+                    }
+                }
+            }
+
+            Component {
+                id: expReadOnlyComponent
+                Text {
+                    property string quantityName: ""
+                    text: (typeof gFormats !== "undefined" && quantityName !== "") ? String(gFormats.expSwitch(quantityName)) : ""
+                    font.pixelSize: 11
+                    color: "#17212b"
+                }
+            }
+
+            Component {
+                id: expEditorComponent
+                SpinBox {
+                    id: expSpin
+                    property string quantityName: ""
+                    width: 70
+                    implicitHeight: 20
+                    from: 0; to: 12
+                    editable: true
+                    font.pixelSize: 11
+
+                    function refreshValue() {
+                        if (typeof gFormats === "undefined" || quantityName === "") {
+                            value = 5
+                            return
+                        }
+                        value = gFormats.expSwitch(quantityName)
+                    }
+
+                    Component.onCompleted: refreshValue()
+                    onQuantityNameChanged: refreshValue()
+
+                    contentItem: TextInput {
+                        text: expSpin.textFromValue(expSpin.value, expSpin.locale)
+                        font.pixelSize: 11
+                        color: "#17212b"
+                        horizontalAlignment: Qt.AlignHCenter
+                        verticalAlignment: Qt.AlignVCenter
+                        readOnly: !expSpin.editable
+                        validator: expSpin.validator
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        selectByMouse: true
+                    }
+
+                    onValueModified: if (typeof gFormats !== "undefined" && quantityName !== "") gFormats.setSpec(gFormats.activeFormatSet, quantityName, gFormats.formatKind(quantityName), gFormats.decimals(quantityName), value)
+                    Connections {
+                        target: (typeof gFormats !== "undefined") ? gFormats : null
+                        ignoreUnknownSignals: true
+                        function onActiveFormatSetChanged() { expSpin.refreshValue() }
+                        function onFormatsChanged() { expSpin.refreshValue() }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: 72
+                    height: 24
+                    radius: 4
+                    color: okUnitsSettingsMouse.containsMouse ? "#d6e6f5" : "#e7edf2"
+                    border.color: "#8ea0ad"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "OK"
+                        font.pixelSize: 11
+                        color: "#22303a"
+                    }
+                    MouseArea {
+                        id: okUnitsSettingsMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: unitsFormatSettingsDialog.close()
+                    }
+                }
+            }
+        }
+
+        Keys.onEscapePressed: close()
+    }
 
 
     Item {

@@ -2,443 +2,619 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
+import "../../../../qml/common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HeaterCoolerView  —  single-column full-width layout
-// Shared by "heater" and "cooler"; accent colour and labels adapt to type.
+//  HeaterCoolerView — REFACTORED to the PPropertyView + PGroupBox + GridLayout
+//  standard used by the Stream view panels.
+//
+//  Shared by "heater" and "cooler" (single HeaterCoolerUnitState class). The
+//  accent colour, icon, and a couple of labels adapt to appState.type.
+//
+//  Layout:
+//    ┌─ PPropertyView ────────────────────────────────────────────────────┐
+//    │ [Design] [Results]                             Unit Set: [SI ▾]   │
+//    │ ╔════════════════════════════════════════════════════════════════╗ │
+//    │ ║  ( Design tab )                                                ║ │
+//    │ ║    PGroupBox "Connections"                                     ║ │
+//    │ ║    PGroupBox "Specifications"                                  ║ │
+//    │ ║    PGroupBox "Conditions"                                      ║ │
+//    │ ║  ( Results tab )                                               ║ │
+//    │ ║    PGroupBox "Calculated Results"                              ║ │
+//    │ ║    PGroupBox "Solver Status"                                   ║ │
+//    │ ╚════════════════════════════════════════════════════════════════╝ │
+//    └────────────────────────────────────────────────────────────────────┘
+//    [▶ Solve]  [Reset]                                 Solved  ✓
+//
+//  Unit handling (same pattern as StreamConditionsPanel):
+//    State stores mixed-scale values (K, kW, Pa). PGridValue/PGridUnit work
+//    in true SI (K, W, Pa), so small helper functions convert on read/write.
+//
+//      duty:        kW ⇄ W   (siDutyW = dutyKW * 1000 ; kW = siW / 1000)
+//      pressure:    already Pa, no conversion needed
+//      temperature: already K,  no conversion needed
 // ─────────────────────────────────────────────────────────────────────────────
 
-Rectangle {
+Item {
     id: root
-    width:  640
-    height: 560
 
     property var appState: null
+    property int currentTab: 0
 
-    // ── Colour palette ────────────────────────────────────────────────────────
-    readonly property color bgOuter:    "#d8dde2"
-    readonly property color cmdBar:     "#c8d0d8"
-    readonly property color frameInner: "#e8ebef"
-    readonly property color hdrBg:      "#c8d0d8"
-    readonly property color borderOut:  "#6d7883"
-    readonly property color borderIn:   "#97a2ad"
-    readonly property color textMain:   "#1f2a34"
-    readonly property color textMuted:  "#526571"
-    readonly property color valueBlue:  "#1c4ea7"
-    readonly property color warnAmber:  "#d6b74a"
-    readonly property color errorRed:   "#b23b3b"
-    readonly property color okGreen:    "#1a7a3c"
+    implicitWidth:  410
+    implicitHeight: 420
 
-    readonly property bool  isCoolerType: appState && appState.type === "cooler"
+    // ── Type-aware helpers ───────────────────────────────────────────────────
+    readonly property bool  isCoolerType: !!appState && appState.type === "cooler"
     readonly property color accentColor:  isCoolerType ? "#1c6ea7" : "#a73c1c"
+    readonly property url iconPath: (typeof gAppTheme !== "undefined")
+                                    ? Qt.resolvedUrl(gAppTheme.paletteSvgIconPath(isCoolerType ? "cooler" : "heater"))
+                                    : ""
+    readonly property string dutyLabelText: isCoolerType ? "Cooling duty" : "Heating duty"
 
-    // ── Metrics ───────────────────────────────────────────────────────────────
-    readonly property int headH: 20
-    readonly property int rowH:  24
-    readonly property int lblW:  160
-    readonly property int unitW: 48
-    readonly property int fsLbl: 10
-    readonly property int fsVal: 10
-    readonly property int fsSm:  9
+    // Label column width matches StreamConditionsPanel for visual consistency.
+    readonly property int labelColWidth: 180
 
-    color: bgOuter
+    // ── Per-quantity unit overrides (same pattern as stream panels) ─────────
+    property var unitOverrides: ({
+        "Temperature":   "",
+        "Pressure":      "",
+        "Power":         "",
+        "Dimensionless": ""
+    })
+    function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
+    function setUnit(q, u) {
+        var copy = Object.assign({}, unitOverrides)
+        copy[q] = u
+        unitOverrides = copy
+    }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    function fmt2(x)   { const n = Number(x); return isFinite(n) ? n.toFixed(2) : "\u2014" }
-    function fmtPa(p)  { const n = Number(p); return isFinite(n) ? Math.round(n).toString() : "\u2014" }
-    function fmtK(k)   { const n = Number(k); return isFinite(n) ? n.toFixed(2) : "\u2014" }
-    function unitLabel()  { return isCoolerType ? "Cooler" : "Heater" }
-    function dutyLabel()  { return isCoolerType ? "Cooling duty" : "Heating duty" }
+    // ── kW ⇄ W helpers ───────────────────────────────────────────────────────
+    function _siPower(kW)   { return kW * 1000.0 }
+    function _kWfromSI(siW) { return siW / 1000.0 }
+
+    // ── Solve-status helpers ─────────────────────────────────────────────────
     function solveStatusText() {
-        if (!appState)           return "\u2014"
-        if (appState.solved)     return "Solved  \u2713"
+        if (!appState)       return "\u2014"
+        if (appState.solved) return "Solved  \u2713"
         if (appState.solveStatus && appState.solveStatus !== "") return appState.solveStatus
         return "Not solved"
     }
     function solveStatusColor() {
-        if (!appState)       return textMuted
-        if (appState.solved) return okGreen
-        return errorRed
+        if (!appState)       return "#526571"
+        if (appState.solved) return "#1a7a3c"
+        return "#b23b3b"
     }
 
-    // ── Inline components ─────────────────────────────────────────────────────
+    // ── Property view shell ──────────────────────────────────────────────────
+    PPropertyView {
+        id: pview
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: bottomBar.top
 
-    component SectionHeader : Rectangle {
-        property alias text: lbl.text
-        Layout.fillWidth: true
-        height: headH
-        color: hdrBg
-        border.color: borderIn; border.width: 1
-        Text {
-            id: lbl
-            anchors.left: parent.left; anchors.leftMargin: 6
-            anchors.verticalCenter: parent.verticalCenter
-            font.pixelSize: fsLbl; font.bold: true; color: textMain
-        }
-    }
+        tabs: [ { text: "Design" }, { text: "Results" } ]
+        currentIndex: root.currentTab
+        onTabClicked: function(i) { root.currentTab = i }
 
-    component ValueRow : Item {
-        property string label:  ""
-        property string value:  "\u2014"
-        property string unit:   ""
-        property color  vColor: valueBlue
-        Layout.fillWidth: true
-        height: rowH
-        Text {
-            x: 6; width: lblW
-            anchors.verticalCenter: parent.verticalCenter
-            text: parent.label; font.pixelSize: fsLbl; color: textMuted
-            elide: Text.ElideRight
+        // Left accessory — the heater/cooler icon.
+        leftAccessory: Image {
+            width: 16; height: 16
+            source: root.iconPath
+            sourceSize.width: 32
+            sourceSize.height: 32
+            fillMode: Image.PreserveAspectFit
+            smooth: true
         }
-        Text {
-            anchors {
-                left: parent.left; leftMargin: lblW + 8
-                right: unitLbl.visible ? unitLbl.left : parent.right; rightMargin: 4
-                verticalCenter: parent.verticalCenter
-            }
-            text: parent.value; font.pixelSize: fsVal; color: parent.vColor
-        }
-        Text {
-            id: unitLbl
-            visible: parent.unit !== ""
-            text: parent.unit; width: unitW
-            anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-            font.pixelSize: fsSm; color: textMuted
-            horizontalAlignment: Text.AlignRight
-        }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
-    }
 
-    component FormRow : Item {
-        property string label:  ""
-        property string unit:   ""
-        property alias  control: slot.data
-        Layout.fillWidth: true
-        height: rowH
-        Text {
-            x: 6; width: lblW
-            anchors.verticalCenter: parent.verticalCenter
-            text: parent.label; font.pixelSize: fsLbl; color: textMuted
-            elide: Text.ElideRight
-        }
-        Item {
-            id: slot
-            anchors {
-                left: parent.left; leftMargin: lblW + 8
-                right: unitSlot.visible ? unitSlot.left : parent.right; rightMargin: 4
-                verticalCenter: parent.verticalCenter
-            }
-            height: rowH - 6
-        }
-        Text {
-            id: unitSlot
-            visible: parent.unit !== ""
-            text: parent.unit; width: unitW
-            anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
-            font.pixelSize: fsSm; color: textMuted
-            horizontalAlignment: Text.AlignRight
-        }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: borderIn }
-    }
+        // Right accessory — Unit Set selector (matches StreamView).
+        rightAccessory: Row {
+            spacing: 4
 
-    // ── Title bar ─────────────────────────────────────────────────────────────
-    Rectangle {
-        id: titleBar
-        anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 32; color: accentColor
-
-        Text {
-            anchors.left: parent.left; anchors.leftMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            text: unitLabel() + (appState ? "  \u2014  " + (appState.name || appState.id || "") : "")
-            color: "white"; font.pixelSize: 12; font.bold: true
-        }
-        Rectangle {
-            anchors.right: parent.right; anchors.rightMargin: 12
-            anchors.verticalCenter: parent.verticalCenter
-            width: pillTxt.implicitWidth + 16; height: 20; radius: 10
-            color: (appState && appState.solved) ? "#1a7a3c" : "#5a2a1a"
             Text {
-                id: pillTxt
-                anchors.centerIn: parent
-                text: solveStatusText()
-                color: "white"; font.pixelSize: 9
+                text: "Unit Set:"
+                font.pixelSize: 11
+                color: "#526571"
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            PComboBox {
+                id: unitSetCombo
+                width: 100
+                fontSize: 11
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                model: typeof gUnits !== "undefined" ? gUnits.availableUnitSets : ["SI", "Field", "British"]
+                currentIndex: {
+                    var s = (typeof gUnits !== "undefined") ? gUnits.activeUnitSet : "SI"
+                    var idx = model.indexOf(s)
+                    return idx >= 0 ? idx : 0
+                }
+                onActivated: function(index) {
+                    if (typeof gUnits !== "undefined")
+                        gUnits.activeUnitSet = model[index]
+                }
+                Connections {
+                    target: typeof gUnits !== "undefined" ? gUnits : null
+                    ignoreUnknownSignals: true
+                    function onActiveUnitSetChanged() {
+                        var i = unitSetCombo.model.indexOf(gUnits.activeUnitSet)
+                        if (i >= 0 && unitSetCombo.currentIndex !== i)
+                            unitSetCombo.currentIndex = i
+                    }
+                }
             }
         }
-    }
 
-    // ── Scrollable body ───────────────────────────────────────────────────────
-    ScrollView {
-        anchors {
-            top: titleBar.bottom; topMargin: 6
-            left: parent.left;    leftMargin: 8
-            right: parent.right;  rightMargin: 8
-            bottom: bottomBar.top; bottomMargin: 6
-        }
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy:   ScrollBar.AsNeeded
+        // ── Design tab ─────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 0
 
-        // Must set this so ColumnLayout children get a real width
-        contentWidth: availableWidth
-
-        ColumnLayout {
-            width: parent.width
-            spacing: 6
-
-            // ── Connections ───────────────────────────────────────────────────
             Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: connCol.implicitHeight
-
-                ColumnLayout {
-                    id: connCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Connections" }
-
-                    ValueRow {
-                        label:  "Feed stream"
-                        value:  (appState && appState.connectedFeedStreamUnitId !== "")
-                                ? appState.connectedFeedStreamUnitId : "\u2014 not connected \u2014"
-                        vColor: (appState && appState.connectedFeedStreamUnitId !== "")
-                                ? valueBlue : warnAmber
-                    }
-                    ValueRow {
-                        label:  "Product stream"
-                        value:  (appState && appState.connectedProductStreamUnitId !== "")
-                                ? appState.connectedProductStreamUnitId : "\u2014 not connected \u2014"
-                        vColor: (appState && appState.connectedProductStreamUnitId !== "")
-                                ? valueBlue : warnAmber
-                    }
-                    ValueRow {
-                        label:  "Energy stream (out)"
-                        value:  (appState && appState.connectedEnergyOutStreamUnitId !== "")
-                                ? appState.connectedEnergyOutStreamUnitId : "\u2014 not connected \u2014"
-                        vColor: (appState && appState.connectedEnergyOutStreamUnitId !== "")
-                                ? valueBlue : textMuted
-                    }
-                }
-            }
-
-            // ── Specifications ────────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: specCol.implicitHeight
-
-                ColumnLayout {
-                    id: specCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Specifications" }
-
-                    FormRow {
-                        label: "Specification"
-                        control: ComboBox {
-                            anchors.fill: parent
-                            model: ["Temperature", "Duty", "Vapor fraction"]
-                            currentIndex: {
-                                if (!appState) return 0
-                                if (appState.specMode === "duty")          return 1
-                                if (appState.specMode === "vaporFraction") return 2
-                                return 0
-                            }
-                            font.pixelSize: fsVal
-                            onActivated: {
-                                if (!appState) return
-                                const modes = ["temperature", "duty", "vaporFraction"]
-                                appState.specMode = modes[currentIndex]
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Outlet temperature"
-                        unit:    "K"
-                        visible: !appState || appState.specMode === "temperature"
-                        control: TextField {
-                            id: outletTempField
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmtK(appState.outletTemperatureK) : ""
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v))
-                                    appState.outletTemperatureK = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState)
-                                    text = fmtK(appState.outletTemperatureK)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   dutyLabel()
-                        unit:    "kW"
-                        visible: appState ? (appState.specMode === "duty") : false
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmt2(Math.abs(appState.dutyKW)) : ""
-                            onEditingFinished: {
-                                if (!appState) return
-                                const mag = parseFloat(text)
-                                appState.dutyKW = isCoolerType ? -Math.abs(mag) : Math.abs(mag)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Outlet vapor fraction"
-                        unit:    "\u2014"
-                        visible: appState ? (appState.specMode === "vaporFraction") : false
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? fmt2(appState.outletVaporFraction) : ""
-                            onEditingFinished: {
-                                if (appState) appState.outletVaporFraction = parseFloat(text)
-                            }
-                        }
-                    }
-
-                    FormRow {
-                        label:   "Pressure drop"
-                        unit:    "Pa"
-                        control: TextField {
-                            anchors.fill: parent; font.pixelSize: fsVal
-                            text: appState ? Math.round(appState.pressureDropPa).toString() : ""
-                            onEditingFinished: {
-                                const v = parseFloat(text)
-                                if (appState && isFinite(v))
-                                    appState.pressureDropPa = v
-                            }
-                            onActiveFocusChanged: {
-                                if (!activeFocus && appState)
-                                    text = Math.round(appState.pressureDropPa).toString()
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Calculated results ────────────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: borderIn; border.width: 1
-                implicitHeight: resultsCol.implicitHeight
-
-                ColumnLayout {
-                    id: resultsCol
-                    anchors { left: parent.left; right: parent.right }
-                    spacing: 0
-
-                    SectionHeader { text: "Calculated results" }
-
-                    ValueRow {
-                        label:  dutyLabel()
-                        unit:   "kW"
-                        value:  (appState && appState.solved) ? fmt2(Math.abs(appState.calcDutyKW)) : "\u2014"
-                        vColor: (appState && appState.solved)
-                                ? (appState.isCooling ? "#1c6ea7" : "#a73c1c")
-                                : textMuted
-                    }
-                    ValueRow {
-                        label: "Outlet temperature"
-                        unit:  "K"
-                        value: (appState && appState.solved) ? fmtK(appState.calcOutletTempK) : "\u2014"
-                    }
-                    ValueRow {
-                        label: "Outlet pressure"
-                        unit:  "Pa"
-                        value: (appState && appState.solved) ? fmtPa(appState.calcOutletPressurePa) : "\u2014"
-                    }
-                    ValueRow {
-                        label: "Outlet vapor fraction"
-                        unit:  "\u2014"
-                        value: (appState && appState.solved) ? fmt2(appState.calcOutletVapFrac) : "\u2014"
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                        height: rowH + 4
-                        visible: appState ? appState.solved : false
-                        Text {
-                            anchors.centerIn: parent
-                            text: (appState && appState.isCooling)
-                                  ? "\u25bc  Heat removed from process stream"
-                                  : "\u25b2  Heat added to process stream"
-                            color: (appState && appState.isCooling) ? "#1c6ea7" : "#a73c1c"
-                            font.pixelSize: fsLbl; font.bold: true
-                        }
-                    }
-                }
-            }
-
-            // ── Error message (only when not solved and status is set) ─────────
-            Rectangle {
-                Layout.fillWidth: true
-                color: frameInner; border.color: errorRed; border.width: 1
-                height: errTxt.implicitHeight + 12
-                visible: appState ? (!appState.solved && appState.solveStatus !== "") : false
+                anchors.fill: parent
+                color: "#e8ebef"
 
                 Text {
-                    id: errTxt
-                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
-                    anchors.leftMargin: 8; anchors.rightMargin: 8
-                    text: appState ? appState.solveStatus : ""
-                    font.pixelSize: fsSm; color: errorRed
-                    wrapMode: Text.WordWrap
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                ScrollView {
+                    id: designScroll
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    visible: !!root.appState
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                    ColumnLayout {
+                        width: designScroll.availableWidth
+                        spacing: 6
+
+                        // ── Connections ────────────────────────────────────
+                        PGroupBox {
+                            id: connBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Connections"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: connGrid
+                                width: connBox.width - (connBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Feed stream" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedFeedStreamUnitId !== "")
+                                                ? root.appState.connectedFeedStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedFeedStreamUnitId !== "")
+                                                ? "#1c4ea7" : "#d6b74a"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Product stream"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedProductStreamUnitId !== "")
+                                                ? root.appState.connectedProductStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedProductStreamUnitId !== "")
+                                                ? "#1c4ea7" : "#d6b74a"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Energy stream (in)" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedEnergyInStreamUnitId !== "")
+                                                ? root.appState.connectedEnergyInStreamUnitId
+                                                : "\u2014 optional \u2014"
+                                    valueColor: (root.appState && root.appState.connectedEnergyInStreamUnitId !== "")
+                                                ? "#1c4ea7" : "#526571"
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Energy stream (out)"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: (root.appState && root.appState.connectedEnergyOutStreamUnitId !== "")
+                                                ? root.appState.connectedEnergyOutStreamUnitId
+                                                : "\u2014 not connected \u2014"
+                                    valueColor: (root.appState && root.appState.connectedEnergyOutStreamUnitId !== "")
+                                                ? "#1c4ea7" : "#526571"
+                                }
+                            }
+                        }
+
+                        // ── Specifications ─────────────────────────────────
+                        PGroupBox {
+                            id: specBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Specifications"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: specGrid
+                                width: specBox.width - (specBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                // Spec mode picker — full-width combo (label | combo spanning 2 cols)
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Specification" }
+                                PComboBox {
+                                    id: specCombo
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 22
+                                    widthMode: "fill"
+                                    model: ["Temperature", "Duty", "Vapor fraction"]
+                                    enabled: !!root.appState
+                                    currentIndex: {
+                                        if (!root.appState) return 0
+                                        if (root.appState.specMode === "duty")          return 1
+                                        if (root.appState.specMode === "vaporFraction") return 2
+                                        return 0
+                                    }
+                                    onActivated: function(index) {
+                                        if (!root.appState) return
+                                        var modes = ["temperature", "duty", "vaporFraction"]
+                                        root.appState.specMode = modes[index]
+                                    }
+                                }
+
+                                // Outlet temperature row — visible only in temperature spec mode
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Outlet temperature"
+                                    alt: true
+                                    visible: !root.appState || root.appState.specMode === "temperature"
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.outletTemperatureK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: !!root.appState
+                                    visible: !root.appState || root.appState.specMode === "temperature"
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.outletTemperatureK = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: root.appState ? root.appState.outletTemperatureK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    visible: !root.appState || root.appState.specMode === "temperature"
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+
+                                // Duty row — visible only in duty spec mode.
+                                // The state stores a signed kW (negative for coolers); the UI shows |Q|.
+                                // On write we restore the sign based on the unit type.
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: root.dutyLabelText
+                                    alt: true
+                                    visible: root.appState ? (root.appState.specMode === "duty") : false
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Power"
+                                    siValue: root.appState ? root._siPower(Math.abs(root.appState.dutyKW)) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    editable: !!root.appState
+                                    visible: root.appState ? (root.appState.specMode === "duty") : false
+                                    onEdited: function(siVal) {
+                                        if (!root.appState) return
+                                        var kW = root._kWfromSI(siVal)
+                                        root.appState.dutyKW = root.isCoolerType
+                                            ? -Math.abs(kW) : Math.abs(kW)
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Power"
+                                    siValue: root.appState ? root._siPower(Math.abs(root.appState.dutyKW)) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    visible: root.appState ? (root.appState.specMode === "duty") : false
+                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                }
+
+                                // Outlet vapor fraction row — visible only in vapor-fraction spec mode
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Outlet vapor fraction"
+                                    alt: true
+                                    visible: root.appState ? (root.appState.specMode === "vaporFraction") : false
+                                }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Dimensionless"
+                                    siValue: root.appState ? root.appState.outletVaporFraction : NaN
+                                    editable: !!root.appState
+                                    visible: root.appState ? (root.appState.specMode === "vaporFraction") : false
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.outletVaporFraction = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Dimensionless"
+                                    visible: root.appState ? (root.appState.specMode === "vaporFraction") : false
+                                }
+                            }
+                        }
+
+                        // ── Conditions ─────────────────────────────────────
+                        // Always-visible operating conditions (pressure drop
+                        // is independent of the active spec mode).
+                        PGroupBox {
+                            id: condBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Conditions"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: condGrid
+                                width: condBox.width - (condBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Pressure drop" }
+                                PGridValue {
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.pressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    editable: !!root.appState
+                                    onEdited: function(siVal) {
+                                        if (root.appState) root.appState.pressureDropPa = siVal
+                                    }
+                                }
+                                PGridUnit {
+                                    quantity: "Pressure"
+                                    siValue: root.appState ? root.appState.pressureDropPa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillHeight: true }
+                    }
                 }
             }
+        }
 
-            Item { Layout.fillWidth: true; height: 4 }
+        // ── Results tab ────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 1
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#e8ebef"
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                ScrollView {
+                    id: resultsScroll
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    visible: !!root.appState
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+                    ColumnLayout {
+                        width: resultsScroll.availableWidth
+                        spacing: 6
+
+                        // ── Calculated Results ─────────────────────────────
+                        PGroupBox {
+                            id: resultsBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Calculated Results"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: resultsGrid
+                                width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: root.dutyLabelText }
+                                PGridValue {
+                                    quantity: "Power"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    editable: false
+                                }
+                                PGridUnit {
+                                    quantity: "Power"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
+                                    displayUnit: root.unitFor("Power")
+                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet temperature"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcOutletTempK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    editable: false
+                                }
+                                PGridUnit {
+                                    alt: true
+                                    quantity: "Temperature"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcOutletTempK : NaN
+                                    displayUnit: root.unitFor("Temperature")
+                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet pressure" }
+                                PGridValue {
+                                    quantity: "Pressure"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcOutletPressurePa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    editable: false
+                                }
+                                PGridUnit {
+                                    quantity: "Pressure"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcOutletPressurePa : NaN
+                                    displayUnit: root.unitFor("Pressure")
+                                    onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                                }
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet vapor fraction"; alt: true }
+                                PGridValue {
+                                    alt: true
+                                    quantity: "Dimensionless"
+                                    siValue: (root.appState && root.appState.solved)
+                                             ? root.appState.calcOutletVapFrac : NaN
+                                    editable: false
+                                }
+                                PGridUnit { alt: true; quantity: "Dimensionless" }
+
+                                // Direction banner — only shown when solved.
+                                Item {
+                                    Layout.columnSpan: 3
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: root.appState && root.appState.solved ? 28 : 0
+                                    visible: !!(root.appState && root.appState.solved)
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: (root.appState && root.appState.isCooling)
+                                              ? "\u25bc  Heat removed from process stream"
+                                              : "\u25b2  Heat added to process stream"
+                                        color: (root.appState && root.appState.isCooling) ? "#1c6ea7" : "#a73c1c"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── Solver Status ──────────────────────────────────
+                        PGroupBox {
+                            id: statusBox
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "Solver Status"
+                            contentPadding: 8
+
+                            GridLayout {
+                                id: statusGrid
+                                width: statusBox.width - (statusBox.contentPadding * 2) - 2
+                                columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Status" }
+                                PGridValue {
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: root.solveStatusText()
+                                    valueColor: root.solveStatusColor()
+                                }
+
+                                PGridLabel {
+                                    Layout.preferredWidth: root.labelColWidth
+                                    text: "Message"
+                                    alt: true
+                                    visible: !!(root.appState
+                                                && !root.appState.solved
+                                                && root.appState.solveStatus !== "")
+                                }
+                                PGridValue {
+                                    alt: true
+                                    Layout.columnSpan: 2
+                                    Layout.fillWidth: true
+                                    isText: true
+                                    alignText: "left"
+                                    textValue: root.appState ? root.appState.solveStatus : ""
+                                    valueColor: "#b23b3b"
+                                    visible: !!(root.appState
+                                                && !root.appState.solved
+                                                && root.appState.solveStatus !== "")
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+            }
         }
     }
 
-    // ── Bottom action bar ─────────────────────────────────────────────────────
+    // ── Bottom action bar (Solve / Reset + status text) ──────────────────────
     Rectangle {
         id: bottomBar
-        anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-        height: 40; color: cmdBar
-        border.color: borderOut; border.width: 1
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 40
+        color: "#c8d0d8"
+        border.color: "#6d7883"
+        border.width: 1
 
         RowLayout {
-            anchors.fill: parent; anchors.margins: 6; spacing: 8
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 8
 
-            Rectangle {
-                width: 100; height: 28; radius: 4
-                color: solveMA.containsMouse ? Qt.lighter(accentColor, 1.15) : accentColor
-                Text { anchors.centerIn: parent; text: "\u25b6  Solve"
-                       color: "white"; font.pixelSize: 11; font.bold: true }
-                MouseArea {
-                    id: solveMA; anchors.fill: parent
-                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: if (appState) appState.solve()
-                }
+            PButton {
+                text: "\u25b6  Solve"
+                minButtonWidth: 100
+                enabled: !!root.appState
+                onClicked: if (root.appState) root.appState.solve()
             }
 
-            Rectangle {
-                width: 80; height: 28; radius: 4
-                color: resetMA.containsMouse ? "#b0bac5" : "#97a2ad"
-                Text { anchors.centerIn: parent; text: "Reset"
-                       color: textMain; font.pixelSize: 11 }
-                MouseArea {
-                    id: resetMA; anchors.fill: parent
-                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: if (appState) appState.reset()
-                }
+            PButton {
+                text: "Reset"
+                minButtonWidth: 80
+                enabled: !!root.appState
+                onClicked: if (root.appState) root.appState.reset()
             }
 
             Item { Layout.fillWidth: true }
 
             Text {
-                text: solveStatusText()
-                color: solveStatusColor()
+                text: root.solveStatusText()
+                color: root.solveStatusColor()
                 font.pixelSize: 10
-                font.bold: appState ? appState.solved : false
+                font.bold: !!(root.appState && root.appState.solved)
             }
         }
     }

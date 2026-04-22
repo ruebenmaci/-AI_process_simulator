@@ -6,6 +6,8 @@
 #include "unitops/column/models/MaterialBalanceModel.h"
 #include "streams/state/StreamUnitState.h"
 #include "fluid/FluidPackageManager.h"
+#include "units/UnitRegistry.h"
+#include "units/FormatRegistry.h"
 
 #include <memory>
 #include <QVariantMap>
@@ -1182,7 +1184,7 @@ bool FlowsheetState::saveToFile(const QString& filePath)
 {
    // ── Drawing metadata ──────────────────────────────────────────────────
    QJsonObject root;
-   root[QStringLiteral("fileVersion")] = 1;
+   root[QStringLiteral("fileVersion")] = 2;
    root[QStringLiteral("drawingTitle")] = drawingTitle_;
    root[QStringLiteral("drawingNumber")] = drawingNumber_;
    root[QStringLiteral("drawnBy")] = drawnBy_;
@@ -1191,6 +1193,11 @@ bool FlowsheetState::saveToFile(const QString& filePath)
    const QString today = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
    revisionDate_ = today;
    root[QStringLiteral("revisionDate")] = revisionDate_;
+
+   if (auto* unitsRegistry = UnitRegistry::instance())
+      root[QStringLiteral("unitSettings")] = unitsRegistry->saveProjectSettings();
+   if (auto* formatsRegistry = FormatRegistry::instance())
+      root[QStringLiteral("numberFormatSettings")] = formatsRegistry->saveProjectSettings();
 
    // ── Units (nodes + state) ─────────────────────────────────────────────
    QJsonArray units;
@@ -1424,6 +1431,11 @@ bool FlowsheetState::loadFromFile(const QString& filePath)
    revision_ = root[QStringLiteral("revision")].toInt(0);
    revisionDate_ = root[QStringLiteral("revisionDate")].toString();
    emit drawingMetaChanged();
+
+   if (auto* unitsRegistry = UnitRegistry::instance())
+      unitsRegistry->loadProjectSettings(root.value(QStringLiteral("unitSettings")).toObject());
+   if (auto* formatsRegistry = FormatRegistry::instance())
+      formatsRegistry->loadProjectSettings(root.value(QStringLiteral("numberFormatSettings")).toObject());
 
    // ── Units ─────────────────────────────────────────────────────────────
    // Pass 1: create all units at saved positions with saved names

@@ -98,6 +98,10 @@ qt_add_executable(appChatGPT5_ADT
     cpp/streams/state/MaterialStreamState.cpp
     cpp/streams/state/StreamUnitState.h
     cpp/streams/state/StreamUnitState.cpp
+    cpp/units/UnitRegistry.h
+    cpp/units/UnitRegistry.cpp
+    cpp/units/FormatRegistry.h
+    cpp/units/FormatRegistry.cpp
     cpp/unitops/column/state/ColumnUnitState.h
     cpp/unitops/column/state/ColumnUnitState.cpp
     cpp/unitops/column/sim/ColumnSolveSpecBuilder.hpp
@@ -124,8 +128,22 @@ qt_add_qml_module(appChatGPT5_ADT
     NO_CACHEGEN
     QML_FILES
         qml/Main.qml
-        qml/common/ClassicTabs.qml
         qml/common/ClassicButton.qml
+        qml/common/ClassicTabs.qml
+        qml/common/PButton.qml
+        qml/common/PCheckBox.qml
+        qml/common/PComboBox.qml
+        qml/common/PGridLabel.qml
+        qml/common/PGridSection.qml
+        qml/common/PGridUnit.qml
+        qml/common/PGridValue.qml
+        qml/common/PGroupBox.qml
+        qml/common/PPropertyView.qml
+        qml/common/PTextField.qml
+        qml/common/PSpreadsheet.qml
+        qml/common/PTabBar.qml
+        qml/common/UnitToken.qml
+        qml/common/UnitPicker.qml
         qml/pfd/PfdMainView.qml
         qml/pfd/PfdCanvas.qml
         qml/pfd/EquipmentPalette.qml

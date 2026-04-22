@@ -8,6 +8,7 @@
 #include <optional>
 #include <QVariantList>
 #include <QDate>
+#include <QJsonObject>
 
 #include "flowsheet/UnitNode.h"
 #include "flowsheet/state/ProcessUnitState.h"
