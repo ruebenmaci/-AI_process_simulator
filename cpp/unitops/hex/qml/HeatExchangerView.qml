@@ -5,36 +5,26 @@ import ChatGPT5.ADT 1.0
 import "../../../../qml/common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  HeatExchangerView — REFACTORED to the PPropertyView + PGroupBox + GridLayout
-//  standard (same template as HeaterCoolerView / Stream panels).
+//  HeatExchangerView — PPropertyView + PGroupBox + GridLayout standard.
+//  Mirrors HeaterCoolerView's three-tab structure:
+//    • Design      — Connections / Specifications / Conditions (editable)
+//    • Results     — Calculated Results / Diagnostics
+//    • Thermo Log  — searchable ListView of thermo + state trace lines
 //
-//  Layout:
-//    ┌─ PPropertyView ────────────────────────────────────────────────────┐
-//    │ [icon] [Design] [Results]                       Unit Set: [SI ▾]  │
-//    │ ╔════════════════════════════════════════════════════════════════╗ │
-//    │ ║  ( Design tab )                                                ║ │
-//    │ ║    PGroupBox "Connections"  (hot/cold in/out)                  ║ │
-//    │ ║    PGroupBox "Specifications"  (spec mode + active value)      ║ │
-//    │ ║    PGroupBox "Conditions"      (hot ΔP, cold ΔP)               ║ │
-//    │ ║  ( Results tab )                                               ║ │
-//    │ ║    PGroupBox "Calculated Results"                              ║ │
-//    │ ║    PGroupBox "Solver Status"                                   ║ │
-//    │ ╚════════════════════════════════════════════════════════════════╝ │
-//    └────────────────────────────────────────────────────────────────────┘
-//    [▶ Solve]  [Reset]                                 Solved  ✓
+//  Bottom action bar: Solve / Reset PButtons (80 px each, Solve is bold) +
+//  right-aligned Status PGroupBox with a 60×18 colored chip driven by
+//  appState.statusLevel (0=gray IDLE, 1=green OK, 2=yellow WARN, 3=red FAIL,
+//  4=blue SOLVING). Chip shows centered status text in contrasting color.
 //
 //  Unit handling:
-//    State stores mixed-scale values (K, kW, Pa). PGridValue/PGridUnit work
-//    in true SI, so small helpers convert on read/write:
-//      duty:        kW ⇄ W
-//      pressure:    already Pa, no conversion
-//      temperature: already K,  no conversion
+//    duty:        kW ⇄ W   (via _siPower / _kWfromSI)
+//    pressure:    already Pa, no conversion
+//    temperature: already K, no conversion
 //
-//  UA and approach temperature are shown as isText cells with local
-//  formatting, because:
-//    - UA doesn't have a registered gUnits quantity (W/K).
-//    - Approach T is a temperature DIFFERENCE, and converting K→°C via
-//      gUnits would subtract 273.15 which is wrong for deltas.
+//  LMTD / UA / approach ΔT are rendered as text cells because:
+//    - UA doesn't have a registered gUnits quantity (W/K)
+//    - LMTD and approach T are temperature DIFFERENCES — converting K→°C
+//      via gUnits would subtract 273.15, which is wrong for deltas.
 // ─────────────────────────────────────────────────────────────────────────────
 
 Item {
@@ -43,20 +33,19 @@ Item {
     property var appState: null
     property int currentTab: 0
 
-    implicitWidth:  410
-    implicitHeight: 420
+    implicitWidth:  465
+    implicitHeight: 579
 
-    // ── Type-aware helpers ───────────────────────────────────────────────────
+    // ── Visual accents ───────────────────────────────────────────────────────
     readonly property color hotColor:  "#a73c1c"
     readonly property color coldColor: "#1c6ea7"
     readonly property url iconPath: (typeof gAppTheme !== "undefined")
                                     ? Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("heat_exchanger"))
                                     : ""
 
-    // Label column width matches HeaterCoolerView for visual consistency.
     readonly property int labelColWidth: 180
 
-    // ── Per-quantity unit overrides (same pattern as stream/heater panels) ──
+    // ── Per-quantity unit overrides ──────────────────────────────────────────
     property var unitOverrides: ({
         "Temperature":   "",
         "Pressure":      "",
@@ -70,45 +59,108 @@ Item {
         unitOverrides = copy
     }
 
-    // ── kW ⇄ W helpers ───────────────────────────────────────────────────────
     function _siPower(kW)   { return kW * 1000.0 }
     function _kWfromSI(siW) { return siW / 1000.0 }
 
-    // ── Local formatting for non-gUnits cells ───────────────────────────────
-    function _fmtNum(x, digits) {
-        var n = Number(x)
-        if (!isFinite(n)) return "\u2014"
-        return n.toFixed(digits)
-    }
+    // ── Local formatting for non-gUnits cells (UA, ΔT deltas) ───────────────
     function _fmtUA(siWperK) {
-        // Smart scaling: show kW/K if magnitude >= 1000 W/K, else W/K
         var n = Number(siWperK)
         if (!isFinite(n)) return "\u2014"
         return n >= 1000 ? (n / 1000).toFixed(2) + " kW/K" : n.toFixed(1) + " W/K"
     }
     function _fmtDeltaK(siK) {
-        // Temperature DIFFERENCE — always shown in K. Converting to °C would
-        // subtract 273.15 which is incorrect for a delta.
         var n = Number(siK)
         if (!isFinite(n)) return "\u2014"
         return n.toFixed(2) + " K"
     }
 
-    // ── Solve-status helpers ─────────────────────────────────────────────────
-    function solveStatusText() {
-        if (!appState)       return "\u2014"
-        if (appState.solved) return "Solved  \u2713"
-        if (appState.solveStatus && appState.solveStatus !== "") return appState.solveStatus
-        return "Not solved"
-    }
-    function solveStatusColor() {
-        if (!appState)       return "#526571"
-        if (appState.solved) return "#1a7a3c"
-        return "#b23b3b"
+    // ── Status chip color driven by appState.statusLevel enum int ───────────
+    //    0 = IDLE    → gray
+    //    1 = OK      → green
+    //    2 = WARN    → yellow
+    //    3 = FAIL    → red
+    //    4 = SOLVING → blue (transient; set when an async solve is in-flight —
+    //                        currently solve() is synchronous so this value
+    //                        is plumbed but not yet emitted. Reserved for
+    //                        future async-solve refactor.)
+    function statusChipColor() {
+        if (!appState) return "#9ba3ab"
+        var lvl = appState.statusLevel
+        if (lvl === 1) return "#1a7a3c"
+        if (lvl === 2) return "#d6b74a"
+        if (lvl === 3) return "#b23b3b"
+        if (lvl === 4) return "#2c6fb5"
+        return "#9ba3ab"
     }
 
-    // Convenience: is the active spec mode "duty" / "hotOutletT" / "coldOutletT"?
+    // Text label rendered inside the chip. Matches statusChipColor branches.
+    function statusChipText() {
+        if (!appState) return "IDLE"
+        var lvl = appState.statusLevel
+        if (lvl === 1) return "OK"
+        if (lvl === 2) return "WARN"
+        if (lvl === 3) return "FAIL"
+        if (lvl === 4) return "SOLVING"
+        return "IDLE"
+    }
+
+    // Text color inside the chip. WARN's yellow fill needs dark text for
+    // legibility; every other state uses white on a dark/mid fill.
+    function statusChipTextColor() {
+        if (!appState) return "#ffffff"
+        return appState.statusLevel === 2 ? "#2a2004" : "#ffffff"
+    }
+
     readonly property string _specMode: appState ? appState.specMode : "duty"
+
+    // ── Thermo-log search state ──────────────────────────────────────────────
+    property string logSearchText: ""
+    property var    logSearchMatches: []
+    property int    logCurrentMatchPos: -1
+    property bool   logCaseSensitive: false
+
+    function refreshLogSearch() {
+        if (!appState || !appState.runLogModel || logSearchText === "") {
+            logSearchMatches = []
+            logCurrentMatchPos = -1
+            return
+        }
+        logSearchMatches = appState.runLogModel.findMatches(logSearchText, logCaseSensitive)
+        if (!logSearchMatches || logSearchMatches.length === 0) {
+            logCurrentMatchPos = -1
+            return
+        }
+        if (logCurrentMatchPos < 0 || logCurrentMatchPos >= logSearchMatches.length)
+            logCurrentMatchPos = 0
+        positionAtLogMatch()
+    }
+    function positionAtLogMatch() {
+        if (!logSearchMatches || logCurrentMatchPos < 0 || logCurrentMatchPos >= logSearchMatches.length)
+            return
+        if (typeof logListView !== "undefined" && logListView)
+            logListView.positionViewAtIndex(logSearchMatches[logCurrentMatchPos], ListView.Center)
+    }
+    function nextLogMatch() {
+        if (!logSearchMatches || logSearchMatches.length === 0) return
+        logCurrentMatchPos = (logCurrentMatchPos + 1) % logSearchMatches.length
+        positionAtLogMatch()
+    }
+    function prevLogMatch() {
+        if (!logSearchMatches || logSearchMatches.length === 0) return
+        logCurrentMatchPos = (logCurrentMatchPos - 1 + logSearchMatches.length) % logSearchMatches.length
+        positionAtLogMatch()
+    }
+    function clearLogSearch() {
+        logSearchText = ""
+        logSearchMatches = []
+        logCurrentMatchPos = -1
+    }
+    function logLineMatches(lineText) {
+        if (logSearchText === "") return false
+        var line = String(lineText || "")
+        if (logCaseSensitive) return line.indexOf(logSearchText) >= 0
+        return line.toLowerCase().indexOf(logSearchText.toLowerCase()) >= 0
+    }
 
     // ── Property view shell ──────────────────────────────────────────────────
     PPropertyView {
@@ -118,11 +170,10 @@ Item {
         anchors.right: parent.right
         anchors.bottom: bottomBar.top
 
-        tabs: [ { text: "Design" }, { text: "Results" } ]
+        tabs: [ { text: "Design" }, { text: "Results" }, { text: "Thermo Log" } ]
         currentIndex: root.currentTab
         onTabClicked: function(i) { root.currentTab = i }
 
-        // Left accessory — the heat_exchanger icon.
         leftAccessory: Image {
             width: 16; height: 16
             source: root.iconPath
@@ -132,7 +183,6 @@ Item {
             smooth: true
         }
 
-        // Right accessory — Unit Set selector (matches StreamView / HeaterCoolerView).
         rightAccessory: Row {
             spacing: 4
 
@@ -281,7 +331,6 @@ Item {
                                 width: specBox.width - (specBox.contentPadding * 2) - 2
                                 columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                                // Spec mode picker
                                 PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Specification" }
                                 PComboBox {
                                     id: specCombo
@@ -304,7 +353,7 @@ Item {
                                     }
                                 }
 
-                                // Duty row — visible only in duty spec mode
+                                // Duty row (visible in duty spec mode)
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: "Duty"
@@ -331,7 +380,7 @@ Item {
                                     onUnitOverride: function(u) { root.setUnit("Power", u) }
                                 }
 
-                                // Hot outlet T row — visible only in hotOutletT spec mode
+                                // Hot outlet T row (visible in hotOutletT spec mode)
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: "Hot outlet temperature"
@@ -358,7 +407,7 @@ Item {
                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) }
                                 }
 
-                                // Cold outlet T row — visible only in coldOutletT spec mode
+                                // Cold outlet T row (visible in coldOutletT spec mode)
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: "Cold outlet temperature"
@@ -388,7 +437,6 @@ Item {
                         }
 
                         // ── Conditions ─────────────────────────────────────
-                        // Hot-side and cold-side pressure drops (always visible).
                         PGroupBox {
                             id: condBox
                             Layout.fillWidth: true
@@ -461,213 +509,401 @@ Item {
                     font.pixelSize: 11; color: "#526571"
                 }
 
-                ScrollView {
-                    id: resultsScroll
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 6
+                    visible: !!root.appState
+
+                    PGroupBox {
+                        id: resultsBox
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        caption: "Calculated Results"
+                        contentPadding: 8
+
+                        GridLayout {
+                            id: resultsGrid
+                            width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
+                            columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Duty" }
+                            PGridValue {
+                                quantity: "Power"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root._siPower(root.appState.calcDutyKW) : NaN
+                                displayUnit: root.unitFor("Power")
+                                editable: false
+                            }
+                            PGridUnit {
+                                quantity: "Power"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root._siPower(root.appState.calcDutyKW) : NaN
+                                displayUnit: root.unitFor("Power")
+                                onUnitOverride: function(u) { root.setUnit("Power", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet T"; alt: true }
+                            PGridValue {
+                                alt: true
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcHotOutTK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                editable: false
+                                valueColor: root.hotColor
+                            }
+                            PGridUnit {
+                                alt: true
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcHotOutTK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet T" }
+                            PGridValue {
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcColdOutTK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                editable: false
+                                valueColor: root.coldColor
+                            }
+                            PGridUnit {
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcColdOutTK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet vap. frac."; alt: true }
+                            PGridValue {
+                                alt: true
+                                quantity: "Dimensionless"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcHotOutVapFrac : NaN
+                                editable: false
+                            }
+                            PGridUnit { alt: true; quantity: "Dimensionless" }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet vap. frac." }
+                            PGridValue {
+                                quantity: "Dimensionless"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcColdOutVapFrac : NaN
+                                editable: false
+                            }
+                            PGridUnit { quantity: "Dimensionless" }
+
+                            // LMTD — delta-Kelvin, text cell
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "LMTD"; alt: true }
+                            PGridValue {
+                                alt: true
+                                Layout.columnSpan: 2
+                                Layout.fillWidth: true
+                                isText: true
+                                textValue: (root.appState && root.appState.solved)
+                                           ? root._fmtDeltaK(root.appState.calcLMTD) : "\u2014"
+                            }
+
+                            // UA — no gUnits quantity for W/K
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "UA" }
+                            PGridValue {
+                                Layout.columnSpan: 2
+                                Layout.fillWidth: true
+                                isText: true
+                                textValue: (root.appState && root.appState.solved)
+                                           ? root._fmtUA(root.appState.calcUA) : "\u2014"
+                            }
+
+                            // Approach ΔT — delta-Kelvin, text cell
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Approach ΔT"; alt: true }
+                            PGridValue {
+                                alt: true
+                                Layout.columnSpan: 2
+                                Layout.fillWidth: true
+                                isText: true
+                                textValue: (root.appState && root.appState.solved)
+                                           ? root._fmtDeltaK(root.appState.calcApproachT) : "\u2014"
+                            }
+                        }
+                    }
+
+                    // ── Diagnostics (fills remaining height) ──────────────
+                    PGroupBox {
+                        id: diagBox
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        caption: "Diagnostics"
+                        contentPadding: 8
+
+                        Item {
+                            width:  diagBox.width  - (diagBox.contentPadding * 2) - 2
+                            height: diagBox.height - (diagBox.contentPadding * 2) - 2 - 7
+
+                            ListView {
+                                id: diagList
+                                anchors.fill: parent
+                                clip: true
+                                model: root.appState ? root.appState.diagnosticsModel : null
+                                spacing: 2
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                delegate: Item {
+                                    width: diagList.width
+                                    height: Math.max(20, diagMsg.implicitHeight + 6)
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: index % 2 === 0 ? "#f4f6f9" : "#ebeef2"
+                                    }
+
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 2
+                                        x: 4; y: 6
+                                        color: model.level === "error" ? "#b23b3b"
+                                             : model.level === "warn"  ? "#d6b74a"
+                                             : "#1c4ea7"
+                                    }
+
+                                    Text {
+                                        id: diagMsg
+                                        x: 18
+                                        y: 3
+                                        width: parent.width - 22
+                                        text: model.message || ""
+                                        font.pixelSize: 11
+                                        font.family: "Segoe UI"
+                                        color: "#1f2226"
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !root.appState || !root.appState.diagnosticsModel || diagList.count === 0
+                                    text: "No diagnostics"
+                                    color: "#526571"
+                                    font.pixelSize: 11
+                                    font.italic: true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Thermo Log tab ─────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 2
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#e8ebef"
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                PGroupBox {
+                    id: logBox
                     anchors.fill: parent
                     anchors.margins: 4
                     visible: !!root.appState
-                    clip: true
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    caption: ""
+                    contentPadding: 6
 
-                    ColumnLayout {
-                        width: resultsScroll.availableWidth
-                        spacing: 6
+                    Item {
+                        width:  logBox.width  - (logBox.contentPadding * 2) - 2
+                        height: logBox.height - (logBox.contentPadding * 2) - 2
 
-                        // ── Calculated Results ─────────────────────────────
-                        PGroupBox {
-                            id: resultsBox
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: implicitHeight
-                            caption: "Calculated Results"
-                            contentPadding: 8
+                        Rectangle {
+                            id: findBar
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 26
+                            color: "#d8dde2"
+                            border.color: "#97a2ad"
+                            border.width: 1
 
-                            GridLayout {
-                                id: resultsGrid
-                                width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
-                                columns: 3; columnSpacing: 0; rowSpacing: 0
+                            Row {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
 
-                                // Duty
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Duty" }
-                                PGridValue {
-                                    quantity: "Power"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root._siPower(root.appState.calcDutyKW) : NaN
-                                    displayUnit: root.unitFor("Power")
-                                    editable: false
-                                }
-                                PGridUnit {
-                                    quantity: "Power"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root._siPower(root.appState.calcDutyKW) : NaN
-                                    displayUnit: root.unitFor("Power")
-                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                Text {
+                                    text: "Find"
+                                    font.pixelSize: 11
+                                    color: "#1f2226"
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
 
-                                // Hot outlet T
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet T"; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcHotOutTK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    editable: false
-                                    valueColor: root.hotColor
-                                }
-                                PGridUnit {
-                                    alt: true
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcHotOutTK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                PTextField {
+                                    id: logSearchField
+                                    width: 160
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: root.logSearchText
+                                    placeholderText: "PH_FLASH, [state], ..."
+                                    onTextChanged: {
+                                        root.logSearchText = text
+                                        root.refreshLogSearch()
+                                    }
                                 }
 
-                                // Cold outlet T
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet T" }
-                                PGridValue {
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcColdOutTK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    editable: false
-                                    valueColor: root.coldColor
-                                }
-                                PGridUnit {
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcColdOutTK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                PCheckBox {
+                                    id: logCaseBox
+                                    text: "Case"
+                                    checked: root.logCaseSensitive
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        root.logCaseSensitive = checked
+                                        root.refreshLogSearch()
+                                    }
                                 }
 
-                                // Hot outlet vapor fraction
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Hot outlet vap. frac."; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    quantity: "Dimensionless"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcHotOutVapFrac : NaN
-                                    editable: false
-                                }
-                                PGridUnit { alt: true; quantity: "Dimensionless" }
-
-                                // Cold outlet vapor fraction
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Cold outlet vap. frac." }
-                                PGridValue {
-                                    quantity: "Dimensionless"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcColdOutVapFrac : NaN
-                                    editable: false
-                                }
-                                PGridUnit { quantity: "Dimensionless" }
-
-                                // LMTD — text cell (temperature delta, not absolute)
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "LMTD"; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    textValue: (root.appState && root.appState.solved)
-                                               ? root._fmtDeltaK(root.appState.calcLMTD) : "\u2014"
+                                PButton {
+                                    text: "Prev"
+                                    minButtonWidth: 40
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchMatches.length > 0
+                                    onClicked: root.prevLogMatch()
                                 }
 
-                                // UA — text cell (no registered gUnits quantity for W/K)
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "UA" }
-                                PGridValue {
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    textValue: (root.appState && root.appState.solved)
-                                               ? root._fmtUA(root.appState.calcUA) : "\u2014"
+                                PButton {
+                                    text: "Next"
+                                    minButtonWidth: 40
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchMatches.length > 0
+                                    onClicked: root.nextLogMatch()
                                 }
 
-                                // Approach temperature — text cell (delta)
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Approach ΔT"; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    textValue: (root.appState && root.appState.solved)
-                                               ? root._fmtDeltaK(root.appState.calcApproachT) : "\u2014"
+                                PButton {
+                                    text: "Clear"
+                                    minButtonWidth: 42
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchText !== ""
+                                    onClicked: {
+                                        logSearchField.text = ""
+                                        root.clearLogSearch()
+                                    }
+                                }
+
+                                Text {
+                                    text: root.logSearchText === "" ? ""
+                                         : (root.logSearchMatches.length === 0
+                                            ? "0 matches"
+                                            : ((root.logCurrentMatchPos + 1) + " of " + root.logSearchMatches.length))
+                                    font.pixelSize: 10
+                                    color: "#526571"
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
                             }
                         }
 
-                        // ── Solver Status ──────────────────────────────────
-                        PGroupBox {
-                            id: statusBox
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: implicitHeight
-                            caption: "Solver Status"
-                            contentPadding: 8
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: findBar.bottom
+                            anchors.bottom: parent.bottom
+                            anchors.topMargin: 4
+                            color: "#ffffff"
+                            border.color: "#97a2ad"
+                            border.width: 1
 
-                            GridLayout {
-                                id: statusGrid
-                                width: statusBox.width - (statusBox.contentPadding * 2) - 2
-                                columns: 3; columnSpacing: 0; rowSpacing: 0
+                            ListView {
+                                id: logListView
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                clip: true
+                                model: root.appState ? root.appState.runLogModel : null
+                                spacing: 0
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Status" }
-                                PGridValue {
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    alignText: "left"
-                                    textValue: root.solveStatusText()
-                                    valueColor: root.solveStatusColor()
+                                delegate: Item {
+                                    width: logListView.width
+                                    height: 16
+
+                                    property bool rowIsMatch: root.logLineMatches(model.text || "")
+                                    property bool rowIsCurrent: root.logSearchMatches.length > 0
+                                                                && root.logCurrentMatchPos >= 0
+                                                                && index === root.logSearchMatches[root.logCurrentMatchPos]
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: rowIsCurrent ? "#ffe79a"
+                                             : rowIsMatch   ? "#fff4c7"
+                                             : (index % 2 === 0 ? "#ffffff" : "#f5f7fa")
+                                    }
+
+                                    Text {
+                                        x: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: model.text || ""
+                                        font.pixelSize: 10
+                                        font.family: "Consolas, Courier New, monospace"
+                                        color: "#1f2226"
+                                    }
                                 }
 
-                                PGridLabel {
-                                    Layout.preferredWidth: root.labelColWidth
-                                    text: "Message"
-                                    alt: true
-                                    visible: !!(root.appState
-                                                && !root.appState.solved
-                                                && root.appState.solveStatus !== "")
+                                onCountChanged: {
+                                    if (root.logSearchText !== "")
+                                        Qt.callLater(function() { root.refreshLogSearch() })
+                                    else
+                                        Qt.callLater(function() { logListView.positionViewAtEnd() })
                                 }
-                                PGridValue {
-                                    alt: true
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    alignText: "left"
-                                    textValue: root.appState ? root.appState.solveStatus : ""
-                                    valueColor: "#b23b3b"
-                                    visible: !!(root.appState
-                                                && !root.appState.solved
-                                                && root.appState.solveStatus !== "")
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !root.appState || !root.appState.runLogModel || logListView.count === 0
+                                    text: "No log entries yet — run Solve"
+                                    color: "#526571"
+                                    font.pixelSize: 11
+                                    font.italic: true
                                 }
                             }
                         }
-
-                        Item { Layout.fillHeight: true }
                     }
                 }
             }
         }
     }
 
-    // ── Bottom action bar (Solve / Reset + status text) ──────────────────────
+    // ── Bottom action bar (Solve / Reset + Status chip) ──────────────────────
     Rectangle {
         id: bottomBar
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 40
+        height: 70
         color: "#c8d0d8"
         border.color: "#6d7883"
         border.width: 1
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 6
+            anchors.margins: 10
             spacing: 8
 
             PButton {
-                text: "\u25b6  Solve"
-                minButtonWidth: 100
+                text: "Solve"
+                minButtonWidth: 80
+                font.bold: true
                 enabled: !!root.appState
                 onClicked: if (root.appState) root.appState.solve()
             }
@@ -681,11 +917,31 @@ Item {
 
             Item { Layout.fillWidth: true }
 
-            Text {
-                text: root.solveStatusText()
-                color: root.solveStatusColor()
-                font.pixelSize: 10
-                font.bold: !!(root.appState && root.appState.solved)
+            PGroupBox {
+                id: statusBox
+                Layout.alignment: Qt.AlignVCenter
+                caption: "Status"
+                contentPadding: 12
+
+                // Sized by the chip — PGroupBox computes its own implicitWidth/
+                // implicitHeight from this child via contentHolder.childrenRect.
+                Rectangle {
+                    id: statusChip
+                    width: 60
+                    height: 14
+                    color: root.statusChipColor()
+                    border.color: "#3a3f47"
+                    border.width: 1
+                    radius: 2
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.statusChipText()
+                        color: root.statusChipTextColor()
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
             }
         }
     }

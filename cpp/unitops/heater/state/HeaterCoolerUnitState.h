@@ -6,6 +6,8 @@
 
 #include "flowsheet/state/ProcessUnitState.h"
 #include "streams/state/MaterialStreamState.h"
+#include "common/models/DiagnosticsModel.h"
+#include "common/models/RunLogModel.h"
 
 class FlowsheetState;
 
@@ -40,6 +42,21 @@ class FlowsheetState;
 class HeaterCoolerUnitState : public ProcessUnitState
 {
     Q_OBJECT
+
+public:
+    // StatusLevel mirrors the color chip shown in the view's bottom status
+    // groupbox. Computed at the end of each solve() based on what diagnostics
+    // were emitted during the solve. Exposed to QML via Q_ENUM below.
+    enum class StatusLevel : int {
+        None    = 0,  // pristine — unit has not been solved yet (neutral gray)
+        Ok      = 1,  // solve succeeded and no warnings emitted (green)
+        Warn    = 2,  // solve succeeded but one or more warnings emitted (yellow)
+        Fail    = 3,  // solve failed — an error prevented completion (red)
+        Solving = 4   // reserved — async-solve in flight (blue). solve() is
+                      // currently synchronous so this value is never emitted;
+                      // wired for the upcoming async refactor.
+    };
+    Q_ENUM(StatusLevel)
 
     // ── Connections ──────────────────────────────────────────────────────────
     Q_PROPERTY(QString connectedFeedStreamUnitId
@@ -89,6 +106,23 @@ class HeaterCoolerUnitState : public ProcessUnitState
     // True when Q < 0 (heat removed); the QML can show "Cooling duty" vs "Heating duty"
     Q_PROPERTY(bool isCooling READ isCooling NOTIFY resultsChanged)
 
+    // ── Status / diagnostics / thermo log (populated during solve) ──────────
+    // statusLevel drives the bottom-bar color chip. Enum values map to colors
+    // in the QML view (None=gray, Ok=green, Warn=yellow, Fail=red). Updated
+    // after each solve() based on the worst diagnostic emitted.
+    Q_PROPERTY(int statusLevel READ statusLevelInt NOTIFY resultsChanged)
+
+    // Curated list of human-readable diagnostic events {level, message}.
+    // Populated during solve() with the important flags (missing connections,
+    // flash failures, close approach, sign flips, phase transitions, etc.).
+    // Bound to the Results tab's Diagnostics panel.
+    Q_PROPERTY(DiagnosticsModel* diagnosticsModel READ diagnosticsModel CONSTANT)
+
+    // Sequential narrative of the solve — includes [state] trace lines plus
+    // the raw thermo log output at LogLevel::Summary. Bound to the
+    // "Thermo Log" tab.
+    Q_PROPERTY(RunLogModel* runLogModel READ runLogModel CONSTANT)
+
 public:
     explicit HeaterCoolerUnitState(QObject* parent = nullptr);
 
@@ -127,6 +161,15 @@ public:
     QString solveStatus()        const { return solveStatus_; }
     bool    isCooling()          const { return solved_ && calcDutyKW_ < 0.0; }
 
+    // Status level — returned as int so QML bindings can compare numerically
+    // without needing to import the StatusLevel enum. Values match the enum
+    // ordinals (0=None, 1=Ok, 2=Warn, 3=Fail).
+    StatusLevel statusLevel() const { return statusLevel_; }
+    int statusLevelInt()      const { return static_cast<int>(statusLevel_); }
+
+    DiagnosticsModel* diagnosticsModel() { return &diagnosticsModel_; }
+    RunLogModel*      runLogModel()      { return &runLogModel_; }
+
     // ── Invokables ───────────────────────────────────────────────────────────
     Q_INVOKABLE void solve();
     Q_INVOKABLE void reset();
@@ -152,6 +195,16 @@ private:
     void clearResults_();
     void pushResultsToProductStream_();
 
+    // Diagnostic emission helpers — each appends to diagnosticsModel_ and
+    // logs a timestamped copy to runLogModel_ with a [state] prefix.
+    // emitError also escalates statusLevel_ to Fail, emitWarn escalates
+    // to Warn (unless already Fail), emitInfo does not change statusLevel_.
+    void emitError_(const QString& message);
+    void emitWarn_ (const QString& message);
+    void emitInfo_ (const QString& message);
+    void appendRunLogLine_(const QString& line);
+    void resetSolveArtifacts_();  // clears both models + resets statusLevel_
+
     // ── Connection IDs ───────────────────────────────────────────────────────
     FlowsheetState* flowsheetState_  = nullptr;
     QString feedStreamUnitId_;
@@ -173,4 +226,9 @@ private:
     double  calcOutletVapFrac_    = 0.0;
     double  calcOutletPressurePa_ = 0.0;
     QString solveStatus_;
+
+    // ── Status / diagnostics / thermo log ────────────────────────────────────
+    StatusLevel      statusLevel_ = StatusLevel::None;
+    DiagnosticsModel diagnosticsModel_;
+    RunLogModel      runLogModel_;
 };

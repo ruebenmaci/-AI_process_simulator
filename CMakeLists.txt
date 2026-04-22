@@ -69,6 +69,10 @@ target_include_directories(adt_core PUBLIC
 qt_add_executable(appChatGPT5_ADT
     cpp/main.cpp
     cpp/AppTheme.h
+    cpp/common/models/DiagnosticsModel.h
+    cpp/common/models/DiagnosticsModel.cpp
+    cpp/common/models/RunLogModel.h
+    cpp/common/models/RunLogModel.cpp
     cpp/components/ComponentRecord.h
     cpp/components/ComponentRecord.cpp
     cpp/components/ComponentListRecord.h
@@ -110,10 +114,6 @@ qt_add_executable(appChatGPT5_ADT
     cpp/unitops/column/sim/StagedColumnCore.cpp
     cpp/unitops/column/models/TrayModel.h
     cpp/unitops/column/models/TrayModel.cpp
-    cpp/unitops/column/models/DiagnosticsModel.h
-    cpp/unitops/column/models/DiagnosticsModel.cpp
-    cpp/unitops/column/models/RunLogModel.h
-    cpp/unitops/column/models/RunLogModel.cpp
     cpp/unitops/column/models/MaterialBalanceModel.h
     cpp/unitops/column/models/MaterialBalanceModel.cpp
     cpp/unitops/heater/state/HeaterCoolerUnitState.h

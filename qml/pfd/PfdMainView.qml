@@ -490,11 +490,16 @@ Item {
         //   PGridLabel 180 + PGridValue ~120 + PGridUnit 72 = 372 px row
         //   + PGroupBox padding/bevel (~18) + ScrollView margin (8)
         //   + FloatingPanel contentHost margin (8) = ~410 px wide.
-        //   Height accommodates tab strip (32) + Connections (~130)
-        //   + Specifications (~90) + Conditions (~55) + paddings/spacings
-        //   + bottom bar (40) + chrome + breathing room ≈ 420.
-        readonly property int heaterWidth:        410
-        readonly property int heaterHeight:       420
+        //   Width set to 450 — recomputed from the Find row's actual
+        //   implicit widths (PButton.implicitWidth is text+contentHPadding,
+        //   ~48–54 for Prev/Next/Clear at 10px font, not the minButtonWidth
+        //   of 40/42 I originally budgeted).
+        //   Height accommodates tab strip (32) + Connections / Specs /
+        //   Conditions / Diagnostics / Thermo Log panels + action bar
+        //   (66 — taller Status groupbox now contains centered chip text
+        //   OK / WARN / FAIL / SOLVING / IDLE) + chrome + breathing room.
+        readonly property int heaterWidth:        465
+        readonly property int heaterHeight:       579
 
         readonly property bool streamMode:  !!root.activeUnit && root.activeUnit.type === "stream"
         readonly property bool heaterMode:  !!root.activeUnit && root.activeUnit.type === "heater"

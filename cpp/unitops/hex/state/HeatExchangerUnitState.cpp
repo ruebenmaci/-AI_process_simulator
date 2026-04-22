@@ -10,6 +10,7 @@
 #include "thermo/ThermoConfig.hpp"
 
 #include <QDebug>
+#include <QDateTime>
 #include <cmath>
 #include <limits>
 
@@ -19,6 +20,8 @@
 
 HeatExchangerUnitState::HeatExchangerUnitState(QObject* parent)
     : ProcessUnitState(parent)
+    , diagnosticsModel_(this)
+    , runLogModel_(this)
 {
 }
 
@@ -125,7 +128,7 @@ MaterialStreamState* HeatExchangerUnitState::findStream(const QString& unitId) c
 
 void HeatExchangerUnitState::clearResults_()
 {
-    if (!solved_) return;
+    if (!solved_ && statusLevel_ == StatusLevel::None) return;
     solved_             = false;
     calcDutyKW_         = 0.0;
     calcHotOutTK_       = 0.0;
@@ -136,6 +139,7 @@ void HeatExchangerUnitState::clearResults_()
     calcUA_             = 0.0;
     calcApproachT_      = 0.0;
     solveStatus_.clear();
+    statusLevel_        = StatusLevel::None;
     emit solvedChanged();
     emit resultsChanged();
 }
@@ -143,6 +147,46 @@ void HeatExchangerUnitState::clearResults_()
 void HeatExchangerUnitState::reset()
 {
     clearResults_();
+    diagnosticsModel_.clear();
+    runLogModel_.clear();
+    emit resultsChanged();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Diagnostic / log helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+void HeatExchangerUnitState::appendRunLogLine_(const QString& line)
+{
+    runLogModel_.appendLine(line);
+}
+
+void HeatExchangerUnitState::emitError_(const QString& message)
+{
+    diagnosticsModel_.error(message);
+    appendRunLogLine_(QStringLiteral("[state][error] ") + message);
+    statusLevel_ = StatusLevel::Fail;
+}
+
+void HeatExchangerUnitState::emitWarn_(const QString& message)
+{
+    diagnosticsModel_.warn(message);
+    appendRunLogLine_(QStringLiteral("[state][warn] ") + message);
+    if (statusLevel_ != StatusLevel::Fail)
+        statusLevel_ = StatusLevel::Warn;
+}
+
+void HeatExchangerUnitState::emitInfo_(const QString& message)
+{
+    diagnosticsModel_.info(message);
+    appendRunLogLine_(QStringLiteral("[state][info] ") + message);
+}
+
+void HeatExchangerUnitState::resetSolveArtifacts_()
+{
+    diagnosticsModel_.clear();
+    runLogModel_.clear();
+    statusLevel_ = StatusLevel::None;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,7 +237,8 @@ HeatExchangerUnitState::OutletResult
 HeatExchangerUnitState::calcOutletFromH_(MaterialStreamState* inStream,
                                           double P_out,
                                           double H_out_kJkg,
-                                          double T_seed) const
+                                          double T_seed,
+                                          const std::function<void(const std::string&)>& logSink)
 {
     OutletResult res;
 
@@ -213,6 +258,8 @@ HeatExchangerUnitState::calcOutletFromH_(MaterialStreamState* inStream,
     phi.components = &comps;
     phi.thermoConfig = cfg;
     phi.kij        = &kij;
+    phi.log        = logSink;
+    phi.logLevel   = LogLevel::Summary;
 
     const FlashPHResult r = flashPH(phi);
     if (r.status != "ok") {
@@ -244,16 +291,37 @@ static double computeLMTD(double T_hotIn, double T_hotOut,
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Solve
+//
+// Counter-current, single-pass, two-stream black-box HEX.
+// Specs: duty (kW), hot outlet T (K), or cold outlet T (K) — exactly one.
+//
+// After the solve we run post-hoc checks for warnings (close approach ΔT,
+// pinch, phase transitions, extreme outlet T, small LMTD, etc.) and report
+// them through diagnosticsModel_. The final statusLevel_ is None/Ok/Warn/Fail
+// depending on what was emitted.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void HeatExchangerUnitState::solve()
 {
+    // ── 0. Fresh solve — clear previous artifacts ─────────────────────────────
+    resetSolveArtifacts_();
+
+    auto logSink = [this](const std::string& s) {
+        runLogModel_.appendLine(QString::fromStdString(s));
+    };
+
+    const QString unitLabel = name().isEmpty() ? id() : name();
+    appendRunLogLine_(QStringLiteral("[state] ─── Solving heat_exchanger \"")
+                      + unitLabel + QStringLiteral("\" (spec: ") + specMode_
+                      + QStringLiteral(") ───"));
+
     // ── 1. Gather inlet streams ───────────────────────────────────────────────
     MaterialStreamState* hotIn  = findStream(hotInStreamUnitId_);
     MaterialStreamState* coldIn = findStream(coldInStreamUnitId_);
 
     if (!hotIn || !coldIn) {
         solveStatus_ = QStringLiteral("Both hot-side and cold-side feed streams must be connected.");
+        emitError_(solveStatus_);
         emit resultsChanged();
         return;
     }
@@ -271,29 +339,53 @@ void HeatExchangerUnitState::solve()
     // Basic validation
     if (mdot_hot <= 0.0 || std::isnan(mdot_hot)) {
         solveStatus_ = QStringLiteral("Hot-side flow rate is zero or undefined.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
     if (mdot_cold <= 0.0 || std::isnan(mdot_cold)) {
         solveStatus_ = QStringLiteral("Cold-side flow rate is zero or undefined.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
     if (std::isnan(T_hotIn)  || std::isnan(P_hotIn)  || std::isnan(H_hotIn)) {
         solveStatus_ = QStringLiteral("Hot-side inlet conditions not fully defined.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
     if (std::isnan(T_coldIn) || std::isnan(P_coldIn) || std::isnan(H_coldIn)) {
         solveStatus_ = QStringLiteral("Cold-side inlet conditions not fully defined.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
     if (T_hotIn <= T_coldIn) {
         solveStatus_ = QStringLiteral("Hot-side inlet temperature must be above cold-side inlet temperature.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
 
+    appendRunLogLine_(QStringLiteral("[state] Hot inlet:  T=%1 K, P=%2 Pa, mdot=%3 kg/h")
+                      .arg(T_hotIn,  0, 'f', 2).arg(P_hotIn,  0, 'f', 0).arg(mdot_hot,  0, 'f', 2));
+    appendRunLogLine_(QStringLiteral("[state] Cold inlet: T=%1 K, P=%2 Pa, mdot=%3 kg/h")
+                      .arg(T_coldIn, 0, 'f', 2).arg(P_coldIn, 0, 'f', 0).arg(mdot_cold, 0, 'f', 2));
+
     const double P_hotOut  = P_hotIn  - hotSidePressureDropPa_;
     const double P_coldOut = P_coldIn - coldSidePressureDropPa_;
-    if (P_hotOut  <= 0.0) { solveStatus_ = QStringLiteral("Hot-side outlet pressure ≤ 0."); emit resultsChanged(); return; }
-    if (P_coldOut <= 0.0) { solveStatus_ = QStringLiteral("Cold-side outlet pressure ≤ 0."); emit resultsChanged(); return; }
+    if (P_hotOut  <= 0.0) {
+        solveStatus_ = QStringLiteral("Hot-side outlet pressure ≤ 0.");
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
+    }
+    if (P_coldOut <= 0.0) {
+        solveStatus_ = QStringLiteral("Cold-side outlet pressure ≤ 0.");
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
+    }
+    if (hotSidePressureDropPa_ < 0.0) {
+        emitWarn_(QStringLiteral("Hot-side pressure drop is negative."));
+    }
+    if (coldSidePressureDropPa_ < 0.0) {
+        emitWarn_(QStringLiteral("Cold-side pressure drop is negative."));
+    }
 
     // ── 2. Build thermo inputs for hot and cold streams ───────────────────────
     thermo::ThermoConfig hotCfg, coldCfg;
@@ -303,10 +395,52 @@ void HeatExchangerUnitState::solve()
     QString errMsg;
 
     if (!buildThermoInputs(hotIn,  hotCfg,  hotComps,  hotKij,  hotZ,  errMsg)) {
-        solveStatus_ = QStringLiteral("Hot side: ") + errMsg; emit resultsChanged(); return;
+        solveStatus_ = QStringLiteral("Hot side: ") + errMsg;
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
     }
     if (!buildThermoInputs(coldIn, coldCfg, coldComps, coldKij, coldZ, errMsg)) {
-        solveStatus_ = QStringLiteral("Cold side: ") + errMsg; emit resultsChanged(); return;
+        solveStatus_ = QStringLiteral("Cold side: ") + errMsg;
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
+    }
+
+    appendRunLogLine_(QStringLiteral("[state] Hot  thermo: %1 comps, EOS %2")
+                      .arg(hotComps.size()).arg(QString::fromStdString(hotCfg.eosName)));
+    appendRunLogLine_(QStringLiteral("[state] Cold thermo: %1 comps, EOS %2")
+                      .arg(coldComps.size()).arg(QString::fromStdString(coldCfg.eosName)));
+
+    // Pre-solve feasibility checks for the T-spec modes.
+    if (specMode_ == QStringLiteral("hotOutletT")) {
+        if (hotOutletTK_ >= T_hotIn) {
+            solveStatus_ = QStringLiteral("Hot outlet T (%1 K) must be less than hot inlet T (%2 K).")
+                           .arg(hotOutletTK_, 0, 'f', 2).arg(T_hotIn, 0, 'f', 2);
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
+        if (hotOutletTK_ <= T_coldIn) {
+            solveStatus_ = QStringLiteral("Hot outlet T (%1 K) cannot fall below cold inlet T (%2 K) — violates 2nd law.")
+                           .arg(hotOutletTK_, 0, 'f', 2).arg(T_coldIn, 0, 'f', 2);
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
+    } else if (specMode_ == QStringLiteral("coldOutletT")) {
+        if (coldOutletTK_ <= T_coldIn) {
+            solveStatus_ = QStringLiteral("Cold outlet T (%1 K) must be greater than cold inlet T (%2 K).")
+                           .arg(coldOutletTK_, 0, 'f', 2).arg(T_coldIn, 0, 'f', 2);
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
+        if (coldOutletTK_ >= T_hotIn) {
+            solveStatus_ = QStringLiteral("Cold outlet T (%1 K) cannot exceed hot inlet T (%2 K) — violates 2nd law.")
+                           .arg(coldOutletTK_, 0, 'f', 2).arg(T_hotIn, 0, 'f', 2);
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
+    } else if (specMode_ == QStringLiteral("duty")) {
+        if (dutyKW_ <= 0.0) {
+            emitWarn_(QStringLiteral("Duty spec is non-positive — hot side will not be cooled as expected."));
+        }
     }
 
     // ── 3. Solve by spec mode ─────────────────────────────────────────────────
@@ -319,21 +453,26 @@ void HeatExchangerUnitState::solve()
     QString status;
 
     if (specMode_ == QStringLiteral("duty")) {
-        // Q specified → H_hotOut = H_hotIn − Q*3600/ṁ_hot
-        //             → H_coldOut = H_coldIn + Q*3600/ṁ_cold
         const double Q_kJh   = dutyKW_ * 3600.0;
         const double H_hotOut_kJkg  = H_hotIn  - Q_kJh / mdot_hot;
         const double H_coldOut_kJkg = H_coldIn + Q_kJh / mdot_cold;
 
-        // Estimate outlet T seeds: assume linear Cp
-        const double T_hotSeed  = T_hotIn  - (T_hotIn  - T_coldIn) * 0.5;
-        const double T_coldSeed = T_coldIn + (T_hotIn  - T_coldIn) * 0.5;
+        const double T_hotSeed  = T_hotIn  - (T_hotIn - T_coldIn) * 0.5;
+        const double T_coldSeed = T_coldIn + (T_hotIn - T_coldIn) * 0.5;
 
-        auto hotRes  = calcOutletFromH_(hotIn,  P_hotOut,  H_hotOut_kJkg,  T_hotSeed);
-        auto coldRes = calcOutletFromH_(coldIn, P_coldOut, H_coldOut_kJkg, T_coldSeed);
+        auto hotRes  = calcOutletFromH_(hotIn,  P_hotOut,  H_hotOut_kJkg,  T_hotSeed,  logSink);
+        auto coldRes = calcOutletFromH_(coldIn, P_coldOut, H_coldOut_kJkg, T_coldSeed, logSink);
 
-        if (!hotRes.ok)  { solveStatus_ = QStringLiteral("Hot outlet: ") + hotRes.status; emit resultsChanged(); return; }
-        if (!coldRes.ok) { solveStatus_ = QStringLiteral("Cold outlet: ") + coldRes.status; emit resultsChanged(); return; }
+        if (!hotRes.ok)  {
+            solveStatus_ = QStringLiteral("Hot outlet: ") + hotRes.status;
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
+        if (!coldRes.ok) {
+            solveStatus_ = QStringLiteral("Cold outlet: ") + coldRes.status;
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
 
         Q_kW      = dutyKW_;
         T_hotOut  = hotRes.T;
@@ -344,19 +483,25 @@ void HeatExchangerUnitState::solve()
         status    = QStringLiteral("OK");
 
     } else if (specMode_ == QStringLiteral("hotOutletT")) {
-        // Hot outlet T specified → Q from hot-side energy balance → cold outlet from Q
         const FlashPTResult hotRes = flashPT(
-            P_hotOut, hotOutletTK_, hotZ, hotCfg, &hotComps, &hotKij);
+            P_hotOut, hotOutletTK_, hotZ, hotCfg, &hotComps, &hotKij,
+            /*murphreeEtaV=*/1.0, /*log=*/logSink);
         if (std::isnan(hotRes.H)) {
-            solveStatus_ = QStringLiteral("PT flash failed for hot outlet."); emit resultsChanged(); return;
+            solveStatus_ = QStringLiteral("PT flash failed for hot outlet.");
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
         }
 
-        const double Q_kJh          = mdot_hot * (H_hotIn - hotRes.H);   // heat released
+        const double Q_kJh          = mdot_hot * (H_hotIn - hotRes.H);
         const double H_coldOut_kJkg = H_coldIn + Q_kJh / mdot_cold;
         const double T_coldSeed     = T_coldIn + (hotOutletTK_ - T_coldIn) * 0.5;
 
-        auto coldRes = calcOutletFromH_(coldIn, P_coldOut, H_coldOut_kJkg, T_coldSeed);
-        if (!coldRes.ok) { solveStatus_ = QStringLiteral("Cold outlet: ") + coldRes.status; emit resultsChanged(); return; }
+        auto coldRes = calcOutletFromH_(coldIn, P_coldOut, H_coldOut_kJkg, T_coldSeed, logSink);
+        if (!coldRes.ok) {
+            solveStatus_ = QStringLiteral("Cold outlet: ") + coldRes.status;
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
 
         Q_kW      = Q_kJh / 3600.0;
         T_hotOut  = hotOutletTK_;
@@ -367,19 +512,25 @@ void HeatExchangerUnitState::solve()
         status    = QStringLiteral("OK");
 
     } else if (specMode_ == QStringLiteral("coldOutletT")) {
-        // Cold outlet T specified → Q from cold-side energy balance → hot outlet from Q
         const FlashPTResult coldRes = flashPT(
-            P_coldOut, coldOutletTK_, coldZ, coldCfg, &coldComps, &coldKij);
+            P_coldOut, coldOutletTK_, coldZ, coldCfg, &coldComps, &coldKij,
+            /*murphreeEtaV=*/1.0, /*log=*/logSink);
         if (std::isnan(coldRes.H)) {
-            solveStatus_ = QStringLiteral("PT flash failed for cold outlet."); emit resultsChanged(); return;
+            solveStatus_ = QStringLiteral("PT flash failed for cold outlet.");
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
         }
 
-        const double Q_kJh         = mdot_cold * (coldRes.H - H_coldIn);  // heat absorbed
+        const double Q_kJh         = mdot_cold * (coldRes.H - H_coldIn);
         const double H_hotOut_kJkg = H_hotIn - Q_kJh / mdot_hot;
         const double T_hotSeed     = T_hotIn - (T_hotIn - coldOutletTK_) * 0.5;
 
-        auto hotRes = calcOutletFromH_(hotIn, P_hotOut, H_hotOut_kJkg, T_hotSeed);
-        if (!hotRes.ok) { solveStatus_ = QStringLiteral("Hot outlet: ") + hotRes.status; emit resultsChanged(); return; }
+        auto hotRes = calcOutletFromH_(hotIn, P_hotOut, H_hotOut_kJkg, T_hotSeed, logSink);
+        if (!hotRes.ok) {
+            solveStatus_ = QStringLiteral("Hot outlet: ") + hotRes.status;
+            emitError_(solveStatus_);
+            emit resultsChanged(); return;
+        }
 
         Q_kW      = Q_kJh / 3600.0;
         T_hotOut  = hotRes.T;
@@ -391,6 +542,7 @@ void HeatExchangerUnitState::solve()
 
     } else {
         status = QStringLiteral("Unknown spec mode: ") + specMode_;
+        emitError_(status);
     }
 
     if (!solveOk) {
@@ -402,10 +554,26 @@ void HeatExchangerUnitState::solve()
     // Feasibility check: hot must cool, cold must heat
     if (T_hotOut >= T_hotIn) {
         solveStatus_ = QStringLiteral("Hot side heated instead of cooled — check duty sign or spec.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
     if (T_coldOut <= T_coldIn) {
         solveStatus_ = QStringLiteral("Cold side cooled instead of heated — check duty sign or spec.");
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
+    }
+
+    // Temperature cross (counter-current): hot outlet should be above cold
+    // inlet, and cold outlet should be below hot inlet. If either fails we
+    // have an infeasible counter-current design (would need more passes).
+    if (T_hotOut < T_coldIn) {
+        solveStatus_ = QStringLiteral("Hot outlet T is below cold inlet T — infeasible counter-current design.");
+        emitError_(solveStatus_);
+        emit resultsChanged(); return;
+    }
+    if (T_coldOut > T_hotIn) {
+        solveStatus_ = QStringLiteral("Cold outlet T exceeds hot inlet T — infeasible counter-current design.");
+        emitError_(solveStatus_);
         emit resultsChanged(); return;
     }
 
@@ -413,9 +581,8 @@ void HeatExchangerUnitState::solve()
     const double lmtd = computeLMTD(T_hotIn, T_hotOut, T_coldIn, T_coldOut);
     double ua = std::numeric_limits<double>::quiet_NaN();
     if (!std::isnan(lmtd) && lmtd > 0.0)
-        ua = (Q_kW * 1000.0) / lmtd;   // W/K  (Q in kW × 1000 → W)
+        ua = (Q_kW * 1000.0) / lmtd;   // W/K
 
-    // Approach temperature (minimum terminal ΔT, counter-current)
     const double approach = std::min(T_hotIn - T_coldOut, T_hotOut - T_coldIn);
 
     // ── 5. Store ──────────────────────────────────────────────────────────────
@@ -429,6 +596,105 @@ void HeatExchangerUnitState::solve()
     calcUA_             = ua;
     calcApproachT_      = approach;
     solveStatus_        = status;
+
+    appendRunLogLine_(QStringLiteral("[state] Solved: Q=%1 kW, T_hotOut=%2 K, T_coldOut=%3 K")
+                      .arg(Q_kW, 0, 'f', 3).arg(T_hotOut, 0, 'f', 2).arg(T_coldOut, 0, 'f', 2));
+    appendRunLogLine_(QStringLiteral("[state] LMTD=%1 K, UA=%2 W/K, approach=%3 K")
+                      .arg(lmtd, 0, 'f', 2).arg(ua, 0, 'f', 1).arg(approach, 0, 'f', 2));
+
+    // ── 6. Post-solve detection of warnings ──────────────────────────────────
+
+    // (a) Close approach ΔT — a fundamental HEX design concern.
+    //     < 1 K: effectively an error (impractical area required).
+    //     < 5 K: warn (tight design, very large surface).
+    //     Anything larger is fine.
+    if (!std::isnan(approach)) {
+        if (approach < 1.0) {
+            emitError_(QStringLiteral("Approach ΔT (%1 K) is below 1 K — design is impractically tight.")
+                       .arg(approach, 0, 'f', 3));
+        } else if (approach < 5.0) {
+            emitWarn_(QStringLiteral("Approach ΔT (%1 K) is below 5 K — tight design with large area requirement.")
+                      .arg(approach, 0, 'f', 2));
+        }
+    }
+
+    // (b) Pinch warning: one end's ΔT is much smaller than the other's.
+    //     Ratio > 10 suggests a pinch somewhere inside the exchanger that
+    //     simple LMTD doesn't capture.
+    const double dt_hotEnd  = T_hotIn  - T_coldOut;
+    const double dt_coldEnd = T_hotOut - T_coldIn;
+    if (dt_hotEnd > 0.0 && dt_coldEnd > 0.0) {
+        const double ratio = std::max(dt_hotEnd, dt_coldEnd) / std::min(dt_hotEnd, dt_coldEnd);
+        if (ratio > 10.0) {
+            emitWarn_(QStringLiteral("Terminal ΔT ratio (%1:%2) exceeds 10 — possible pinch inside the exchanger.")
+                      .arg(dt_hotEnd, 0, 'f', 2).arg(dt_coldEnd, 0, 'f', 2));
+        }
+    }
+
+    // (c) LMTD problematic (near zero, or NaN when ΔT's have opposite signs).
+    if (std::isnan(lmtd) || lmtd <= 0.0) {
+        emitWarn_(QStringLiteral("LMTD could not be computed — check terminal temperatures."));
+    } else if (lmtd < 1.0) {
+        emitWarn_(QStringLiteral("LMTD (%1 K) is below 1 K — UA estimate is unreliable.")
+                  .arg(lmtd, 0, 'f', 3));
+    }
+
+    // (d) UA magnitude sanity — very small Q_kW/LMTD can indicate a
+    //     degenerate spec; extremely large UA suggests the user's spec
+    //     approaches the thermodynamic limit.
+    if (!std::isnan(ua)) {
+        if (ua > 1.0e8) {   // > 100 MW/K is unrealistic for any real HEX
+            emitWarn_(QStringLiteral("UA (%1 W/K) is unrealistically large — spec is near thermodynamic limit.")
+                      .arg(ua, 0, 'f', 0));
+        }
+    }
+
+    // (e) Phase transitions occurring on either side — informational.
+    const double hotFeedV  = hotIn->vaporFraction();
+    const double coldFeedV = coldIn->vaporFraction();
+    const auto isSingle = [](double v) {
+        return !std::isnan(v) && (v <= 1.0e-6 || v >= 1.0 - 1.0e-6);
+    };
+    if (isSingle(hotFeedV) && !isSingle(V_hotOut)) {
+        emitInfo_(QStringLiteral("Hot side: single-phase feed produces two-phase outlet (V=%1).")
+                  .arg(V_hotOut, 0, 'f', 4));
+    } else if (!isSingle(hotFeedV) && isSingle(V_hotOut)) {
+        emitInfo_(QStringLiteral("Hot side: two-phase feed becomes single-phase at outlet."));
+    }
+    if (isSingle(coldFeedV) && !isSingle(V_coldOut)) {
+        emitInfo_(QStringLiteral("Cold side: single-phase feed produces two-phase outlet (V=%1).")
+                  .arg(V_coldOut, 0, 'f', 4));
+    } else if (!isSingle(coldFeedV) && isSingle(V_coldOut)) {
+        emitInfo_(QStringLiteral("Cold side: two-phase feed becomes single-phase at outlet."));
+    }
+
+    // (f) Extreme outlet temperatures.
+    if (T_hotOut < 150.0) {
+        emitWarn_(QStringLiteral("Hot outlet T (%1 K) is below cryogenic range.")
+                  .arg(T_hotOut, 0, 'f', 2));
+    }
+    if (T_coldOut > 1500.0) {
+        emitWarn_(QStringLiteral("Cold outlet T (%1 K) exceeds 1500 K.")
+                  .arg(T_coldOut, 0, 'f', 2));
+    }
+
+    // (g) Very-low outlet pressure (deep vacuum) on either side.
+    if (P_hotOut  > 0.0 && P_hotOut  < 1000.0) {
+        emitWarn_(QStringLiteral("Hot-side outlet pressure (%1 Pa) is below 1 kPa — deep vacuum.")
+                  .arg(P_hotOut, 0, 'f', 0));
+    }
+    if (P_coldOut > 0.0 && P_coldOut < 1000.0) {
+        emitWarn_(QStringLiteral("Cold-side outlet pressure (%1 Pa) is below 1 kPa — deep vacuum.")
+                  .arg(P_coldOut, 0, 'f', 0));
+    }
+
+    // ── 7. Finalize status level ─────────────────────────────────────────────
+    if (statusLevel_ == StatusLevel::None)
+        statusLevel_ = StatusLevel::Ok;
+
+    if (statusLevel_ == StatusLevel::Ok) {
+        emitInfo_(QStringLiteral("Solve completed successfully."));
+    }
 
     emit solvedChanged();
     emit resultsChanged();

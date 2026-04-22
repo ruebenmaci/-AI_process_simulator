@@ -5,34 +5,22 @@ import ChatGPT5.ADT 1.0
 import "../../../../qml/common"
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  HeaterCoolerView — REFACTORED to the PPropertyView + PGroupBox + GridLayout
-//  standard used by the Stream view panels.
+//  HeaterCoolerView — PPropertyView + PGroupBox + GridLayout standard.
+//  Three tabs:
+//    • Design      — Connections / Specifications / Conditions (editable)
+//    • Results     — Calculated Results / Diagnostics (read-only)
+//    • Thermo Log  — searchable ListView of thermo + state trace lines
 //
-//  Shared by "heater" and "cooler" (single HeaterCoolerUnitState class). The
-//  accent colour, icon, and a couple of labels adapt to appState.type.
-//
-//  Layout:
-//    ┌─ PPropertyView ────────────────────────────────────────────────────┐
-//    │ [Design] [Results]                             Unit Set: [SI ▾]   │
-//    │ ╔════════════════════════════════════════════════════════════════╗ │
-//    │ ║  ( Design tab )                                                ║ │
-//    │ ║    PGroupBox "Connections"                                     ║ │
-//    │ ║    PGroupBox "Specifications"                                  ║ │
-//    │ ║    PGroupBox "Conditions"                                      ║ │
-//    │ ║  ( Results tab )                                               ║ │
-//    │ ║    PGroupBox "Calculated Results"                              ║ │
-//    │ ║    PGroupBox "Solver Status"                                   ║ │
-//    │ ╚════════════════════════════════════════════════════════════════╝ │
-//    └────────────────────────────────────────────────────────────────────┘
-//    [▶ Solve]  [Reset]                                 Solved  ✓
+//  Bottom action bar contains Solve / Reset PButtons (80 px each, bold,
+//  no arrow) and a right-aligned "Status" PGroupBox with a 60×18 colored
+//  chip driven by appState.statusLevel (0=gray IDLE, 1=green OK, 2=yellow
+//  WARN, 3=red FAIL, 4=blue SOLVING). Chip shows centered status text in
+//  contrasting color.
 //
 //  Unit handling (same pattern as StreamConditionsPanel):
-//    State stores mixed-scale values (K, kW, Pa). PGridValue/PGridUnit work
-//    in true SI (K, W, Pa), so small helper functions convert on read/write.
-//
-//      duty:        kW ⇄ W   (siDutyW = dutyKW * 1000 ; kW = siW / 1000)
-//      pressure:    already Pa, no conversion needed
-//      temperature: already K,  no conversion needed
+//    duty:        kW ⇄ W
+//    pressure:    already Pa
+//    temperature: already K
 // ─────────────────────────────────────────────────────────────────────────────
 
 Item {
@@ -41,8 +29,8 @@ Item {
     property var appState: null
     property int currentTab: 0
 
-    implicitWidth:  410
-    implicitHeight: 420
+    implicitWidth:  465
+    implicitHeight: 579
 
     // ── Type-aware helpers ───────────────────────────────────────────────────
     readonly property bool  isCoolerType: !!appState && appState.type === "cooler"
@@ -52,10 +40,9 @@ Item {
                                     : ""
     readonly property string dutyLabelText: isCoolerType ? "Cooling duty" : "Heating duty"
 
-    // Label column width matches StreamConditionsPanel for visual consistency.
     readonly property int labelColWidth: 180
 
-    // ── Per-quantity unit overrides (same pattern as stream panels) ─────────
+    // ── Per-quantity unit overrides ──────────────────────────────────────────
     property var unitOverrides: ({
         "Temperature":   "",
         "Pressure":      "",
@@ -69,21 +56,91 @@ Item {
         unitOverrides = copy
     }
 
-    // ── kW ⇄ W helpers ───────────────────────────────────────────────────────
     function _siPower(kW)   { return kW * 1000.0 }
     function _kWfromSI(siW) { return siW / 1000.0 }
 
-    // ── Solve-status helpers ─────────────────────────────────────────────────
-    function solveStatusText() {
-        if (!appState)       return "\u2014"
-        if (appState.solved) return "Solved  \u2713"
-        if (appState.solveStatus && appState.solveStatus !== "") return appState.solveStatus
-        return "Not solved"
+    // ── Status chip color driven by appState.statusLevel enum ────────────────
+    //   0 = None    (neutral gray)
+    //   1 = Ok      (green)
+    //   2 = Warn    (yellow)
+    //   3 = Fail    (red)
+    //   4 = Solving (blue — reserved for future async-solve refactor; solve()
+    //                is currently synchronous so this value is never emitted)
+    function statusChipColor() {
+        if (!appState) return "#9ba3ab"
+        var lvl = appState.statusLevel
+        if (lvl === 1) return "#1a7a3c"
+        if (lvl === 2) return "#d6b74a"
+        if (lvl === 3) return "#b23b3b"
+        if (lvl === 4) return "#2c6fb5"
+        return "#9ba3ab"
     }
-    function solveStatusColor() {
-        if (!appState)       return "#526571"
-        if (appState.solved) return "#1a7a3c"
-        return "#b23b3b"
+
+    // Text label rendered inside the chip. Matches statusChipColor branches.
+    function statusChipText() {
+        if (!appState) return "IDLE"
+        var lvl = appState.statusLevel
+        if (lvl === 1) return "OK"
+        if (lvl === 2) return "WARN"
+        if (lvl === 3) return "FAIL"
+        if (lvl === 4) return "SOLVING"
+        return "IDLE"
+    }
+
+    // Text color inside the chip. WARN's yellow fill needs dark text for
+    // legibility; every other state uses white on a dark/mid fill.
+    function statusChipTextColor() {
+        if (!appState) return "#ffffff"
+        return appState.statusLevel === 2 ? "#2a2004" : "#ffffff"
+    }
+
+    // ── Thermo-log search state (populated when the Thermo Log tab is active) ─
+    property string logSearchText: ""
+    property var    logSearchMatches: []
+    property int    logCurrentMatchPos: -1
+    property bool   logCaseSensitive: false
+
+    function refreshLogSearch() {
+        if (!appState || !appState.runLogModel || logSearchText === "") {
+            logSearchMatches = []
+            logCurrentMatchPos = -1
+            return
+        }
+        logSearchMatches = appState.runLogModel.findMatches(logSearchText, logCaseSensitive)
+        if (!logSearchMatches || logSearchMatches.length === 0) {
+            logCurrentMatchPos = -1
+            return
+        }
+        if (logCurrentMatchPos < 0 || logCurrentMatchPos >= logSearchMatches.length)
+            logCurrentMatchPos = 0
+        positionAtLogMatch()
+    }
+    function positionAtLogMatch() {
+        if (!logSearchMatches || logCurrentMatchPos < 0 || logCurrentMatchPos >= logSearchMatches.length)
+            return
+        if (typeof logListView !== "undefined" && logListView)
+            logListView.positionViewAtIndex(logSearchMatches[logCurrentMatchPos], ListView.Center)
+    }
+    function nextLogMatch() {
+        if (!logSearchMatches || logSearchMatches.length === 0) return
+        logCurrentMatchPos = (logCurrentMatchPos + 1) % logSearchMatches.length
+        positionAtLogMatch()
+    }
+    function prevLogMatch() {
+        if (!logSearchMatches || logSearchMatches.length === 0) return
+        logCurrentMatchPos = (logCurrentMatchPos - 1 + logSearchMatches.length) % logSearchMatches.length
+        positionAtLogMatch()
+    }
+    function clearLogSearch() {
+        logSearchText = ""
+        logSearchMatches = []
+        logCurrentMatchPos = -1
+    }
+    function logLineMatches(lineText) {
+        if (logSearchText === "") return false
+        var line = String(lineText || "")
+        if (logCaseSensitive) return line.indexOf(logSearchText) >= 0
+        return line.toLowerCase().indexOf(logSearchText.toLowerCase()) >= 0
     }
 
     // ── Property view shell ──────────────────────────────────────────────────
@@ -94,11 +151,10 @@ Item {
         anchors.right: parent.right
         anchors.bottom: bottomBar.top
 
-        tabs: [ { text: "Design" }, { text: "Results" } ]
+        tabs: [ { text: "Design" }, { text: "Results" }, { text: "Thermo Log" } ]
         currentIndex: root.currentTab
         onTabClicked: function(i) { root.currentTab = i }
 
-        // Left accessory — the heater/cooler icon.
         leftAccessory: Image {
             width: 16; height: 16
             source: root.iconPath
@@ -108,7 +164,6 @@ Item {
             smooth: true
         }
 
-        // Right accessory — Unit Set selector (matches StreamView).
         rightAccessory: Row {
             spacing: 4
 
@@ -257,7 +312,6 @@ Item {
                                 width: specBox.width - (specBox.contentPadding * 2) - 2
                                 columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                                // Spec mode picker — full-width combo (label | combo spanning 2 cols)
                                 PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Specification" }
                                 PComboBox {
                                     id: specCombo
@@ -280,7 +334,7 @@ Item {
                                     }
                                 }
 
-                                // Outlet temperature row — visible only in temperature spec mode
+                                // Outlet temperature row (visible in temperature spec mode)
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: "Outlet temperature"
@@ -307,9 +361,7 @@ Item {
                                     onUnitOverride: function(u) { root.setUnit("Temperature", u) }
                                 }
 
-                                // Duty row — visible only in duty spec mode.
-                                // The state stores a signed kW (negative for coolers); the UI shows |Q|.
-                                // On write we restore the sign based on the unit type.
+                                // Duty row (visible in duty spec mode) — see Heater/Cooler sign convention
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: root.dutyLabelText
@@ -339,7 +391,7 @@ Item {
                                     onUnitOverride: function(u) { root.setUnit("Power", u) }
                                 }
 
-                                // Outlet vapor fraction row — visible only in vapor-fraction spec mode
+                                // Outlet vapor fraction row (visible in vapor-fraction spec mode)
                                 PGridLabel {
                                     Layout.preferredWidth: root.labelColWidth
                                     text: "Outlet vapor fraction"
@@ -365,8 +417,6 @@ Item {
                         }
 
                         // ── Conditions ─────────────────────────────────────
-                        // Always-visible operating conditions (pressure drop
-                        // is independent of the active spec mode).
                         PGroupBox {
                             id: condBox
                             Layout.fillWidth: true
@@ -420,183 +470,382 @@ Item {
                     font.pixelSize: 11; color: "#526571"
                 }
 
-                ScrollView {
-                    id: resultsScroll
+                // Vertical split: Calculated Results on top (fixed height via
+                // implicit sizing), Diagnostics fills the rest.
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 4
+                    spacing: 6
+                    visible: !!root.appState
+
+                    PGroupBox {
+                        id: resultsBox
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        caption: "Calculated Results"
+                        contentPadding: 8
+
+                        GridLayout {
+                            id: resultsGrid
+                            width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
+                            columns: 3; columnSpacing: 0; rowSpacing: 0
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: root.dutyLabelText }
+                            PGridValue {
+                                quantity: "Power"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
+                                displayUnit: root.unitFor("Power")
+                                editable: false
+                            }
+                            PGridUnit {
+                                quantity: "Power"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
+                                displayUnit: root.unitFor("Power")
+                                onUnitOverride: function(u) { root.setUnit("Power", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet temperature"; alt: true }
+                            PGridValue {
+                                alt: true
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcOutletTempK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                editable: false
+                            }
+                            PGridUnit {
+                                alt: true
+                                quantity: "Temperature"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcOutletTempK : NaN
+                                displayUnit: root.unitFor("Temperature")
+                                onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet pressure" }
+                            PGridValue {
+                                quantity: "Pressure"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcOutletPressurePa : NaN
+                                displayUnit: root.unitFor("Pressure")
+                                editable: false
+                            }
+                            PGridUnit {
+                                quantity: "Pressure"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcOutletPressurePa : NaN
+                                displayUnit: root.unitFor("Pressure")
+                                onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                            }
+
+                            PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet vapor fraction"; alt: true }
+                            PGridValue {
+                                alt: true
+                                quantity: "Dimensionless"
+                                siValue: (root.appState && root.appState.solved)
+                                         ? root.appState.calcOutletVapFrac : NaN
+                                editable: false
+                            }
+                            PGridUnit { alt: true; quantity: "Dimensionless" }
+
+                            Item {
+                                Layout.columnSpan: 3
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: root.appState && root.appState.solved ? 28 : 0
+                                visible: !!(root.appState && root.appState.solved)
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: (root.appState && root.appState.isCooling)
+                                          ? "\u25bc  Heat removed from process stream"
+                                          : "\u25b2  Heat added to process stream"
+                                    color: (root.appState && root.appState.isCooling) ? "#1c6ea7" : "#a73c1c"
+                                    font.pixelSize: 11
+                                    font.bold: true
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Diagnostics (fills remaining height) ──────────────
+                    PGroupBox {
+                        id: diagBox
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        caption: "Diagnostics"
+                        contentPadding: 8
+
+                        Item {
+                            width:  diagBox.width  - (diagBox.contentPadding * 2) - 2
+                            height: diagBox.height - (diagBox.contentPadding * 2) - 2 - 7
+                            // "-7" accounts for caption overhang; matches PGroupBox internal offset.
+
+                            ListView {
+                                id: diagList
+                                anchors.fill: parent
+                                clip: true
+                                model: root.appState ? root.appState.diagnosticsModel : null
+                                spacing: 2
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                                delegate: Item {
+                                    width: diagList.width
+                                    height: Math.max(20, diagMsg.implicitHeight + 6)
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: index % 2 === 0 ? "#f4f6f9" : "#ebeef2"
+                                    }
+
+                                    // Level dot
+                                    Rectangle {
+                                        width: 8; height: 8; radius: 2
+                                        x: 4; y: 6
+                                        color: model.level === "error" ? "#b23b3b"
+                                             : model.level === "warn"  ? "#d6b74a"
+                                             : "#1c4ea7"
+                                    }
+
+                                    Text {
+                                        id: diagMsg
+                                        x: 18
+                                        y: 3
+                                        width: parent.width - 22
+                                        text: model.message || ""
+                                        font.pixelSize: 11
+                                        font.family: "Segoe UI"
+                                        color: "#1f2226"
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !root.appState || !root.appState.diagnosticsModel || diagList.count === 0
+                                    text: "No diagnostics"
+                                    color: "#526571"
+                                    font.pixelSize: 11
+                                    font.italic: true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Thermo Log tab ─────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 2
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#e8ebef"
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !root.appState
+                    text: "No unit selected"
+                    font.pixelSize: 11; color: "#526571"
+                }
+
+                // Unlabelled groupbox fills entire tab area
+                PGroupBox {
+                    id: logBox
                     anchors.fill: parent
                     anchors.margins: 4
                     visible: !!root.appState
-                    clip: true
-                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                    caption: ""
+                    contentPadding: 6
 
-                    ColumnLayout {
-                        width: resultsScroll.availableWidth
-                        spacing: 6
+                    Item {
+                        width:  logBox.width  - (logBox.contentPadding * 2) - 2
+                        height: logBox.height - (logBox.contentPadding * 2) - 2
 
-                        // ── Calculated Results ─────────────────────────────
-                        PGroupBox {
-                            id: resultsBox
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: implicitHeight
-                            caption: "Calculated Results"
-                            contentPadding: 8
+                        // Find bar
+                        Rectangle {
+                            id: findBar
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            height: 26
+                            color: "#d8dde2"
+                            border.color: "#97a2ad"
+                            border.width: 1
 
-                            GridLayout {
-                                id: resultsGrid
-                                width: resultsBox.width - (resultsBox.contentPadding * 2) - 2
-                                columns: 3; columnSpacing: 0; rowSpacing: 0
+                            Row {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 4
 
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: root.dutyLabelText }
-                                PGridValue {
-                                    quantity: "Power"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
-                                    displayUnit: root.unitFor("Power")
-                                    editable: false
-                                }
-                                PGridUnit {
-                                    quantity: "Power"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root._siPower(Math.abs(root.appState.calcDutyKW)) : NaN
-                                    displayUnit: root.unitFor("Power")
-                                    onUnitOverride: function(u) { root.setUnit("Power", u) }
+                                Text {
+                                    text: "Find"
+                                    font.pixelSize: 11
+                                    color: "#1f2226"
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
 
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet temperature"; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcOutletTempK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    editable: false
-                                }
-                                PGridUnit {
-                                    alt: true
-                                    quantity: "Temperature"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcOutletTempK : NaN
-                                    displayUnit: root.unitFor("Temperature")
-                                    onUnitOverride: function(u) { root.setUnit("Temperature", u) }
-                                }
-
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet pressure" }
-                                PGridValue {
-                                    quantity: "Pressure"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcOutletPressurePa : NaN
-                                    displayUnit: root.unitFor("Pressure")
-                                    editable: false
-                                }
-                                PGridUnit {
-                                    quantity: "Pressure"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcOutletPressurePa : NaN
-                                    displayUnit: root.unitFor("Pressure")
-                                    onUnitOverride: function(u) { root.setUnit("Pressure", u) }
-                                }
-
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Outlet vapor fraction"; alt: true }
-                                PGridValue {
-                                    alt: true
-                                    quantity: "Dimensionless"
-                                    siValue: (root.appState && root.appState.solved)
-                                             ? root.appState.calcOutletVapFrac : NaN
-                                    editable: false
-                                }
-                                PGridUnit { alt: true; quantity: "Dimensionless" }
-
-                                // Direction banner — only shown when solved.
-                                Item {
-                                    Layout.columnSpan: 3
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: root.appState && root.appState.solved ? 28 : 0
-                                    visible: !!(root.appState && root.appState.solved)
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: (root.appState && root.appState.isCooling)
-                                              ? "\u25bc  Heat removed from process stream"
-                                              : "\u25b2  Heat added to process stream"
-                                        color: (root.appState && root.appState.isCooling) ? "#1c6ea7" : "#a73c1c"
-                                        font.pixelSize: 11
-                                        font.bold: true
+                                PTextField {
+                                    id: logSearchField
+                                    width: 160
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: root.logSearchText
+                                    placeholderText: "PH_FLASH, [state], ..."
+                                    onTextChanged: {
+                                        root.logSearchText = text
+                                        root.refreshLogSearch()
                                     }
                                 }
+
+                                PCheckBox {
+                                    id: logCaseBox
+                                    text: "Case"
+                                    checked: root.logCaseSensitive
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    onToggled: {
+                                        root.logCaseSensitive = checked
+                                        root.refreshLogSearch()
+                                    }
+                                }
+
+                                PButton {
+                                    text: "Prev"
+                                    minButtonWidth: 40
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchMatches.length > 0
+                                    onClicked: root.prevLogMatch()
+                                }
+
+                                PButton {
+                                    text: "Next"
+                                    minButtonWidth: 40
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchMatches.length > 0
+                                    onClicked: root.nextLogMatch()
+                                }
+
+                                PButton {
+                                    text: "Clear"
+                                    minButtonWidth: 42
+                                    fontPixelSize: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    enabled: root.logSearchText !== ""
+                                    onClicked: {
+                                        logSearchField.text = ""
+                                        root.clearLogSearch()
+                                    }
+                                }
+
+                                Text {
+                                    text: root.logSearchText === "" ? ""
+                                         : (root.logSearchMatches.length === 0
+                                            ? "0 matches"
+                                            : ((root.logCurrentMatchPos + 1) + " of " + root.logSearchMatches.length))
+                                    font.pixelSize: 10
+                                    color: "#526571"
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
                             }
                         }
 
-                        // ── Solver Status ──────────────────────────────────
-                        PGroupBox {
-                            id: statusBox
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: implicitHeight
-                            caption: "Solver Status"
-                            contentPadding: 8
+                        // Log list
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: findBar.bottom
+                            anchors.bottom: parent.bottom
+                            anchors.topMargin: 4
+                            color: "#ffffff"
+                            border.color: "#97a2ad"
+                            border.width: 1
 
-                            GridLayout {
-                                id: statusGrid
-                                width: statusBox.width - (statusBox.contentPadding * 2) - 2
-                                columns: 3; columnSpacing: 0; rowSpacing: 0
+                            ListView {
+                                id: logListView
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                clip: true
+                                model: root.appState ? root.appState.runLogModel : null
+                                spacing: 0
+                                boundsBehavior: Flickable.StopAtBounds
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                                PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Status" }
-                                PGridValue {
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    alignText: "left"
-                                    textValue: root.solveStatusText()
-                                    valueColor: root.solveStatusColor()
+                                delegate: Item {
+                                    width: logListView.width
+                                    height: 16
+
+                                    property bool rowIsMatch: root.logLineMatches(model.text || "")
+                                    property bool rowIsCurrent: root.logSearchMatches.length > 0
+                                                                && root.logCurrentMatchPos >= 0
+                                                                && index === root.logSearchMatches[root.logCurrentMatchPos]
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: rowIsCurrent ? "#ffe79a"
+                                             : rowIsMatch   ? "#fff4c7"
+                                             : (index % 2 === 0 ? "#ffffff" : "#f5f7fa")
+                                    }
+
+                                    Text {
+                                        x: 4
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: model.text || ""
+                                        font.pixelSize: 10
+                                        font.family: "Consolas, Courier New, monospace"
+                                        color: "#1f2226"
+                                    }
                                 }
 
-                                PGridLabel {
-                                    Layout.preferredWidth: root.labelColWidth
-                                    text: "Message"
-                                    alt: true
-                                    visible: !!(root.appState
-                                                && !root.appState.solved
-                                                && root.appState.solveStatus !== "")
+                                onCountChanged: {
+                                    if (root.logSearchText !== "")
+                                        Qt.callLater(function() { root.refreshLogSearch() })
+                                    else
+                                        Qt.callLater(function() { logListView.positionViewAtEnd() })
                                 }
-                                PGridValue {
-                                    alt: true
-                                    Layout.columnSpan: 2
-                                    Layout.fillWidth: true
-                                    isText: true
-                                    alignText: "left"
-                                    textValue: root.appState ? root.appState.solveStatus : ""
-                                    valueColor: "#b23b3b"
-                                    visible: !!(root.appState
-                                                && !root.appState.solved
-                                                && root.appState.solveStatus !== "")
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: !root.appState || !root.appState.runLogModel || logListView.count === 0
+                                    text: "No log entries yet — run Solve"
+                                    color: "#526571"
+                                    font.pixelSize: 11
+                                    font.italic: true
                                 }
                             }
                         }
-
-                        Item { Layout.fillHeight: true }
                     }
                 }
             }
         }
     }
 
-    // ── Bottom action bar (Solve / Reset + status text) ──────────────────────
+    // ── Bottom action bar (Solve / Reset + Status chip) ──────────────────────
     Rectangle {
         id: bottomBar
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 40
+        height: 70
         color: "#c8d0d8"
         border.color: "#6d7883"
         border.width: 1
 
         RowLayout {
             anchors.fill: parent
-            anchors.margins: 6
+            anchors.margins: 10
             spacing: 8
 
             PButton {
-                text: "\u25b6  Solve"
-                minButtonWidth: 100
+                text: "Solve"
+                minButtonWidth: 80
+                font.bold: true
                 enabled: !!root.appState
                 onClicked: if (root.appState) root.appState.solve()
             }
@@ -610,11 +859,32 @@ Item {
 
             Item { Layout.fillWidth: true }
 
-            Text {
-                text: root.solveStatusText()
-                color: root.solveStatusColor()
-                font.pixelSize: 10
-                font.bold: !!(root.appState && root.appState.solved)
+            // Right-aligned Status groupbox with a small colored chip.
+            PGroupBox {
+                id: statusBox
+                Layout.alignment: Qt.AlignVCenter
+                caption: "Status"
+                contentPadding: 12
+
+                // Sized by the chip — PGroupBox computes its own implicitWidth/
+                // implicitHeight from this child via contentHolder.childrenRect.
+                Rectangle {
+                    id: statusChip
+                    width: 60
+                    height: 14
+                    color: root.statusChipColor()
+                    border.color: "#3a3f47"
+                    border.width: 1
+                    radius: 2
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.statusChipText()
+                        color: root.statusChipTextColor()
+                        font.pixelSize: 9
+                        font.bold: true
+                    }
+                }
             }
         }
     }

@@ -22,7 +22,7 @@ Item {
     anchors.fill: parent
 
     readonly property color bg: "#dfe4ee"
-    readonly property int   viewTargetWidth: 410
+    readonly property int   viewTargetWidth: 465
 
     Rectangle {
         anchors.fill: parent

@@ -3,8 +3,13 @@
 #include <QObject>
 #include <QString>
 
+#include <functional>
+#include <string>
+
 #include "flowsheet/state/ProcessUnitState.h"
 #include "streams/state/MaterialStreamState.h"
+#include "common/models/DiagnosticsModel.h"
+#include "common/models/RunLogModel.h"
 
 class FlowsheetState;
 
@@ -32,6 +37,20 @@ class FlowsheetState;
 class HeatExchangerUnitState : public ProcessUnitState
 {
     Q_OBJECT
+
+public:
+    // Mirrors HeaterCoolerUnitState::StatusLevel. Drives the view's bottom
+    // status chip color (None=gray, Ok=green, Warn=yellow, Fail=red,
+    // Solving=blue). Solving is reserved for an async-solve refactor —
+    // currently solve() is synchronous and never dwells on this value.
+    enum class StatusLevel : int {
+        None    = 0,
+        Ok      = 1,
+        Warn    = 2,
+        Fail    = 3,
+        Solving = 4
+    };
+    Q_ENUM(StatusLevel)
 
     // ── Stream connections ────────────────────────────────────────────────────
     Q_PROPERTY(QString connectedHotInStreamUnitId
@@ -71,6 +90,11 @@ class HeatExchangerUnitState : public ProcessUnitState
     Q_PROPERTY(double  calcUA            READ calcUA             NOTIFY resultsChanged)
     Q_PROPERTY(double  calcApproachT     READ calcApproachT      NOTIFY resultsChanged)
     Q_PROPERTY(QString solveStatus        READ solveStatus        NOTIFY resultsChanged)
+
+    // ── Status / diagnostics / thermo log ────────────────────────────────────
+    Q_PROPERTY(int statusLevel READ statusLevelInt NOTIFY resultsChanged)
+    Q_PROPERTY(DiagnosticsModel* diagnosticsModel READ diagnosticsModel CONSTANT)
+    Q_PROPERTY(RunLogModel*      runLogModel      READ runLogModel      CONSTANT)
 
 public:
     explicit HeatExchangerUnitState(QObject* parent = nullptr);
@@ -115,6 +139,12 @@ public:
     double  calcApproachT()      const { return calcApproachT_; }
     QString solveStatus()        const { return solveStatus_; }
 
+    StatusLevel statusLevel() const { return statusLevel_; }
+    int statusLevelInt()      const { return static_cast<int>(statusLevel_); }
+
+    DiagnosticsModel* diagnosticsModel() { return &diagnosticsModel_; }
+    RunLogModel*      runLogModel()      { return &runLogModel_; }
+
     // ── Invokables ────────────────────────────────────────────────────────────
     Q_INVOKABLE void solve();
     Q_INVOKABLE void reset();
@@ -140,6 +170,13 @@ private:
     void clearResults_();
     void pushResultsToOutletStreams_();
 
+    // Diagnostic emission helpers — match HeaterCoolerUnitState's contract.
+    void emitError_(const QString& message);
+    void emitWarn_ (const QString& message);
+    void emitInfo_ (const QString& message);
+    void appendRunLogLine_(const QString& line);
+    void resetSolveArtifacts_();
+
     // ── Thermo helper: compute outlet T via PH flash given H_out ─────────────
     struct OutletResult {
         double T       = 0.0;
@@ -149,7 +186,8 @@ private:
     };
     OutletResult calcOutletFromH_(MaterialStreamState* inStream,
                                   double P_out, double H_out_kJkg,
-                                  double T_seed) const;
+                                  double T_seed,
+                                  const std::function<void(const std::string&)>& logSink);
 
     FlowsheetState* flowsheetState_ = nullptr;
 
@@ -178,4 +216,9 @@ private:
     double  calcUA_             = 0.0;
     double  calcApproachT_      = 0.0;
     QString solveStatus_;
+
+    // Status / diagnostics / thermo log
+    StatusLevel      statusLevel_ = StatusLevel::None;
+    DiagnosticsModel diagnosticsModel_;
+    RunLogModel      runLogModel_;
 };

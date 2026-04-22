@@ -17,8 +17,8 @@
 #include "flowsheet/state/ProcessUnitState.h"
 #include "unitops/column/sim/ColumnSolver.hpp"  // SolverInputs / SolverOutputs / ProgressEvent
 #include "models/TrayModel.h"
-#include "models/DiagnosticsModel.h"
-#include "models/RunLogModel.h"
+#include "common/models/DiagnosticsModel.h"
+#include "common/models/RunLogModel.h"
 #include "models/MaterialBalanceModel.h"
 #include "streams/state/MaterialStreamState.h"
 
