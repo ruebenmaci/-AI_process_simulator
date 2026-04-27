@@ -719,11 +719,14 @@ FlashPHResult flashPH(const FlashPHInput& in) {
 
             // React parity: log RR_SIGN (diagnostic) even when short-circuiting
             if (in.log) {
-               // React parity: when EOSK reports single-phase (and we shortcut), still emit RR sign tests
-               // using the EOSK K-field (if present) so we can see whether K's imply a 2-phase root.
+               // When EOSK reports single-phase (and we shortcut), we never
+               // computed a separate "Kuse" vector — RR wasn't invoked. Emit
+               // one RR_SIGN line tagged "Kraw" so the diagnostic stream still
+               // captures whether the K-field implies a 2-phase root, but do
+               // NOT emit a "Kuse" line: it would just duplicate Kraw and
+               // pollute the run log with redundant entries.
                const auto [kmin_ss, kmax_ss] = minmaxFinite(ek.K);
                logRRSignTest(in, T, "Kraw", ek.K, kmin_ss, kmax_ss, /*eosSaysSinglePhase=*/true);
-               logRRSignTest(in, T, "Kuse", ek.K, kmin_ss, kmax_ss, /*eosSaysSinglePhase=*/true);
             }
 
             // React parity: even in single-phase shortcut, emit PH_RESID_SUM
@@ -808,7 +811,24 @@ FlashPHResult flashPH(const FlashPHInput& in) {
       const auto [kmin_raw, kmax_raw] = computeKMinMax(K);
       const auto [kmin_use, kmax_use] = computeKMinMax(Kuse);
       logRRSignTest(in, T, "Kraw", K, kmin_raw, kmax_raw, eosSaysSinglePhase);
-      logRRSignTest(in, T, "Kuse", Kuse, kmin_use, kmax_use, eosSaysSinglePhase);
+
+      // Emit the Kuse RR_SIGN line only when it actually differs from Kraw.
+      // Kuse is a pointwise-modified copy of K (via forceTwoPhaseK) — but it
+      // only gets modified when forceTwoPhase fires or RR fails. In the
+      // common case Kuse == K pointwise, which means logging both produces
+      // byte-identical output lines (apart from the tag) and just pollutes
+      // the run log. We compare exactly (not with tolerance) because
+      // forceTwoPhaseK either runs and produces different values, or
+      // doesn't run and leaves K untouched — there's no near-miss case.
+      bool kuseDiffersFromRaw = (Kuse.size() != K.size());
+      if (!kuseDiffersFromRaw) {
+         for (std::size_t i = 0; i < K.size(); ++i) {
+            if (Kuse[i] != K[i]) { kuseDiffersFromRaw = true; break; }
+         }
+      }
+      if (kuseDiffersFromRaw) {
+         logRRSignTest(in, T, "Kuse", Kuse, kmin_use, kmax_use, eosSaysSinglePhase);
+      }
 
       const std::string ksrc = eosSaysSinglePhase ? "Wilson" : "EOSK";
 

@@ -179,17 +179,22 @@ FocusScope {
     property string text: ""
     property bool   alt:  false
 
-    // Baseline widths. preferredWidth of 170 matches the old default so
-    // existing layouts are unchanged. minimumWidth of 120 is a floor that
-    // prevents the label column from collapsing below the size needed to
-    // render realistic label strings ("Outlet vapor fraction" etc.) at
-    // 11 px Segoe UI. Callers that set their own Layout.preferredWidth still
-    // win at normal sizes; this minimum only kicks in when the container
-    // is compressed.
+    // Baseline widths.
+    //   • preferredWidth defaults to 170 (matches the old default; existing
+    //     callers pass their own Layout.preferredWidth, e.g. labelColWidth).
+    //   • minimumWidth is content-aware: the larger of a 120 px floor (so a
+    //     label column never collapses below something usable) and the actual
+    //     rendered text width. This means labels never clip mid-glyph when
+    //     the panel is narrowed below the typical column width.
+    //   • implicitWidth tracks the inner Text so layouts can read a sensible
+    //     natural size when nothing else constrains it.
     Layout.preferredWidth: 170
-    Layout.minimumWidth:   120
+    Layout.minimumWidth:   Math.max(120, Math.ceil(labelText.implicitWidth) + 4)
     Layout.preferredHeight: 22
     Layout.minimumHeight:   22
+    Layout.fillWidth:       false
+    implicitWidth:          Math.ceil(labelText.implicitWidth) + 4
+    implicitHeight:         22
 
     // Focus ring only — no background fill, no border lines
     Rectangle {
@@ -207,6 +212,7 @@ FocusScope {
     }
 
     Text {
+        id: labelText
         text: cell.text
         anchors.left: parent.left
         anchors.leftMargin: 2

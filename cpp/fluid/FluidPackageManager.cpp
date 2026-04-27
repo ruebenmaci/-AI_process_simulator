@@ -8,6 +8,7 @@
 
 #include "components/ComponentManager.h"
 #include "fluid/models/FluidPackageListModel.h"
+#include "flowsheet/state/FlowsheetState.h"
 #include "thermo/ThermoConfig.hpp"
 
 FluidPackageManager* FluidPackageManager::instance_ = nullptr;
@@ -120,10 +121,43 @@ bool FluidPackageManager::addOrUpdateFluidPackage(const QVariantMap& packageMap)
    return true;
 }
 
+QStringList FluidPackageManager::streamsUsingPackage(const QString& packageId) const
+{
+   if (auto* fs = FlowsheetState::instance())
+      return fs->streamsUsingPackage(packageId);
+   return {};
+}
+
+QStringList FluidPackageManager::streamUnitIdsUsingPackage(const QString& packageId) const
+{
+   if (auto* fs = FlowsheetState::instance())
+      return fs->streamUnitIdsUsingPackage(packageId);
+   return {};
+}
+
 bool FluidPackageManager::removeFluidPackage(const QString& packageId)
 {
    const int idx = indexOfPackageId_(packageId);
    if (idx < 0) return false;
+
+   // Block deletion if any stream is currently using this package.
+   const QStringList streamNames = streamsUsingPackage(packageId);
+   if (!streamNames.isEmpty()) {
+      const QString pkgName = packages_[static_cast<std::size_t>(idx)].name;
+      const QString preview = streamNames.mid(0, 5).join(QStringLiteral(", "));
+      const QString more = streamNames.size() > 5
+         ? QStringLiteral(" (+%1 more)").arg(streamNames.size() - 5)
+         : QString();
+      lastStatus_ = QStringLiteral(
+         "Cannot delete fluid package '%1': it is used by %2 stream(s): %3%4")
+         .arg(pkgName.isEmpty() ? packageId : pkgName)
+         .arg(streamNames.size())
+         .arg(preview, more);
+      emit errorOccurred(lastStatus_);
+      emit fluidPackagesChanged();  // re-emit so QML re-reads lastStatus
+      return false;
+   }
+
    const bool wasDefault = packages_[static_cast<std::size_t>(idx)].isDefault;
    packages_.erase(packages_.begin() + idx);
    if (wasDefault && !packages_.empty()) packages_.front().isDefault = true;

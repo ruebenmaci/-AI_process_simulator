@@ -74,6 +74,11 @@ public:
    Q_INVOKABLE bool containsComponent(const QString& componentId) const;
    Q_INVOKABLE bool addOrUpdateComponent(const QVariantMap& componentMap);
    Q_INVOKABLE bool removeComponent(const QString& componentId);
+
+   // Returns the names of every component list that currently contains
+   // `componentId`. Used by removeComponent to block deletion when a list
+   // still references the component.
+   Q_INVOKABLE QStringList componentListsUsingComponent(const QString& componentId) const;
    Q_INVOKABLE int importPseudoComponentFluid(const QString& fluidName,
       const QString& family = QStringLiteral("pseudo-fraction"),
       bool replaceExisting = false);
@@ -93,6 +98,11 @@ public:
    Q_INVOKABLE bool createComponentList(const QString& name);
    Q_INVOKABLE bool addOrUpdateComponentList(const QVariantMap& listMap);
    Q_INVOKABLE bool removeComponentList(const QString& listId);
+
+   // Returns the names of every fluid package that currently references
+   // `listId` as its component list. Used by removeComponentList to block
+   // deletion when a fluid package still depends on the list.
+   Q_INVOKABLE QStringList fluidPackagesUsingComponentList(const QString& listId) const;
    Q_INVOKABLE bool addComponentToList(const QString& listId, const QString& componentId);
    Q_INVOKABLE bool removeComponentFromList(const QString& listId, const QString& componentId);
    Q_INVOKABLE bool renameComponentList(const QString& listId, const QString& newName);

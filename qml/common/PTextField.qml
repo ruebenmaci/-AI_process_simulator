@@ -107,7 +107,14 @@ TextField {
         }
     }
 
+    // Layout contract: PTextField is the row's elastic value cell. It absorbs
+    // remaining horizontal space (Layout.fillWidth: true) but never shrinks
+    // below 80 px — anything narrower can't show enough characters to be
+    // useful. Preferred width sits a touch wider than the floor so unconstrained
+    // layouts give it a comfortable size.
     Layout.fillWidth: true
+    Layout.minimumWidth: 80
+    Layout.preferredWidth: 120
     Layout.preferredHeight: implicitHeight
     Layout.minimumHeight: implicitHeight
 }

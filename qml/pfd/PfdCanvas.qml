@@ -565,6 +565,40 @@ Pane {
             border.width: 1
             radius: 0
 
+            // Background click handler: clears any active PFD highlight when
+            // the user clicks empty canvas. Unit clicks are intercepted by
+            // each UnitNodeItem's own MouseArea (preventStealing:true,
+            // propagateComposedEvents:false), so this only fires for clicks
+            // that miss every unit. Sits below mouseTracker so placement-mode
+            // clicks still take priority. Only active when not in placement
+            // mode and only when there's actually a highlight to clear.
+            MouseArea {
+                id: highlightClearArea
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                z: -2
+                enabled: !root.inPlacementMode
+                    && root.flowsheet
+                    && root.flowsheet.highlightedUnitId !== ""
+                onClicked: function(mouse) {
+                    if (root.flowsheet) root.flowsheet.clearHighlight()
+                    mouse.accepted = false   // let other handlers see it too
+                }
+            }
+
+            // Escape key clears highlight (and cancels placement mode).
+            Keys.onEscapePressed: function(event) {
+                if (root.flowsheet && root.flowsheet.highlightedUnitId !== "") {
+                    root.flowsheet.clearHighlight()
+                    event.accepted = true
+                    return
+                }
+                if (root.inPlacementMode) {
+                    root.cancelPlacement()
+                    event.accepted = true
+                }
+            }
+
             MouseArea {
                 id: mouseTracker
                 anchors.fill: parent
@@ -846,6 +880,7 @@ Pane {
                     exclusionRect: Qt.rect(titleBlock.x, titleBlock.y, titleBlock.width, titleBlock.height)
                     exclusionRect2: Qt.rect(mouseDebugBox.x, mouseDebugBox.y, mouseDebugBox.width, mouseDebugBox.height)
                     selected: root.flowsheet ? root.flowsheet.selectedUnitId === model.unitId : false
+                    highlighted: root.flowsheet ? root.flowsheet.highlightedUnitId === model.unitId : false
                     canvasScale: root.canvasScale
 
                     Component.onCompleted: {
@@ -1241,8 +1276,6 @@ Pane {
                     }
                 }
             }
-
-            Keys.onEscapePressed: root.cancelPlacement()
         }
     }
 }

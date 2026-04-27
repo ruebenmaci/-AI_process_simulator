@@ -140,7 +140,6 @@ int main(int argc, char* argv[]) {
       double sf = s.value("scaleFactor", 1.0).toDouble();
       if (sf < 0.5 || sf > 4.0) sf = 1.0;  // clamp sanity check
       qputenv("QT_SCALE_FACTOR", QString::number(sf, 'f', 2).toUtf8());
-      qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");  // let QT_SCALE_FACTOR be the sole control
    }
 
    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(

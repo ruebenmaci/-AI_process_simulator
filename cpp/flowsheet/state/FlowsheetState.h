@@ -18,6 +18,7 @@ class StreamUnitState;
 class MaterialStreamState;
 class HeaterCoolerUnitState;
 class HeatExchangerUnitState;
+class QTimer;
 
 class FlowsheetState : public QObject
 {
@@ -28,6 +29,13 @@ class FlowsheetState : public QObject
       Q_PROPERTY(QObject* selectedUnit READ selectedUnitObject NOTIFY selectedUnitChanged)
       Q_PROPERTY(QVariantList materialConnections READ materialConnectionsVariant NOTIFY materialConnectionsChanged)
       Q_PROPERTY(QString lastOperationMessage READ lastOperationMessage NOTIFY lastOperationMessageChanged)
+
+      // Transient highlight: the unit currently pulsing on the PFD as a result
+      // of cross-view navigation (e.g. clicking a stream in a Delete Error
+      // dialog). Empty string when no highlight is active. Set via
+      // highlightStream(unitId); auto-clears after 3 seconds, or immediately
+      // via clearHighlight() (called by Escape / click-elsewhere on canvas).
+      Q_PROPERTY(QString highlightedUnitId READ highlightedUnitId NOTIFY highlightedUnitIdChanged)
 
       // ── Drawing metadata ─────────────────────────────────────────────────
       Q_PROPERTY(QString drawingTitle  READ drawingTitle  WRITE setDrawingTitle  NOTIFY drawingMetaChanged)
@@ -49,6 +57,20 @@ public:
    };
 
    explicit FlowsheetState(QObject* parent = nullptr);
+   ~FlowsheetState() override;
+
+   static FlowsheetState* instance();
+
+   // Returns the names of every material stream whose selected fluid package
+   // matches `packageId` (case-insensitive). Used to enforce the "cannot
+   // delete a fluid package while a stream uses it" rule.
+   QStringList streamsUsingPackage(const QString& packageId) const;
+
+   // Returns the unit IDs (parallel to streamsUsingPackage()'s output, in the
+   // same order) of every material stream whose selected fluid package
+   // matches `packageId`. Used by the Delete Error dialog flow to navigate
+   // from a clicked stream-name back to the underlying unit.
+   Q_INVOKABLE QStringList streamUnitIdsUsingPackage(const QString& packageId) const;
 
    int unitCount() const;
    FlowsheetUnitModel* unitModel() { return &unitModel_; }
@@ -101,6 +123,17 @@ public:
 
    QString lastOperationMessage() const { return lastOperationMessage_; }
 
+   // ── Transient PFD highlight ────────────────────────────────────────────
+   QString highlightedUnitId() const { return highlightedUnitId_; }
+
+   // Pulse-highlights a unit on the PFD for ~3 seconds. Replaces any current
+   // highlight. Pass an empty string to behave like clearHighlight().
+   Q_INVOKABLE void highlightStream(const QString& unitId);
+
+   // Immediately clears any active highlight (called by Escape /
+   // click-elsewhere on the canvas).
+   Q_INVOKABLE void clearHighlight();
+
    // Drawing metadata
    QString drawingTitle()  const { return drawingTitle_; }
    QString drawingNumber() const { return drawingNumber_; }
@@ -137,6 +170,7 @@ signals:
    void drawingMetaChanged();
    void isDirtyChanged();
    void currentFilePathChanged();
+   void highlightedUnitIdChanged();
 
 private:
    QString addColumnInternal(double x, double y);
@@ -178,4 +212,10 @@ private:
    // Persistence
    QString currentFilePath_;
    QString lastSaveError_;
+
+   // Transient PFD highlight (cross-view navigation)
+   QString highlightedUnitId_;
+   QTimer* highlightTimer_ = nullptr;
+
+   static FlowsheetState* instance_;
 };

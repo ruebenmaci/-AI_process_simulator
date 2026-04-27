@@ -17,6 +17,7 @@ Item {
     property string name: ""
     property string unitType: ""
     property bool selected: false
+    property bool highlighted: false
     property var flowsheet: null
     property Item dragBounds: null
     property real dragPaddingLeft: 0
@@ -127,6 +128,29 @@ Item {
             border.width: selected ? 2 : 0
             border.color: gAppTheme.nodeSelectionBorder
             radius: 4
+        }
+
+        // Transient highlight ring — pulses when this unit was navigated to
+        // from a Delete Error dialog (or any cross-view navigation that calls
+        // gFlowsheet.highlightStream). Auto-clears via FlowsheetState's 3s
+        // timer, or immediately on Escape / click-elsewhere on the canvas.
+        Rectangle {
+            id: highlightRing
+            anchors.fill: parent
+            anchors.margins: -3
+            color: "transparent"
+            border.width: 3
+            border.color: "#ff9500"   // orange — distinct from selection blue
+            radius: 6
+            visible: root.highlighted
+            opacity: 0
+
+            SequentialAnimation on opacity {
+                running: root.highlighted
+                loops: Animation.Infinite
+                NumberAnimation { from: 0.0; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+                NumberAnimation { from: 1.0; to: 0.3; duration: 400; easing.type: Easing.InOutQuad }
+            }
         }
 
         Loader {

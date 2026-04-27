@@ -4,6 +4,11 @@ project(chatgpt5_adt_simulation_qt LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable standard C++ exception handling on MSVC (silences C4530 spam).
+if(MSVC)
+    add_compile_options(/EHsc)
+endif()
+
 # Set Qt path once; no FORCE so CMake does not rewrite the cache every configure pass
 # (FORCE was causing part of the infinite reconfigure loop)
 if(NOT DEFINED Qt6_DIR OR Qt6_DIR STREQUAL "")
@@ -128,8 +133,6 @@ qt_add_qml_module(appChatGPT5_ADT
     NO_CACHEGEN
     QML_FILES
         qml/Main.qml
-        qml/common/ClassicButton.qml
-        qml/common/ClassicTabs.qml
         qml/common/PButton.qml
         qml/common/PCheckBox.qml
         qml/common/PComboBox.qml
@@ -138,7 +141,10 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/common/PGridUnit.qml
         qml/common/PGridValue.qml
         qml/common/PGroupBox.qml
+        qml/common/PListItem.qml
+        qml/common/PMessageDialog.qml
         qml/common/PPropertyView.qml
+        qml/common/PSpinner.qml
         qml/common/PTextField.qml
         qml/common/PSpreadsheet.qml
         qml/common/PTabBar.qml
@@ -153,7 +159,15 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/fluid/FluidManagerView.qml
         qml/displaySettings/DisplaySettingsPanel.qml
         cpp/unitops/column/qml/ColumnWorkspaceWindow.qml
-        cpp/unitops/column/qml/DistillationColumn.qml
+        cpp/unitops/column/qml/ColumnDiagnosticsPanel.qml
+        cpp/unitops/column/qml/ColumnDrawsPanel.qml
+        cpp/unitops/column/qml/ColumnPerformancePanel.qml
+        cpp/unitops/column/qml/ColumnProductsPanel.qml
+        cpp/unitops/column/qml/ColumnProfilesPanel.qml
+        cpp/unitops/column/qml/ColumnRunLogPanel.qml
+        cpp/unitops/column/qml/ColumnRunResultsPanel.qml
+        cpp/unitops/column/qml/ColumnSetupPanel.qml
+        cpp/unitops/column/qml/ColumnView.qml
         cpp/unitops/heater/qml/HeaterCoolerView.qml
         cpp/unitops/heater/qml/HeaterWorkspaceWindow.qml
         cpp/unitops/heater/qml/CoolerWorkspaceWindow.qml
@@ -165,9 +179,6 @@ qt_add_qml_module(appChatGPT5_ADT
         cpp/streams/qml/StreamPhasesPanel.qml
         cpp/streams/qml/StreamPropertiesPanel.qml
         cpp/streams/qml/StreamWorkspaceWindow.qml
-        qml/spreadsheet/SimpleSpreadsheet.qml
-        qml/spreadsheet/SpreadsheetView.qml
-        qml/spreadsheet/SpreadsheetWorkspaceWindow.qml
     RESOURCES
         icons/svg/Equip_Palette/Default/Distillation_Column.svg
         icons/svg/Equip_Palette/Default/Material_Stream.svg
@@ -211,6 +222,7 @@ qt_add_qml_module(appChatGPT5_ADT
         icons/svg/2D_Light_Icons/tee_splitter.svg
         icons/svg/2D_Light_Icons/three_phase_flash.svg
         icons/svg/2D_Light_Icons/valve.svg
+        icons/svg/stop.svg
         cpp/components/data/hydrocarbon_starter_components.json
 )
 # Link core into the Qt app (no Qt linkage needed in adt_core unless you use Qt types inside solver sources)

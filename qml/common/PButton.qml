@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 
 Button {
     id: control
@@ -68,9 +69,33 @@ Button {
     property int contentVPadding: 0
     property int minButtonWidth: 0
 
-    implicitWidth: Math.max(minButtonWidth,
-                            Math.ceil(textMetrics.advanceWidth) + leftPadding + rightPadding)
+    // ── Icon-glyph mode ────────────────────────────────────────────────────
+    // When iconText is non-empty, the button renders the glyph (in iconColor
+    // at iconFontSize) instead of `text`. Used for compact icon buttons like
+    // the red ✕ delete button on draw-spec rows. iconText takes precedence
+    // over text. Defaults preserve existing PButton callers exactly.
+    property string iconText:     ""
+    property color  iconColor:    "#c5422c"   // HYSYS-style red
+    property int    iconFontSize: 12
+
+    readonly property bool _isIconMode: iconText !== ""
+
+    implicitWidth: _isIconMode
+                   ? Math.max(minButtonWidth,
+                              Math.ceil(iconMetrics.advanceWidth) + leftPadding + rightPadding)
+                   : Math.max(minButtonWidth,
+                              Math.ceil(textMetrics.advanceWidth) + leftPadding + rightPadding)
     implicitHeight: 22
+
+    // Layout contract: content-sized by default. The button never shrinks
+    // below its label width + padding (or the caller's minButtonWidth).
+    // Panels that want equal-share buttons in a row can override
+    // Layout.fillWidth: true at the use site.
+    Layout.minimumWidth:   implicitWidth
+    Layout.preferredWidth: implicitWidth
+    Layout.preferredHeight: implicitHeight
+    Layout.minimumHeight:   implicitHeight
+    Layout.fillWidth:       false
 
     leftPadding: contentHPadding
     rightPadding: contentHPadding
@@ -81,9 +106,13 @@ Button {
     font.pixelSize: fontPixelSize
 
     contentItem: Text {
-        text: control.text
-        font: control.font
-        color: control.enabled ? control.textColor : control.disabledTextColor
+        text: control._isIconMode ? control.iconText : control.text
+        font.family: control.font.family
+        font.pixelSize: control._isIconMode ? control.iconFontSize : control.font.pixelSize
+        font.bold: control._isIconMode
+        color: control._isIconMode
+               ? (control.enabled ? control.iconColor : control.disabledTextColor)
+               : (control.enabled ? control.textColor : control.disabledTextColor)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideNone
@@ -147,5 +176,13 @@ Button {
         id: textMetrics
         font: control.font
         text: control.text || ""
+    }
+
+    TextMetrics {
+        id: iconMetrics
+        font.family: control.font.family
+        font.pixelSize: control.iconFontSize
+        font.bold: true
+        text: control.iconText || ""
     }
 }

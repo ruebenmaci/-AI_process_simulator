@@ -178,10 +178,15 @@ FocusScope {
 
     signal unitOverride(string unit)
 
+    // Layout contract: unit column is a fixed 72 px wide. Unit symbols are
+    // short ("kPa", "kgmole/h") and the column should be visually consistent
+    // across rows in a group. Not a slack-absorbing cell — the row's value
+    // cell (PGridValue / PTextField) absorbs slack instead.
     Layout.preferredWidth: 72
     Layout.minimumWidth: 72
     Layout.preferredHeight: 22
     Layout.minimumHeight: 22
+    Layout.fillWidth: false
 
     UnitToken {
         id: unitTok

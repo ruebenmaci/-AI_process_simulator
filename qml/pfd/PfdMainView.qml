@@ -337,11 +337,13 @@ Item {
                     color: "#17212b"
                 }
 
-                ClassicButton {
+                PButton {
                     id: deleteWarningOkButton
                     anchors.right: parent.right
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
+                    width: 64
+                    height: 24
                     text: "OK"
                     onClicked: deleteWarningDialog.close()
                 }
@@ -404,8 +406,23 @@ Item {
 
         contentItem: [
             ComponentManagerView {
+                id: componentManagerView
                 anchors.fill: parent
                 manager: gComponentManager
+
+                // Cross-view navigation: user clicked a fluid-package link in
+                // the Component Manager's Delete Error → Confirm flow. Close
+                // this panel, open the Fluid Manager, and select the package
+                // that was blocking deletion of the component list.
+                onNavigateToFluidPackage: function(packageId) {
+                    root.componentManagerVisible = false
+                    if (root.activePanel === componentManagerPanel) root.activePanel = null
+                    root.fluidManagerVisible = true
+                    root.raisePanel(fluidManagerPanel)
+                    Qt.callLater(function() {
+                        fluidManagerView.refreshPackages(packageId)
+                    })
+                }
             }
         ]
     }
@@ -418,10 +435,10 @@ Item {
         panelTitle: "Fluid Package Manager"
         panelIconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath("fluid_package"))
         boundsItem: root
-        minPanelWidth: 1040
-        minPanelHeight: 720
-        width: Math.min(1240, Math.max(1040, root.width - 100))
-        height: Math.min(820, Math.max(720, root.height - 100))
+        minPanelWidth: 1000
+        minPanelHeight: 660
+        width: Math.min(1160, Math.max(1000, root.width - 120))
+        height: Math.min(780, Math.max(660, root.height - 140))
         active: visible && root.activePanel === fluidManagerPanel
 
         onXChanged: root.capturePanelRelativePosition(fluidManagerPanel, "fluidManagerPos", "fluidManagerRelPos")
@@ -437,9 +454,25 @@ Item {
 
         contentItem: [
             FluidManagerView {
+                id: fluidManagerView
                 anchors.fill: parent
                 fluidManager: gFluidPackageManager
                 componentManager: gComponentManager
+
+                // Cross-view navigation: user clicked a stream link in the
+                // Fluid Manager's Delete Error → Confirm flow. Close this
+                // panel, select the stream on the PFD, pulse its highlight
+                // ring, and open its workspace window.
+                onNavigateToStream: function(unitId) {
+                    root.fluidManagerVisible = false
+                    if (root.activePanel === fluidManagerPanel) root.activePanel = null
+                    if (root.flowsheet) {
+                        root.flowsheet.selectUnit(unitId)
+                        root.flowsheet.highlightStream(unitId)
+                    }
+                    root.floatingWorkspaceVisible = true
+                    root.raisePanel(floatingWorkspace)
+                }
             }
         ]
     }
@@ -1609,10 +1642,12 @@ Item {
                     color: "#17212b"
                 }
 
-                ClassicButton {
+                PButton {
                     anchors.right: parent.right
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
+                    width: 64
+                    height: 24
                     text: "OK"
                     onClicked: stripperStatusHelpDialog.close()
                 }
@@ -1774,10 +1809,12 @@ Item {
                     color: "#17212b"
                 }
 
-                ClassicButton {
+                PButton {
                     anchors.right: parent.right
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
+                    width: 64
+                    height: 24
                     text: "OK"
                     onClicked: solverConvergenceHelpDialog.close()
                 }
@@ -1839,10 +1876,12 @@ Item {
                     color: "#17212b"
                 }
 
-                ClassicButton {
+                PButton {
                     anchors.right: parent.right
                     anchors.rightMargin: 8
                     anchors.verticalCenter: parent.verticalCenter
+                    width: 64
+                    height: 24
                     text: "OK"
                     onClicked: aboutDialog.close()
                 }
@@ -1915,7 +1954,9 @@ Item {
                     text: root.flowsheet ? (root.flowsheet.lastSaveError() || "Unknown error") : ""
                     wrapMode: Text.WordWrap; font.pixelSize: 11; color: "#5a2020"
                 }
-                ClassicButton {
+                PButton {
+                    width: 64
+                    height: 24
                     text: "OK"
                     onClicked: errorDialog.visible = false
                 }

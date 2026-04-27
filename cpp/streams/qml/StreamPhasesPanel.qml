@@ -15,6 +15,12 @@ Item {
     property var streamObject: null
     property var unitObject:   null
 
+    // ── Layout constants ──────────────────────────────────────────────────
+    // Single source of truth for the label column width. Sized to fit the
+    // longest label string in this panel's vocabulary at 11 px Segoe UI
+    // (e.g. "Thermal conductivity").
+    readonly property int labelColWidth: 148
+
     property var unitOverrides: ({})
     function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
     function setUnit(q, u) { var c = Object.assign({}, unitOverrides); c[q] = u; unitOverrides = c }
@@ -41,17 +47,6 @@ Item {
         anchors.fill: parent
         color: "#e8ebef"
 
-        Rectangle {
-            id: panelHdr
-            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-            height: 20
-            color: "#c8d0d8"; border.color: "#97a2ad"; border.width: 1
-            Text {
-                anchors.left: parent.left; anchors.leftMargin: 6
-                anchors.verticalCenter: parent.verticalCenter
-                text: "Phases"; font.pixelSize: 11; font.bold: true; color: "#1f2a34"
-            }
-        }
         Text { anchors.centerIn: parent; visible: !root.streamObject
                text: "No stream selected"; font.pixelSize: 11; color: "#526571" }
 
@@ -59,7 +54,7 @@ Item {
             id: phasesScroll
             anchors {
                 left: parent.left; right: parent.right
-                top: panelHdr.bottom; bottom: parent.bottom
+                top: parent.top; bottom: parent.bottom
                 topMargin: 4; leftMargin: 4; rightMargin: 4; bottomMargin: 4
             }
             visible: !!root.streamObject; clip: true
@@ -135,7 +130,7 @@ Item {
                         columns: 4; columnSpacing: 0; rowSpacing: 0
 
                         // ── Density ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Density" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Density" }
                         PGridValue { quantity: "Density"; alignText: "center"
                                      siValue: root.streamObject ? root.streamObject.liquidDensityKgM3 : NaN
                                      displayUnit: root.unitFor("Density") }
@@ -146,7 +141,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("Density", u) } }
 
                         // ── Viscosity ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Viscosity"; alt: true }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Viscosity"; alt: true }
                         PGridValue { quantity: "Viscosity"; alt: true; alignText: "center"
                                      siValue: root.streamObject ? root._siVisc(root.streamObject.liquidViscosityCp) : NaN
                                      displayUnit: root.unitFor("Viscosity") }
@@ -157,7 +152,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("Viscosity", u) } }
 
                         // ── Thermal conductivity ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Thermal conductivity" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Thermal conductivity" }
                         PGridValue { quantity: "ThermalConductivity"; alignText: "center"
                                      siValue: root.streamObject ? root.streamObject.liquidThermalCondWmK : NaN
                                      displayUnit: root.unitFor("ThermalConductivity") }
@@ -168,7 +163,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("ThermalConductivity", u) } }
 
                         // ── Cp ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Heat capacity Cp"; alt: true }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Heat capacity Cp"; alt: true }
                         PGridValue { quantity: "SpecificHeat"; alt: true; alignText: "center"
                                      siValue: root.streamObject ? root._siEntr(root.streamObject.liquidCpKJkgK) : NaN
                                      displayUnit: root.unitFor("SpecificHeat") }
@@ -179,7 +174,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("SpecificHeat", u) } }
 
                         // ── Enthalpy ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Enthalpy" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Enthalpy" }
                         PGridValue { quantity: "SpecificEnthalpy"; alignText: "center"
                                      siValue: root.streamObject ? root._siEnth(root.streamObject.liquidEnthalpyKJkg) : NaN
                                      displayUnit: root.unitFor("SpecificEnthalpy") }
@@ -190,7 +185,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("SpecificEnthalpy", u) } }
 
                         // ── Entropy ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Entropy"; alt: true }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Entropy"; alt: true }
                         PGridValue { quantity: "SpecificEntropy"; alt: true; alignText: "center"
                                      siValue: root.streamObject ? root._siEntr(root.streamObject.liquidEntropyKJkgK) : NaN
                                      displayUnit: root.unitFor("SpecificEntropy") }
@@ -201,7 +196,7 @@ Item {
                                      onUnitOverride: function(u) { root.setUnit("SpecificEntropy", u) } }
 
                         // ── Surface tension (only liquid; vapour is "—") ──
-                        PGridLabel { Layout.preferredWidth: 148; text: "Surface tension" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Surface tension" }
                         PGridValue { quantity: "SurfaceTension"; alignText: "center"
                                      siValue: root.streamObject ? root.streamObject.surfaceTensionNm : NaN
                                      displayUnit: root.unitFor("SurfaceTension") }
@@ -225,28 +220,28 @@ Item {
                         width: envGroup.width - (envGroup.contentPadding * 2) - 2
                         columns: 3; columnSpacing: 0; rowSpacing: 0
 
-                        PGridLabel { Layout.preferredWidth: 148; text: "Bubble point" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Bubble point" }
                         PGridValue { quantity: "Temperature"
                                      siValue: root.streamObject ? root.streamObject.bubblePointEstimateK : NaN
                                      displayUnit: root.unitFor("Temperature") }
                         PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
                                      onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
 
-                        PGridLabel { Layout.preferredWidth: 148; text: "Dew point"; alt: true }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Dew point"; alt: true }
                         PGridValue { quantity: "Temperature"; alt: true
                                      siValue: root.streamObject ? root.streamObject.dewPointEstimateK : NaN
                                      displayUnit: root.unitFor("Temperature") }
                         PGridUnit  { quantity: "Temperature"; alt: true; displayUnit: root.unitFor("Temperature")
                                      onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
 
-                        PGridLabel { Layout.preferredWidth: 148; text: "Critical temperature" }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Critical temperature" }
                         PGridValue { quantity: "Temperature"
                                      siValue: root.streamObject ? root.streamObject.criticalTemperatureK : NaN
                                      displayUnit: root.unitFor("Temperature") }
                         PGridUnit  { quantity: "Temperature"; displayUnit: root.unitFor("Temperature")
                                      onUnitOverride: function(u) { root.setUnit("Temperature", u) } }
 
-                        PGridLabel { Layout.preferredWidth: 148; text: "Critical pressure"; alt: true }
+                        PGridLabel { Layout.preferredWidth: root.labelColWidth; text: "Critical pressure"; alt: true }
                         PGridValue { quantity: "Pressure"; alt: true
                                      siValue: root.streamObject ? root._siCriticalP(root.streamObject.criticalPressureKPa) : NaN
                                      displayUnit: root.unitFor("Pressure") }

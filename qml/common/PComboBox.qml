@@ -138,6 +138,7 @@ ComboBox {
 
     implicitWidth:          _contentWidth + leftPadding + rightPadding
     Layout.minimumWidth:    _contentWidth + leftPadding + rightPadding
+    Layout.preferredWidth:  _contentWidth + leftPadding + rightPadding
     Layout.fillWidth:       widthMode === "fill"
     Layout.preferredHeight: implicitHeight
     Layout.minimumHeight:   implicitHeight
@@ -175,6 +176,15 @@ ComboBox {
         }
     }
 
+    // The ComboBox itself already insets the content area via its own
+    // leftPadding (4) and rightPadding (arrowWidth, default 22). The
+    // contentItem Text fills that pre-insetted area, so it must NOT add its
+    // own leftPadding / rightPadding — doing so would shrink the visible
+    // text region by an extra 4 + 22 = 26 px, eliding text away entirely
+    // in narrow cells. (The legacy CCombo control had this same single-
+    // pass padding; PComboBox originally set padding on both layers and
+    // silently elided "L" / "feedPct" to nothing in any column under
+    // ~70 px wide.)
     contentItem: Text {
         text: combo.displayText
         font: combo.font
@@ -182,8 +192,6 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
         horizontalAlignment: Text.AlignLeft
         elide: Text.ElideRight
-        leftPadding: 4
-        rightPadding: combo.arrowWidth
     }
 
     indicator: Item {
@@ -236,6 +244,9 @@ ComboBox {
         font.family: "Segoe UI"
         highlighted: combo.highlightedIndex === index
 
+        // Same single-padding rule as the main contentItem above: the
+        // ItemDelegate's leftPadding/rightPadding (4 px each) already inset
+        // the content area, so the inner Text must not re-apply them.
         contentItem: Text {
             text: {
                 if (typeof modelData === "string") return modelData
@@ -252,8 +263,6 @@ ComboBox {
             verticalAlignment: Text.AlignVCenter
             horizontalAlignment: Text.AlignLeft
             elide: Text.ElideRight
-            leftPadding: 4
-            rightPadding: 4
         }
 
         background: Rectangle {

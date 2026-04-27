@@ -1,5 +1,6 @@
 import QtQuick 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PCheckBox.qml
@@ -35,6 +36,18 @@ CheckBox {
     font.family: "Segoe UI"
     padding: 0
     spacing: 6
+
+    // Layout contract: content-sized — the natural width is indicator + spacing
+    // + label text + padding (computed by Qt from the contentItem). The minimum
+    // never drops below the implicit size, so the box+label never clip. The
+    // floor on label text is the responsibility of the label string itself
+    // (short labels are intentional). Panels that need a checkbox to fill a
+    // row can override Layout.fillWidth at the use site.
+    Layout.minimumWidth:   implicitWidth
+    Layout.preferredWidth: implicitWidth
+    Layout.preferredHeight: implicitHeight
+    Layout.minimumHeight:   implicitHeight
+    Layout.fillWidth:       false
 
     property color boxFill: "#ffffff"
     property color boxBorder: "#97a2ad"

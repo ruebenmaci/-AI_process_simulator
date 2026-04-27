@@ -38,6 +38,16 @@ public:
    Q_INVOKABLE QVariantList listFluidPackages() const;
    Q_INVOKABLE bool addOrUpdateFluidPackage(const QVariantMap& packageMap);
    Q_INVOKABLE bool removeFluidPackage(const QString& packageId);
+
+   // Returns the names of every material stream currently using `packageId`.
+   // Used by removeFluidPackage to block deletion when a stream still
+   // references the package, and may also be called from QML to display the
+   // blocking reason in a dialog.
+   Q_INVOKABLE QStringList streamsUsingPackage(const QString& packageId) const;
+
+   // Parallel helper: returns the unit IDs (in the same order as
+   // streamsUsingPackage) for navigation back to the underlying stream.
+   Q_INVOKABLE QStringList streamUnitIdsUsingPackage(const QString& packageId) const;
    Q_INVOKABLE bool setDefaultFluidPackage(const QString& packageId);
    Q_INVOKABLE bool createStarterPackages();
    Q_INVOKABLE bool saveToJsonFile(const QString& path) const;

@@ -15,6 +15,7 @@
 
 #include "components/models/ComponentListModel.h"
 #include "components/models/CompGroupListModel.h"
+#include "fluid/FluidPackageManager.h"
 #include "thermo/pseudocomponents/FluidDefinition.hpp"
 #include "thermo/pseudocomponents/componentData.hpp"
 
@@ -410,10 +411,46 @@ bool ComponentManager::addOrUpdateComponent(const QVariantMap& componentMap)
    return true;
 }
 
+QStringList ComponentManager::componentListsUsingComponent(const QString& componentId) const
+{
+   QStringList names;
+   const QString needle = componentId.trimmed();
+   if (needle.isEmpty()) return names;
+
+   for (const auto& list : componentLists_) {
+      bool found = false;
+      for (const auto& cid : list.componentIds) {
+         if (cid.compare(needle, Qt::CaseInsensitive) == 0) { found = true; break; }
+      }
+      if (found) {
+         names.append(list.name.isEmpty() ? list.id : list.name);
+      }
+   }
+   return names;
+}
+
 bool ComponentManager::removeComponent(const QString& componentId)
 {
    const int idx = indexOfComponentId_(componentId);
    if (idx < 0) return false;
+
+   // Block deletion if any component list contains this component.
+   const QStringList listNames = componentListsUsingComponent(componentId);
+   if (!listNames.isEmpty()) {
+      const QString compName = components_[static_cast<std::size_t>(idx)].name;
+      const QString preview = listNames.mid(0, 5).join(QStringLiteral(", "));
+      const QString more = listNames.size() > 5
+         ? QStringLiteral(" (+%1 more)").arg(listNames.size() - 5)
+         : QString();
+      lastLoadStatus_ = QStringLiteral(
+         "Cannot delete component '%1': it is used by %2 component list(s): %3%4")
+         .arg(compName.isEmpty() ? componentId : compName)
+         .arg(listNames.size())
+         .arg(preview, more);
+      emit errorOccurred(lastLoadStatus_);
+      return false;
+   }
+
    components_.erase(components_.begin() + idx);
    syncModel_();
    return true;
@@ -700,10 +737,50 @@ bool ComponentManager::addOrUpdateComponentList(const QVariantMap& listMap)
    return true;
 }
 
+QStringList ComponentManager::fluidPackagesUsingComponentList(const QString& listId) const
+{
+   QStringList names;
+   const QString needle = listId.trimmed();
+   if (needle.isEmpty()) return names;
+
+   auto* fpm = FluidPackageManager::instance();
+   if (!fpm) return names;
+
+   const QVariantList pkgs = fpm->listFluidPackages();
+   for (const auto& v : pkgs) {
+      const QVariantMap m = v.toMap();
+      const QString refList = m.value(QStringLiteral("componentListId")).toString().trimmed();
+      if (refList.compare(needle, Qt::CaseInsensitive) != 0) continue;
+
+      QString name = m.value(QStringLiteral("name")).toString().trimmed();
+      if (name.isEmpty()) name = m.value(QStringLiteral("id")).toString();
+      names.append(name);
+   }
+   return names;
+}
+
 bool ComponentManager::removeComponentList(const QString& listId)
 {
    const int idx = indexOfListId_(listId);
    if (idx < 0) return false;
+
+   // Block deletion if any fluid package references this component list.
+   const QStringList pkgNames = fluidPackagesUsingComponentList(listId);
+   if (!pkgNames.isEmpty()) {
+      const QString listName = componentLists_[static_cast<std::size_t>(idx)].name;
+      const QString preview = pkgNames.mid(0, 5).join(QStringLiteral(", "));
+      const QString more = pkgNames.size() > 5
+         ? QStringLiteral(" (+%1 more)").arg(pkgNames.size() - 5)
+         : QString();
+      lastLoadStatus_ = QStringLiteral(
+         "Cannot delete component list '%1': it is used by %2 fluid package(s): %3%4")
+         .arg(listName.isEmpty() ? listId : listName)
+         .arg(pkgNames.size())
+         .arg(preview, more);
+      emit errorOccurred(lastLoadStatus_);
+      return false;
+   }
+
    componentLists_.erase(componentLists_.begin() + idx);
    syncGroupModel_();
    emit componentListsChanged();

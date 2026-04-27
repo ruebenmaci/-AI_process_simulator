@@ -4,17 +4,41 @@ import QtQuick.Layouts 1.15
 import ChatGPT5.ADT 1.0
 import "../common" as Common
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  ComponentManagerView.qml  (Level B refactor — HYSYS-style PPropertyView)
+//
+//  Layout:
+//    PPropertyView (raised outer frame + tab strip + sunken page area)
+//      ├── Components tab   — Actions PGroupBox + Left list panel + Worksheet panel
+//      └── Component Lists tab — Actions PGroupBox + Saved Lists + List Builder
+//
+//  P-control vocabulary:
+//    • PButton / PCheckBox / PTextField / PComboBox      — chiseled controls
+//    • PGroupBox (child-sized)                           — form sections (default)
+//    • PGroupBox { fillContent: true }                   — container for ListView/PSpreadsheet
+//    • PSpreadsheet                                      — property worksheet grid
+//    • PListItem                                         — beveled ListView delegate
+// ─────────────────────────────────────────────────────────────────────────────
+
 Item {
     id: root
     property var manager: gComponentManager
-    property int rowH: 22
-    property int headH: 20
-    property int currentTab: tabsHeader.currentIndex
 
+    // Emitted when the user, via a Delete Error → confirm flow, asks to
+    // navigate to a fluid package that's blocking deletion of a component
+    // list. Owned by PfdMainView, which closes the Component Manager and
+    // opens the Fluid Manager with `packageId` selected.
+    signal navigateToFluidPackage(string packageId)
+
+    // ── Tab state (plain int — owned by root, not read from tabsHeader) ──────
+    property int currentTab: 0
+
+    // ── Components tab state ────────────────────────────────────────────────
     property var filteredComponents: []
     property string selectedComponentId: ""
     property var selectedComponent: ({})
 
+    // ── Component Lists tab state ───────────────────────────────────────────
     property var componentListsCache: []
     property string selectedListId: ""
     property var selectedList: ({})
@@ -27,9 +51,80 @@ Item {
     property int availableSelectionAnchorIndex: -1
     property int memberSelectionAnchorIndex: -1
 
+    // ── Status message (surfaced in PPropertyView's right accessory) ────────
+    property string statusMessage: ""
+
+    // ── Per-quantity unit overrides (empty = use active Unit Set default) ───
+    property var unitOverrides: ({
+        "Temperature": "",
+        "Pressure":    "",
+        "MolarMass":   ""
+    })
+    function unitFor(q) { return unitOverrides[q] !== undefined ? unitOverrides[q] : "" }
+    function setUnit(q, u) {
+        var copy = Object.assign({}, unitOverrides)
+        copy[q] = u
+        unitOverrides = copy
+    }
+
+    // ── Draft component — the editable form state bound to PGridValue rows ─
+    // Numeric fields are kept in SI units so PGridValue bindings work directly:
+    //   molarMassKgPerMol  : SI for MolarMass (kg/mol). Storage uses kg/kmol,
+    //                        so multiply by 1000 when saving.
+    //   tbK, tcK           : Temperature in K (already SI)
+    //   pcPa               : Pressure in Pa (already SI)
+    //   critVolM3PerKmol   : Kept as stored (dimensionless for unit system)
+    property var draftComponent: ({})
+
+    function _siMolarMassFromKgKmol(kgkmol) {
+        return isFinite(kgkmol) ? kgkmol * 0.001 : NaN
+    }
+    function _kgKmolFromSiMolarMass(siKgPerMol) {
+        return isFinite(siKgPerMol) ? siKgPerMol * 1000.0 : NaN
+    }
+
+    // Populate draftComponent from a component object
+    function loadDraftFromComponent(c) {
+        c = c || {}
+        draftComponent = {
+            id:                     String(c.id || ""),
+            name:                   String(c.name || ""),
+            formula:                String(c.formula || ""),
+            cas:                    String(c.cas || ""),
+            family:                 String(c.family || ""),
+            componentType:          String(c.componentType || ""),
+            aliases:                c.aliases ? c.aliases.join(", ") : "",
+            tags:                   c.tags ? c.tags.join(", ") : "",
+            phaseCapabilities:      c.phaseCapabilities ? c.phaseCapabilities.join(", ") : "",
+            source:                 String(c.source || ""),
+            // Numeric fields — stored SI-ready for PGridValue
+            molarMassSi:            _siMolarMassFromKgKmol(Number(c.molarMass)),
+            tbK:                    Number(c.normalBoilingPointK),
+            tcK:                    Number(c.criticalTemperatureK),
+            pcPa:                   Number(c.criticalPressurePa),
+            acentricFactor:         Number(c.acentricFactor),
+            critVolM3PerKmol:       Number(c.criticalVolumeM3PerKmol),
+            critCompressibility:    Number(c.criticalCompressibility),
+            sg60F:                  Number(c.specificGravity60F),
+            watsonK:                Number(c.watsonK),
+            volumeShiftDelta:       Number(c.volumeShiftDelta)
+        }
+    }
+
+    // Update a single field in draftComponent (keeps reactivity)
+    function _setDraft(key, value) {
+        var copy = Object.assign({}, draftComponent)
+        copy[key] = value
+        draftComponent = copy
+    }
+
     implicitWidth: 980
     implicitHeight: 720
     focus: true
+
+    // ───────────────────────────────────────────────────────────────────────
+    //  Helper / data functions (unchanged from original)
+    // ───────────────────────────────────────────────────────────────────────
 
     function fmt(v, digits) {
         if (v === undefined || v === null || v === "") return ""
@@ -63,69 +158,8 @@ Item {
         return familyValueFromText(combo ? combo.currentText : "")
     }
 
-    function rowMeta() {
-        return [
-            { label: "ID", key: "id" },
-            { label: "Name", key: "name" },
-            { label: "Formula", key: "formula" },
-            { label: "CAS", key: "cas" },
-            { label: "Family", key: "family" },
-            { label: "Component type", key: "componentType" },
-            { label: "Aliases", key: "aliases" },
-            { label: "Tags", key: "tags" },
-            { label: "Phases", key: "phaseCapabilities" },
-            { label: "Source", key: "source" },
-            { label: "Molar mass (kg/kmol)", key: "molarMass" },
-            { label: "Normal boiling point (K)", key: "normalBoilingPointK" },
-            { label: "Critical temperature (K)", key: "criticalTemperatureK" },
-            { label: "Critical pressure (Pa)", key: "criticalPressurePa" },
-            { label: "Acentric factor", key: "acentricFactor" },
-            { label: "Critical volume (m3/kmol)", key: "criticalVolumeM3PerKmol" },
-            { label: "Critical compressibility", key: "criticalCompressibility" },
-            { label: "Specific gravity @60F", key: "specificGravity60F" },
-            { label: "Watson K", key: "watsonK" },
-            { label: "Volume shift delta", key: "volumeShiftDelta" }
-        ]
-    }
-
-    function rowValueFromComponent(key, c) {
-        if (!c) return ""
-        switch (key) {
-        case "aliases": return c.aliases ? c.aliases.join(", ") : ""
-        case "tags": return c.tags ? c.tags.join(", ") : ""
-        case "phaseCapabilities": return c.phaseCapabilities ? c.phaseCapabilities.join(", ") : ""
-        case "molarMass": return fmt(c.molarMass, 6)
-        case "normalBoilingPointK": return fmt(c.normalBoilingPointK, 6)
-        case "criticalTemperatureK": return fmt(c.criticalTemperatureK, 6)
-        case "criticalPressurePa": return fmt(c.criticalPressurePa, 6)
-        case "acentricFactor": return fmt(c.acentricFactor, 6)
-        case "criticalVolumeM3PerKmol": return fmt(c.criticalVolumeM3PerKmol, 6)
-        case "criticalCompressibility": return fmt(c.criticalCompressibility, 6)
-        case "specificGravity60F": return fmt(c.specificGravity60F, 6)
-        case "watsonK": return fmt(c.watsonK, 6)
-        case "volumeShiftDelta": return fmt(c.volumeShiftDelta, 6)
-        default: return c[key] || ""
-        }
-    }
-
-    function worksheetValue(key) {
-        const meta = rowMeta()
-        for (let i = 0; i < meta.length; ++i)
-            if (meta[i].key === key) return componentSheet.getCell(i, 0)
-        return ""
-    }
-
-    function loadWorksheetFromComponent(c) {
-        const meta = rowMeta()
-        const labels = []
-        for (let i = 0; i < meta.length; ++i) labels.push(meta[i].label)
-        componentSheet.clearAll()
-        componentSheet.rowLabels = labels
-        componentSheet.colLabels = ["Value"]
-        for (let i = 0; i < meta.length; ++i)
-            componentSheet.setCell(i, 0, rowValueFromComponent(meta[i].key, c))
-        notesArea.text = c && c.notes ? c.notes : ""
-    }
+    // (rowMeta, rowValueFromComponent, worksheetValue, loadWorksheetFromComponent
+    //  are obsolete — replaced by draftComponent + loadDraftFromComponent above)
 
     function refreshComponentResults(preferredId, familyOverride) {
         if (!manager) return
@@ -138,41 +172,45 @@ Item {
         if (!found) target = filteredComponents.length > 0 ? filteredComponents[0].id : ""
         selectedComponentId = target
         selectedComponent = target ? manager.getComponent(target) : ({})
-        loadWorksheetFromComponent(selectedComponent)
-        Qt.callLater(function() { loadWorksheetFromComponent(selectedComponent) })
-        statusLabel.text = manager.lastLoadStatus && manager.lastLoadStatus !== ""
-                           ? manager.lastLoadStatus
-                           : (filteredComponents.length + " components shown")
+        loadDraftFromComponent(selectedComponent)
+        try { notesArea.text = selectedComponent && selectedComponent.notes ? selectedComponent.notes : "" } catch (e) {}
+        root.statusMessage = manager.lastLoadStatus && manager.lastLoadStatus !== ""
+                             ? manager.lastLoadStatus
+                             : (filteredComponents.length + " components shown")
     }
 
     function saveSelectedComponent() {
         if (!manager) return
+        const d = draftComponent
+        function splitCsv(t) {
+            return (t && t.trim() !== "") ? t.split(",").map(function(s) { return s.trim() }).filter(function(s) { return s.length > 0 }) : []
+        }
         const out = {
-            id: worksheetValue("id"),
-            name: worksheetValue("name"),
-            formula: worksheetValue("formula"),
-            cas: worksheetValue("cas"),
-            family: worksheetValue("family"),
-            componentType: worksheetValue("componentType"),
-            aliases: worksheetValue("aliases").trim() === "" ? [] : worksheetValue("aliases").split(",").map(s => s.trim()).filter(s => s.length > 0),
-            tags: worksheetValue("tags").trim() === "" ? [] : worksheetValue("tags").split(",").map(s => s.trim()).filter(s => s.length > 0),
-            phaseCapabilities: worksheetValue("phaseCapabilities").trim() === "" ? [] : worksheetValue("phaseCapabilities").split(",").map(s => s.trim()).filter(s => s.length > 0),
-            molarMass: parseNum(worksheetValue("molarMass")),
-            normalBoilingPointK: parseNum(worksheetValue("normalBoilingPointK")),
-            criticalTemperatureK: parseNum(worksheetValue("criticalTemperatureK")),
-            criticalPressurePa: parseNum(worksheetValue("criticalPressurePa")),
-            acentricFactor: parseNum(worksheetValue("acentricFactor")),
-            criticalVolumeM3PerKmol: parseNum(worksheetValue("criticalVolumeM3PerKmol")),
-            criticalCompressibility: parseNum(worksheetValue("criticalCompressibility")),
-            specificGravity60F: parseNum(worksheetValue("specificGravity60F")),
-            watsonK: parseNum(worksheetValue("watsonK")),
-            volumeShiftDelta: parseNum(worksheetValue("volumeShiftDelta")),
-            source: worksheetValue("source"),
+            id: d.id,
+            name: d.name,
+            formula: d.formula,
+            cas: d.cas,
+            family: d.family,
+            componentType: d.componentType,
+            aliases: splitCsv(d.aliases),
+            tags: splitCsv(d.tags),
+            phaseCapabilities: splitCsv(d.phaseCapabilities),
+            molarMass: isFinite(d.molarMassSi) ? _kgKmolFromSiMolarMass(d.molarMassSi) : null,
+            normalBoilingPointK: isFinite(d.tbK) ? d.tbK : null,
+            criticalTemperatureK: isFinite(d.tcK) ? d.tcK : null,
+            criticalPressurePa: isFinite(d.pcPa) ? d.pcPa : null,
+            acentricFactor: isFinite(d.acentricFactor) ? d.acentricFactor : null,
+            criticalVolumeM3PerKmol: isFinite(d.critVolM3PerKmol) ? d.critVolM3PerKmol : null,
+            criticalCompressibility: isFinite(d.critCompressibility) ? d.critCompressibility : null,
+            specificGravity60F: isFinite(d.sg60F) ? d.sg60F : null,
+            watsonK: isFinite(d.watsonK) ? d.watsonK : null,
+            volumeShiftDelta: isFinite(d.volumeShiftDelta) ? d.volumeShiftDelta : null,
+            source: d.source,
             notes: notesArea.text
         }
         manager.addOrUpdateComponent(out)
         refreshComponentResults(out.id)
-        statusLabel.text = "Saved component: " + (out.name || out.id)
+        root.statusMessage = "Saved component: " + (out.name || out.id)
     }
 
     function refreshComponentLists(preferredId) {
@@ -276,6 +314,72 @@ Item {
         return ids.indexOf(idValue) >= 0
     }
 
+    // ── Delete Error flow ──────────────────────────────────────────────────
+    // Component delete: if blocked by lists, show dialog. Clicking a list
+    // name jumps to the Component Lists tab and highlights the offending
+    // component within the list's members panel.
+    function attemptDeleteComponent() {
+        if (!manager || selectedComponentId === "") return
+        const blockingLists = manager.componentListsUsingComponent(selectedComponentId)
+        if (blockingLists.length === 0) {
+            manager.removeComponent(selectedComponentId)
+            return
+        }
+        const compInfo = manager.getComponent(selectedComponentId)
+        const compName = (compInfo && compInfo.name) ? compInfo.name : selectedComponentId
+        deleteErrorDialog.context = "component"
+        deleteErrorDialog.componentIdToHighlight = selectedComponentId
+        deleteErrorDialog.message = "Cannot delete component '" + compName
+            + "':\nit is being used by the following component list(s).\n\nClick a list name to navigate to it."
+        deleteErrorDialog.items = blockingLists
+        deleteErrorDialog.open()
+    }
+
+    // Component-list delete: if blocked by fluid packages, show dialog.
+    // Clicking a package name shows a Confirm dialog; on Yes, emit
+    // navigateToFluidPackage so PfdMainView can close us and open Fluid
+    // Manager with the right package selected.
+    function attemptDeleteComponentList() {
+        if (!manager || selectedListId === "") return
+        const blockingPackages = manager.fluidPackagesUsingComponentList(selectedListId)
+        if (blockingPackages.length === 0) {
+            manager.removeComponentList(selectedListId)
+            return
+        }
+        const listInfo = manager.getComponentList(selectedListId)
+        const listName = (listInfo && listInfo.name) ? listInfo.name : selectedListId
+        deleteErrorDialog.context = "list"
+        deleteErrorDialog.componentIdToHighlight = ""
+        deleteErrorDialog.message = "Cannot delete component list '" + listName
+            + "':\nit is being used by the following fluid package(s).\n\nClick a package name to navigate to it."
+        deleteErrorDialog.items = blockingPackages
+        deleteErrorDialog.open()
+    }
+
+    // Resolves a fluid-package display name back to its id (since the dialog
+    // shows names but FluidManagerView needs an id to select). Returns "" on
+    // miss.
+    function fluidPackageIdForName(name) {
+        if (!gFluidPackageManager) return ""
+        const pkgs = gFluidPackageManager.listFluidPackages()
+        for (let i = 0; i < pkgs.length; ++i) {
+            const p = pkgs[i]
+            if (p && (p.name === name || p.id === name)) return p.id
+        }
+        return ""
+    }
+
+    // Resolves a component-list display name back to its id.
+    function componentListIdForName(name) {
+        if (!manager) return ""
+        const lists = manager.listComponentLists()
+        for (let i = 0; i < lists.length; ++i) {
+            const l = lists[i]
+            if (l && (l.name === name || l.id === name)) return l.id
+        }
+        return ""
+    }
+
     function selectionIndexesToIds(items, startIndex, endIndex) {
         const out = []
         if (!items || items.length === 0) return out
@@ -372,11 +476,18 @@ Item {
             fmt(c.acentricFactor || c.omega, 6),
             fmt(c.specificGravity60F || c.SG, 4)
         ]
-        memberDetailSheet.clearAll()
-        memberDetailSheet.rowLabels = labels
-        memberDetailSheet.colLabels = ["Value"]
-        for (let i = 0; i < values.length; ++i)
-            memberDetailSheet.setCell(i, 0, values[i])
+        // memberDetailSheet is not present in this view — it's a leftover from
+        // an older layout that had a separate member detail panel. Guard the
+        // access so we don't throw ReferenceError.
+        try {
+            memberDetailSheet.clearAll()
+            memberDetailSheet.rowLabels = labels
+            memberDetailSheet.colLabels = ["Value"]
+            for (let i = 0; i < values.length; ++i)
+                memberDetailSheet.setCell(i, 0, values[i])
+        } catch (e) {
+            // no memberDetailSheet in current layout — ignore
+        }
     }
 
     Component.onCompleted: {
@@ -387,7 +498,7 @@ Item {
             refreshComponentLists("")
             loadListMemberDetail()
             if (selectedComponentId !== "")
-                loadWorksheetFromComponent(selectedComponent)
+                loadDraftFromComponent(selectedComponent)
         })
     }
 
@@ -405,345 +516,1148 @@ Item {
             refreshComponentLists(selectedListId)
             loadListMemberDetail()
         }
-        function onErrorOccurred(message) { statusLabel.text = message }
+        function onErrorOccurred(message) { root.statusMessage = message }
         ignoreUnknownSignals: true
     }
 
-    component CompactFrame : Rectangle {
-        color: "#e8ebef"
-        border.color: "#97a2ad"
-        border.width: 1
-    }
-    component SectionHeader : Rectangle {
-        property alias text: lbl.text
-        height: headH
-        color: "#c8d0d8"
-        border.color: "#97a2ad"
-        border.width: 1
-        Text { id: lbl; anchors.left: parent.left; anchors.leftMargin: 6; anchors.verticalCenter: parent.verticalCenter; font.pixelSize: 10; font.bold: true; color: "#1f2a34" }
-    }
-    component CompactButton : Rectangle {
-        id: btnRoot
-        property alias text: lbl.text
-        property bool enabled_: true
-        signal clicked
-        width: 96
-        height: 24
-        opacity: enabled_ ? 1.0 : 0.45
-        color: !enabled_ ? "#d0d5da" : (ma.pressed ? "#b0b8c2" : (ma.containsMouse ? "#e4e8ed" : "#d8dde3"))
-        border.color: ma.pressed ? "#6a7880" : "#97a2ad"
-        border.width: 1
-        Text { id: lbl; anchors.centerIn: parent; anchors.verticalCenterOffset: ma.pressed ? 1 : 0; font.pixelSize: 10; color: "#1f2a34" }
-        MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; enabled: btnRoot.enabled_; onClicked: btnRoot.clicked() }
-    }
-    component CompactField : TextField {
-        implicitHeight: rowH - 4
-        font.pixelSize: 10
-        padding: 2
-        leftPadding: 4
-        rightPadding: 4
-        topPadding: 1
-        bottomPadding: 1
-        selectByMouse: true
-        background: Rectangle { color: "white"; border.color: "#dfe5ea"; border.width: 1 }
-    }
-    component CompactCombo : ComboBox {
-        implicitHeight: 22
-        font.pixelSize: 10
-        leftPadding: 6
-        rightPadding: 20
-        topPadding: 1
-        bottomPadding: 1
-        delegate: ItemDelegate {
-            width: ListView.view ? ListView.view.width : parent.width
-            height: 22
-            contentItem: Text {
-                text: modelData
-                font.pixelSize: 10
-                color: "#1f2a34"
-                verticalAlignment: Text.AlignVCenter
-                elide: Text.ElideRight
-            }
-            highlighted: parent.highlightedIndex === index
-        }
-        contentItem: Text {
-            text: parent.displayText
-            font.pixelSize: 10
-            color: "#1f2a34"
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: 0
-            elide: Text.ElideRight
-        }
-        background: Rectangle { color: "white"; border.color: "#97a2ad"; border.width: 1 }
-    }
+    // ───────────────────────────────────────────────────────────────────────
+    //  (no inline components — using Common.PGroupBox + Common.PListItem)
+    // ───────────────────────────────────────────────────────────────────────
 
-    Rectangle { anchors.fill: parent; color: "#d8dde2" }
+    // ───────────────────────────────────────────────────────────────────────
+    //  Root layout — PPropertyView shell
+    // ───────────────────────────────────────────────────────────────────────
 
-    Rectangle {
+    Rectangle { anchors.fill: parent; color: (typeof gAppTheme !== "undefined") ? gAppTheme.pvPageBg : "#d8dde2" }
+
+    Common.PPropertyView {
+        id: propertyView
         anchors.fill: parent
         anchors.margins: 4
-        color: "#d8dde2"
-        border.color: "#6d7883"
-        border.width: 1
 
-        Rectangle {
-            id: commandBar
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            height: 74
-            color: "#c8d0d8"
-            border.color: "#97a2ad"
-            border.width: 1
+        tabs: [
+            { text: "Components" },
+            { text: "Component Lists" }
+        ]
+        currentIndex: root.currentTab
+        onTabClicked: function(index) { root.currentTab = index }
 
-            Common.ClassicTabs {
-                id: tabsHeader
-                x: 8; y: 6; width: 300
-                tabs: [
-                    { text: "Components", width: 118 },
-                    { text: "Component Lists", width: 132 }
-                ]
-                currentIndex: 0
-            }
+        // Status message + Unit Set selector on the right side of the tab strip
+        rightAccessory: Row {
+            spacing: 10
+            anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
-            Row {
-                x: 8; y: 38; spacing: 6
-                visible: tabsHeader.currentIndex === 0
-                CompactButton { text: "Import pseudo fluid"; width: 118; onClicked: if (manager && pseudoFluidCombo.currentText !== "") manager.importPseudoComponentFluid(pseudoFluidCombo.currentText, "pseudo-fraction", true) }
-                CompactCombo { id: pseudoFluidCombo; width: 180; model: manager ? manager.availableFluidNames : [] }
-                CompactButton { text: "Reset starter seed"; width: 112; onClicked: if (manager) manager.resetToStarterSeed() }
-                CompactButton { text: "Refresh"; width: 64; onClicked: refreshComponentResults(selectedComponentId) }
-                CompactButton { text: "New Component"; width: 92; onClicked: loadWorksheetFromComponent({ source: "user" }) }
-                CompactButton { text: "Save"; width: 64; onClicked: saveSelectedComponent() }
-                CompactButton { text: "Delete"; width: 64; enabled_: selectedComponentId !== ""; onClicked: if (manager && selectedComponentId !== "") manager.removeComponent(selectedComponentId) }
-            }
-
-            Row {
-                x: 8; y: 38; spacing: 6
-                visible: tabsHeader.currentIndex === 1
-                CompactField { id: newListField; width: 180; placeholderText: "New component list name" }
-                CompactButton { text: "Create List"; width: 80; enabled_: newListField.text.trim() !== ""; onClicked: { if (!manager) return; const preferred = newListField.text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, ""); if (manager.createComponentList(newListField.text)) { newListField.text = ""; refreshComponentLists(preferred) } } }
-                CompactButton { text: "Rename"; width: 64; enabled_: selectedListId !== "" && listNameField.text.trim() !== ""; onClicked: if (manager && manager.renameComponentList(selectedListId, listNameField.text)) refreshComponentLists("") }
-                CompactButton { text: "Delete"; width: 64; enabled_: selectedListId !== ""; onClicked: if (manager && selectedListId !== "") manager.removeComponentList(selectedListId) }
-                CompactButton { text: "Refresh"; width: 64; onClicked: refreshComponentLists(selectedListId) }
+            Text {
+                text: root.statusMessage
+                font.family: "Segoe UI"
+                font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                color: "#526571"
+                elide: Text.ElideRight
+                width: 320
+                horizontalAlignment: Text.AlignRight
+                anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
-                id: statusLabel
-                anchors.right: parent.right
-                anchors.rightMargin: 10
-                anchors.verticalCenter: tabsHeader.verticalCenter
-                width: 420
-                horizontalAlignment: Text.AlignRight
-                font.pixelSize: 10
+                text: "Unit Set:"
+                font.pixelSize: 11
+                font.family: "Segoe UI"
                 color: "#526571"
-                elide: Text.ElideRight
-                text: manager && manager.lastLoadStatus ? manager.lastLoadStatus : ""
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Common.PComboBox {
+                id: unitSetCombo
+                width: 110
+                fontSize: 11
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+                model: (typeof gUnits !== "undefined") ? gUnits.availableUnitSets : ["SI", "Field", "British"]
+                currentIndex: {
+                    var s = (typeof gUnits !== "undefined") ? gUnits.activeUnitSet : "SI"
+                    var idx = model.indexOf(s)
+                    return idx >= 0 ? idx : 0
+                }
+                onActivated: function(index) {
+                    if (typeof gUnits !== "undefined")
+                        gUnits.activeUnitSet = model[index]
+                }
+                Connections {
+                    target: (typeof gUnits !== "undefined") ? gUnits : null
+                    ignoreUnknownSignals: true
+                    function onActiveUnitSetChanged() {
+                        var i = unitSetCombo.model.indexOf(gUnits.activeUnitSet)
+                        if (i >= 0 && unitSetCombo.currentIndex !== i)
+                            unitSetCombo.currentIndex = i
+                    }
+                }
             }
         }
 
-        StackLayout {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: commandBar.bottom
-            anchors.bottom: parent.bottom
-            anchors.margins: 6
-            currentIndex: tabsHeader.currentIndex
+        // ───────────────────────────────────────────────────────────────────
+        //  Components tab content
+        // ───────────────────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 0
 
-            Item {
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 8
+
+                // ─── Actions toolbar (PGroupBox with captioned header) ────
+                Common.PGroupBox {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "Component actions"
+
+                    RowLayout {
+                        spacing: 6
+                        Common.PButton {
+                            text: "Import pseudo fluid"
+                            Layout.preferredWidth: 140
+                            onClicked: if (manager && pseudoFluidCombo.currentText !== "") manager.importPseudoComponentFluid(pseudoFluidCombo.currentText, "pseudo-fraction", true)
+                        }
+                        Common.PComboBox {
+                            id: pseudoFluidCombo
+                            Layout.preferredWidth: 200
+                            model: manager ? manager.availableFluidNames : []
+                        }
+                        Common.PButton { text: "Reset starter seed"; Layout.preferredWidth: 140; onClicked: if (manager) manager.resetToStarterSeed() }
+                        Common.PButton { text: "Refresh";        Layout.preferredWidth: 76;  onClicked: refreshComponentResults(selectedComponentId) }
+                        Common.PButton { text: "New Component";  Layout.preferredWidth: 112; onClicked: { loadDraftFromComponent({ source: "user" }); notesArea.text = "" } }
+                        Common.PButton { text: "Save";           Layout.preferredWidth: 76;  onClicked: saveSelectedComponent() }
+                        Common.PButton {
+                            text: "Delete"
+                            Layout.preferredWidth: 76
+                            enabled: selectedComponentId !== ""
+                            onClicked: root.attemptDeleteComponent()
+                        }
+                        Item { Layout.fillWidth: true }   // spacer
+                    }
+                }
+
+                // ─── Body: Components list + Worksheet ────────────────────
                 RowLayout {
-                    anchors.fill: parent
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
                     spacing: 6
 
-                    CompactFrame {
-                        Layout.preferredWidth: 280
+                    // ── Left: Components list ────────────────────────────
+                    Common.PGroupBox {
+                        fillContent: true
+                        Layout.preferredWidth: 320
+                        Layout.minimumWidth: 320
+                        Layout.maximumWidth: 320
                         Layout.fillHeight: true
-                        SectionHeader { id: compListHeader; width: parent.width; text: "Components" }
-                        Text { x: 6; y: compListHeader.height + 4; font.pixelSize: 9; color: "#526571"; font.italic: true; text: filteredComponents.length + " shown" }
-                        CompactField { id: componentSearch; x: 6; y: compListHeader.height + 22; width: parent.width - 12; placeholderText: "Search components"; onTextChanged: refreshComponentResults(selectedComponentId) }
-                        CompactCombo { id: componentFamilyCombo; x: 6; y: componentSearch.y + 26; width: parent.width - 12; onActivated: function(index) { refreshComponentResults(selectedComponentId, textAt(index)) } }
-                        CheckBox { id: componentIncludePseudo; x: 6; y: componentFamilyCombo.y + 26; text: "Include pseudo-components"; checked: true; font.pixelSize: 10; onToggled: refreshComponentResults(selectedComponentId) }
-                        ListView {
-                            id: componentListView
-                            x: 0; y: componentIncludePseudo.y + 24
-                            width: parent.width; height: parent.height - y
-                            clip: true
-                            model: filteredComponents
-                            ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
-                            delegate: Rectangle {
-                                width: componentListView.width - 2; height: 44
-                                color: modelData.id === selectedComponentId ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
-                                border.color: "#dfe5ea"; border.width: 1
-                                MouseArea { anchors.fill: parent; onClicked: { selectedComponentId = modelData.id; selectedComponent = manager.getComponent(modelData.id); loadWorksheetFromComponent(selectedComponent) } }
-                                Column {
-                                    anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                    Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: modelData.id === selectedComponentId ? "white" : "#1f2a34" }
-                                    Text { text: (modelData.family || "") + "  •  " + (modelData.source || "user"); font.pixelSize: 9; color: modelData.id === selectedComponentId ? "#cce4f8" : "#5b6b75" }
+                        caption: "Components"
+
+                        Item {
+                            anchors.fill: parent
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 6
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: filteredComponents.length + " shown"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                    color: "#526571"
+                                    font.italic: true
+                                }
+
+                                Common.PTextField {
+                                    id: componentSearch
+                                    Layout.fillWidth: true
+                                    placeholderText: "Search components"
+                                    onTextChanged: refreshComponentResults(selectedComponentId)
+                                }
+
+                                Common.PComboBox {
+                                    id: componentFamilyCombo
+                                    Layout.fillWidth: true
+                                    onActivated: function(index) { refreshComponentResults(selectedComponentId, textAt(index)) }
+                                }
+
+                                Common.PCheckBox {
+                                    id: componentIncludePseudo
+                                    text: "Include pseudo-components"
+                                    checked: true
+                                    onToggled: refreshComponentResults(selectedComponentId)
+                                }
+
+                                // ── Components ListView ─────────────────
+                                ListView {
+                                    id: componentListView
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    clip: true
+                                    model: filteredComponents
+                                    spacing: 1
+                                    ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
+                                    delegate: Common.PListItem {
+                                        id: liComp
+                                        width: componentListView.width - 2
+                                        height: 44
+                                        altIndex: index
+                                        selected: modelData.id === selectedComponentId
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            onEntered: liComp.hovered = true
+                                            onExited: liComp.hovered = false
+                                            onClicked: {
+                                                selectedComponentId = modelData.id
+                                                selectedComponent = manager.getComponent(modelData.id)
+                                                loadDraftFromComponent(selectedComponent)
+                                                try { notesArea.text = selectedComponent && selectedComponent.notes ? selectedComponent.notes : "" } catch (e) {}
+                                            }
+                                        }
+
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 8
+                                            anchors.topMargin: 4
+                                            anchors.rightMargin: 4
+                                            spacing: 2
+                                            Text {
+                                                text: modelData.name || modelData.id
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                                font.bold: true
+                                                color: liComp.selected ? "white" : "#1f2a34"
+                                                elide: Text.ElideRight
+                                                width: parent.width
+                                            }
+                                            Text {
+                                                text: (modelData.family || "") + "  \u2022  " + (modelData.source || "user")
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                                color: liComp.selected ? "#cce4f8" : "#5b6b75"
+                                                elide: Text.ElideRight
+                                                width: parent.width
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    CompactFrame {
+                    // ── Right: Worksheet panel (field grid + Notes) ──────
+                    ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        SectionHeader { id: worksheetHeader; width: parent.width; text: selectedComponentId === "" ? "Component Worksheet" : (selectedComponent.name || selectedComponentId) }
-                        SimpleSpreadsheet {
-                            id: componentSheet
-                            x: 6; y: worksheetHeader.height + 6
-                            width: parent.width - 12
-                            height: parent.height - y - 82
-                            numCols: 1
-                            numRows: rowMeta().length
+                        spacing: 6
+
+                        Common.PGroupBox {
+                            id: worksheetBox
+                            fillContent: true
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            caption: selectedComponentId === "" ? "Component Worksheet" : (selectedComponent.name || selectedComponentId)
+
+                            readonly property int labelW: 170
+
+                            Flickable {
+                                id: worksheetFlick
+                                anchors.fill: parent
+                                contentWidth: width
+                                contentHeight: worksheetGrid.implicitHeight
+                                clip: true
+                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; width: 10 }
+                                boundsBehavior: Flickable.StopAtBounds
+
+                                GridLayout {
+                                    id: worksheetGrid
+                                    width: worksheetFlick.width
+                                    columns: 3
+                                    columnSpacing: 0
+                                    rowSpacing: 0
+
+                                    // ── ID ──────────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "ID" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.id || ""
+                                            onEditingFinished: root._setDraft("id", text)
+                                        }
+                                    }
+
+                                    // ── Name ────────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Name"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.name || ""
+                                            onEditingFinished: root._setDraft("name", text)
+                                        }
+                                    }
+
+                                    // ── Formula ─────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Formula" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.formula || ""
+                                            onEditingFinished: root._setDraft("formula", text)
+                                        }
+                                    }
+
+                                    // ── CAS ─────────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "CAS"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.cas || ""
+                                            onEditingFinished: root._setDraft("cas", text)
+                                        }
+                                    }
+
+                                    // ── Family ──────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Family" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.family || ""
+                                            onEditingFinished: root._setDraft("family", text)
+                                        }
+                                    }
+
+                                    // ── Component type ──────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Component type"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.componentType || ""
+                                            onEditingFinished: root._setDraft("componentType", text)
+                                        }
+                                    }
+
+                                    // ── Aliases (comma-separated) ──────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Aliases" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.aliases || ""
+                                            onEditingFinished: root._setDraft("aliases", text)
+                                        }
+                                    }
+
+                                    // ── Tags ────────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Tags"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.tags || ""
+                                            onEditingFinished: root._setDraft("tags", text)
+                                        }
+                                    }
+
+                                    // ── Phases ──────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Phases" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.phaseCapabilities || ""
+                                            onEditingFinished: root._setDraft("phaseCapabilities", text)
+                                        }
+                                    }
+
+                                    // ── Source ──────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Source"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: root.draftComponent.source || ""
+                                            onEditingFinished: root._setDraft("source", text)
+                                        }
+                                    }
+
+                                    // ── Molar mass (MW) ──────────────────
+                                    // Label combines both conventions: "Molar mass"
+                                    // (SI chemistry) and "MW" (petroleum/engineering).
+                                    // Same underlying property, one row.
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Molar mass (MW)" }
+                                    Common.PGridValue {
+                                        quantity: "MolarMass"
+                                        siValue: root.draftComponent.molarMassSi
+                                        displayUnit: root.unitFor("MolarMass")
+                                        editable: true
+                                        onEdited: function(siVal) { root._setDraft("molarMassSi", siVal) }
+                                    }
+                                    Common.PGridUnit {
+                                        quantity: "MolarMass"
+                                        siValue: root.draftComponent.molarMassSi
+                                        displayUnit: root.unitFor("MolarMass")
+                                        onUnitOverride: function(u) { root.setUnit("MolarMass", u) }
+                                    }
+
+                                    // ── Normal boiling point (Temperature) ──
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Normal boiling point"; alt: true }
+                                    Common.PGridValue {
+                                        alt: true
+                                        quantity: "Temperature"
+                                        siValue: root.draftComponent.tbK
+                                        displayUnit: root.unitFor("Temperature")
+                                        editable: true
+                                        onEdited: function(siVal) { root._setDraft("tbK", siVal) }
+                                    }
+                                    Common.PGridUnit {
+                                        alt: true
+                                        quantity: "Temperature"
+                                        siValue: root.draftComponent.tbK
+                                        displayUnit: root.unitFor("Temperature")
+                                        onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                    }
+
+                                    // ── Critical temperature (Temperature) ──
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Critical temperature" }
+                                    Common.PGridValue {
+                                        quantity: "Temperature"
+                                        siValue: root.draftComponent.tcK
+                                        displayUnit: root.unitFor("Temperature")
+                                        editable: true
+                                        onEdited: function(siVal) { root._setDraft("tcK", siVal) }
+                                    }
+                                    Common.PGridUnit {
+                                        quantity: "Temperature"
+                                        siValue: root.draftComponent.tcK
+                                        displayUnit: root.unitFor("Temperature")
+                                        onUnitOverride: function(u) { root.setUnit("Temperature", u) }
+                                    }
+
+                                    // ── Critical pressure (Pressure) ────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Critical pressure"; alt: true }
+                                    Common.PGridValue {
+                                        alt: true
+                                        quantity: "Pressure"
+                                        siValue: root.draftComponent.pcPa
+                                        displayUnit: root.unitFor("Pressure")
+                                        editable: true
+                                        onEdited: function(siVal) { root._setDraft("pcPa", siVal) }
+                                    }
+                                    Common.PGridUnit {
+                                        alt: true
+                                        quantity: "Pressure"
+                                        siValue: root.draftComponent.pcPa
+                                        displayUnit: root.unitFor("Pressure")
+                                        onUnitOverride: function(u) { root.setUnit("Pressure", u) }
+                                    }
+
+                                    // ── Acentric factor (dimensionless) ─
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Acentric factor" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.acentricFactor) ? root.draftComponent.acentricFactor.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("acentricFactor", root.parseNum(text))
+                                        }
+                                    }
+
+                                    // ── Critical volume (m3/kmol) ────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Critical volume (m3/kmol)"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.critVolM3PerKmol) ? root.draftComponent.critVolM3PerKmol.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("critVolM3PerKmol", root.parseNum(text))
+                                        }
+                                    }
+
+                                    // ── Critical compressibility ─────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Critical compressibility" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.critCompressibility) ? root.draftComponent.critCompressibility.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("critCompressibility", root.parseNum(text))
+                                        }
+                                    }
+
+                                    // ── Specific gravity @60F ────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Specific gravity @60F"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.sg60F) ? root.draftComponent.sg60F.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("sg60F", root.parseNum(text))
+                                        }
+                                    }
+
+                                    // ── Watson K ────────────────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Watson K" }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.watsonK) ? root.draftComponent.watsonK.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("watsonK", root.parseNum(text))
+                                        }
+                                    }
+
+                                    // ── Volume shift delta ───────────────
+                                    Common.PGridLabel { Layout.preferredWidth: worksheetBox.labelW; text: "Volume shift delta"; alt: true }
+                                    RowLayout {
+                                        Layout.columnSpan: 2; Layout.fillWidth: true
+                                        Common.PTextField {
+                                            Layout.fillWidth: true
+                                            text: isFinite(root.draftComponent.volumeShiftDelta) ? root.draftComponent.volumeShiftDelta.toFixed(6) : ""
+                                            onEditingFinished: root._setDraft("volumeShiftDelta", root.parseNum(text))
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        CompactFrame {
-                            x: 6; y: parent.height - 70; width: parent.width - 12; height: 64
-                            SectionHeader { id: notesHeader; width: parent.width; text: "Notes" }
+
+                        Common.PGroupBox {
+
+                            fillContent: true
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 110
+                            caption: "Notes"
+
                             TextArea {
                                 id: notesArea
-                                x: 4; y: notesHeader.height + 4
-                                width: parent.width - 8; height: parent.height - notesHeader.height - 8
+                                anchors.fill: parent
                                 wrapMode: TextArea.Wrap
-                                font.pixelSize: 10
+                                font.family: "Segoe UI"
+                                font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
                                 selectByMouse: true
-                                background: Rectangle { color: "white"; border.color: "#dfe5ea"; border.width: 1 }
+                                background: Rectangle {
+                                    color: (typeof gAppTheme !== "undefined") ? gAppTheme.pvCellEditBg || "#fbfdff" : "#fbfdff"
+                                    border.color: (typeof gAppTheme !== "undefined") ? gAppTheme.pvGroupBorder || "#97a2ad" : "#97a2ad"
+                                    border.width: 1
+                                }
                             }
                         }
                     }
                 }
             }
+        }
 
-            Item {
-                RowLayout {
-                    anchors.fill: parent
-                    spacing: 6
+        // ───────────────────────────────────────────────────────────────────
+        //  Component Lists tab content
+        // ───────────────────────────────────────────────────────────────────
+        Item {
+            anchors.fill: parent
+            visible: root.currentTab === 1
 
-                    CompactFrame {
-                        Layout.preferredWidth: 240
-                        Layout.fillHeight: true
-                        SectionHeader { id: listHeader; width: parent.width; text: "Saved Component Lists" }
-                        Text { x: 6; y: listHeader.height + 4; font.pixelSize: 9; color: "#526571"; font.italic: true; text: componentListsCache.length + " lists" }
-                        ListView {
-                            id: savedListsView
-                            x: 0; y: listHeader.height + 20
-                            width: parent.width; height: 220
-                            clip: true
-                            model: manager ? manager.componentListModel : null
-                            ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
-                            delegate: Rectangle {
-                                width: savedListsView.width - 2; height: 44
-                                color: model.id === selectedListId ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
-                                border.color: "#dfe5ea"; border.width: 1
-                                MouseArea { anchors.fill: parent; onClicked: refreshComponentLists(model.id) }
-                                Column {
-                                    anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                    Text { text: model.name || model.id; font.pixelSize: 10; font.bold: true; color: model.id === selectedListId ? "white" : "#1f2a34" }
-                                    Text { text: (model.count || 0) + " components  •  " + (model.source || "user"); font.pixelSize: 9; color: model.id === selectedListId ? "#cce4f8" : "#5b6b75" }
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 8
+
+                // ─── Actions toolbar ─────────────────────────────────────
+                Common.PGroupBox {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    caption: "List actions"
+
+                    RowLayout {
+                        spacing: 6
+                        Common.PTextField {
+                            id: newListField
+                            Layout.preferredWidth: 220
+                            placeholderText: "New component list name"
+                        }
+                        Common.PButton {
+                            text: "Create List"
+                            Layout.preferredWidth: 96
+                            enabled: newListField.text.trim() !== ""
+                            onClicked: {
+                                if (!manager) return
+                                const preferred = newListField.text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "")
+                                if (manager.createComponentList(newListField.text)) {
+                                    newListField.text = ""
+                                    refreshComponentLists(preferred)
                                 }
                             }
                         }
-                        CompactFrame {
-                            x: 6; y: savedListsView.y + savedListsView.height + 6
-                            width: parent.width - 12; height: 128
-                            SectionHeader { id: detailHeader; width: parent.width; text: "List Details" }
-                            Text { x: 6; y: detailHeader.height + 8; text: "Name"; font.pixelSize: 10; color: "#1f2a34" }
-                            CompactField { id: listNameField; x: 48; y: detailHeader.height + 6; width: parent.width - 54 }
-                            Text { x: 6; y: listNameField.y + 28; text: "ID"; font.pixelSize: 10; color: "#1f2a34" }
-                            Text { x: 48; y: listNameField.y + 30; text: selectedListId; font.pixelSize: 10; color: "#526571" }
-                            TextArea {
-                                id: listNotesArea
-                                x: 6; y: listNameField.y + 50; width: parent.width - 12; height: 44
-                                readOnly: true
-                                wrapMode: TextArea.Wrap
-                                font.pixelSize: 10
-                                background: Rectangle { color: "#f5f7f9"; border.color: "#dfe5ea"; border.width: 1 }
+                        Common.PButton {
+                            text: "Rename"
+                            Layout.preferredWidth: 80
+                            enabled: selectedListId !== "" && listNameField.text.trim() !== ""
+                            onClicked: if (manager && manager.renameComponentList(selectedListId, listNameField.text)) refreshComponentLists("")
+                        }
+                        Common.PButton {
+                            text: "Delete"
+                            Layout.preferredWidth: 76
+                            enabled: selectedListId !== ""
+                            onClicked: root.attemptDeleteComponentList()
+                        }
+                        Common.PButton { text: "Refresh"; Layout.preferredWidth: 76; onClicked: refreshComponentLists(selectedListId) }
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+
+                // ─── Body: Saved Lists + List Builder ────────────────────
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 6
+
+                    // ── Left column: Saved Lists + List Details ─────────
+                    ColumnLayout {
+                        Layout.preferredWidth: 280
+                        Layout.minimumWidth: 280
+                        Layout.maximumWidth: 280
+                        Layout.fillHeight: true
+                        spacing: 6
+
+                        Common.PGroupBox {
+
+                            fillContent: true
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            caption: "Saved Component Lists"
+
+                            Item {
+                                anchors.fill: parent
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    spacing: 6
+
+                                    Text {
+                                        text: componentListsCache.length + " lists"
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                        color: "#526571"
+                                        font.italic: true
+                                    }
+
+                                    ListView {
+                                        id: savedListsView
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+                                        clip: true
+                                        model: manager ? manager.componentListModel : null
+                                        spacing: 1
+                                        ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
+                                        delegate: Common.PListItem {
+                                            id: liSaved
+                                            width: savedListsView.width - 2
+                                            height: 44
+                                            altIndex: index
+                                            selected: model.id === selectedListId
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                onEntered: liSaved.hovered = true
+                                                onExited: liSaved.hovered = false
+                                                onClicked: refreshComponentLists(model.id)
+                                            }
+
+                                            Column {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: 8
+                                                anchors.topMargin: 4
+                                                anchors.rightMargin: 4
+                                                spacing: 2
+                                                Text {
+                                                    text: model.name || model.id
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                                    font.bold: true
+                                                    color: liSaved.selected ? "white" : "#1f2a34"
+                                                    elide: Text.ElideRight
+                                                    width: parent.width
+                                                }
+                                                Text {
+                                                    text: (model.count || 0) + " components  \u2022  " + (model.source || "user")
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                                    color: liSaved.selected ? "#cce4f8" : "#5b6b75"
+                                                    elide: Text.ElideRight
+                                                    width: parent.width
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── List Details (PGroupBox for small controls) ─
+                        Common.PGroupBox {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            caption: "List Details"
+
+                            GridLayout {
+                                columns: 2
+                                columnSpacing: 8
+                                rowSpacing: 4
+
+                                Text {
+                                    text: "Name"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                    color: "#1f2a34"
+                                }
+                                Common.PTextField {
+                                    id: listNameField
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 200
+                                }
+
+                                Text {
+                                    text: "ID"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                    color: "#1f2a34"
+                                }
+                                Text {
+                                    text: selectedListId
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                    color: "#526571"
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    text: "Notes"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                    color: "#1f2a34"
+                                    Layout.alignment: Qt.AlignTop
+                                }
+                                TextArea {
+                                    id: listNotesArea
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 48
+                                    readOnly: true
+                                    wrapMode: TextArea.Wrap
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                    background: Rectangle {
+                                        color: "#f5f7f9"
+                                        border.color: (typeof gAppTheme !== "undefined") ? gAppTheme.pvGroupBorder || "#dfe5ea" : "#dfe5ea"
+                                        border.width: 1
+                                    }
+                                }
                             }
                         }
                     }
 
-                    CompactFrame {
+                    // ── Right: List Builder (Available + Add/Remove + Members) ─
+                    Common.PGroupBox {
+                        fillContent: true
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        SectionHeader { id: builderHeader; width: parent.width; text: selectedListId === "" ? "Component List Builder" : (selectedList.name || selectedListId) }
+                        caption: selectedListId === "" ? "Component List Builder" : (selectedList.name || selectedListId)
 
                         RowLayout {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: builderHeader.bottom
-                            anchors.bottom: parent.bottom
-                            anchors.margins: 6
+                            anchors.fill: parent
                             spacing: 6
 
-                            CompactFrame {
+                            // ── Available Components ────────────────────
+                            Common.PGroupBox {
+                                fillContent: true
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                SectionHeader { id: availableHeader; width: parent.width; text: "Available Components" }
-                                CompactField { id: listSearch; x: 6; y: availableHeader.height + 6; width: parent.width - 12; placeholderText: "Search available components"; onTextChanged: refreshAvailableComponentsForList() }
-                                CompactCombo { id: listFamilyCombo; x: 6; y: listSearch.y + 26; width: parent.width - 12; onActivated: function(index) { refreshAvailableComponentsForList(textAt(index)) } }
-                                ListView {
-                                    id: availableListView
-                                    x: 0; y: listFamilyCombo.y + 32
-                                    width: parent.width; height: parent.height - y
-                                    clip: true
-                                    model: availableComponentsForList
-                                    ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
-                                    delegate: Rectangle {
-                                        width: availableListView.width - 2; height: 38
-                                        color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
-                                        border.color: "#dfe5ea"; border.width: 1
-                                        MouseArea { anchors.fill: parent; onClicked: function(mouse) { handleAvailableSelection(index, mouse) } }
-                                        Column {
-                                            anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "white" : "#1f2a34" }
-                                            Text {
-                                                text: {
-                                                    const fam = modelData.family || ""
-                                                    const src = modelData.source || ""
-                                                    if (modelData.isPseudoComponent && src.indexOf("pseudo-fluid:") === 0)
-                                                        return fam + "  •  " + src.substring("pseudo-fluid:".length)
-                                                    return fam
+                                caption: "Available Components"
+
+                                Item {
+                                    anchors.fill: parent
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        spacing: 6
+
+                                        Common.PTextField {
+                                            id: listSearch
+                                            Layout.fillWidth: true
+                                            placeholderText: "Search available components"
+                                            onTextChanged: refreshAvailableComponentsForList()
+                                        }
+
+                                        Common.PComboBox {
+                                            id: listFamilyCombo
+                                            Layout.fillWidth: true
+                                            onActivated: function(index) { refreshAvailableComponentsForList(textAt(index)) }
+                                        }
+
+                                        ListView {
+                                            id: availableListView
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            model: availableComponentsForList
+                                            spacing: 1
+                                            ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
+                                            delegate: Common.PListItem {
+                                                id: liAvail
+                                                width: availableListView.width - 2
+                                                height: 40
+                                                altIndex: index
+                                                selected: selectionContains(selectedAvailableComponentIds, modelData.id)
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    onEntered: liAvail.hovered = true
+                                                    onExited: liAvail.hovered = false
+                                                    onClicked: function(mouse) { handleAvailableSelection(index, mouse) }
                                                 }
-                                                font.pixelSize: 9
-                                                color: selectionContains(selectedAvailableComponentIds, modelData.id) ? "#cce4f8" : "#5b6b75"
+
+                                                Column {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 8
+                                                    anchors.topMargin: 4
+                                                    anchors.rightMargin: 4
+                                                    spacing: 2
+                                                    Text {
+                                                        text: modelData.name || modelData.id
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                                        font.bold: true
+                                                        color: liAvail.selected ? "white" : "#1f2a34"
+                                                        elide: Text.ElideRight
+                                                        width: parent.width
+                                                    }
+                                                    Text {
+                                                        text: {
+                                                            const fam = modelData.family || ""
+                                                            const src = modelData.source || ""
+                                                            if (modelData.isPseudoComponent && src.indexOf("pseudo-fluid:") === 0)
+                                                                return fam + "  \u2022  " + src.substring("pseudo-fluid:".length)
+                                                            return fam
+                                                        }
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                                        color: liAvail.selected ? "#cce4f8" : "#5b6b75"
+                                                        elide: Text.ElideRight
+                                                        width: parent.width
+                                                    }
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            Column {
-                                Layout.preferredWidth: 90
+                            // ── Add / Remove buttons column ─────────────
+                            ColumnLayout {
+                                Layout.preferredWidth: 96
+                                Layout.minimumWidth: 96
+                                Layout.maximumWidth: 96
                                 Layout.alignment: Qt.AlignVCenter
                                 spacing: 10
-                                CompactButton { text: "Add →"; width: 80; enabled_: selectedListId !== "" && selectedAvailableComponentIds.length > 0; onClicked: { if (!manager || selectedListId === "" || selectedAvailableComponentIds.length === 0) return; let changed = false; for (let i = 0; i < selectedAvailableComponentIds.length; ++i) if (manager.addComponentToList(selectedListId, selectedAvailableComponentIds[i])) changed = true; if (changed) { refreshListMembership(); refreshComponentLists(selectedListId) } } }
-                                CompactButton { text: "← Remove"; width: 80; enabled_: selectedListId !== "" && selectedMemberComponentIds.length > 0; onClicked: { if (!manager || selectedListId === "" || selectedMemberComponentIds.length === 0) return; let changed = false; for (let i = 0; i < selectedMemberComponentIds.length; ++i) if (manager.removeComponentFromList(selectedListId, selectedMemberComponentIds[i])) changed = true; if (changed) { refreshListMembership(); refreshComponentLists(selectedListId); loadListMemberDetail() } } }
+                                Item { Layout.fillHeight: true }
+                                Common.PButton {
+                                    text: "Add \u2192"
+                                    Layout.preferredWidth: 90
+                                    enabled: selectedListId !== "" && selectedAvailableComponentIds.length > 0
+                                    onClicked: {
+                                        if (!manager || selectedListId === "" || selectedAvailableComponentIds.length === 0) return
+                                        let changed = false
+                                        for (let i = 0; i < selectedAvailableComponentIds.length; ++i)
+                                            if (manager.addComponentToList(selectedListId, selectedAvailableComponentIds[i])) changed = true
+                                        if (changed) {
+                                            refreshListMembership()
+                                            refreshComponentLists(selectedListId)
+                                        }
+                                    }
+                                }
+                                Common.PButton {
+                                    text: "\u2190 Remove"
+                                    Layout.preferredWidth: 90
+                                    enabled: selectedListId !== "" && selectedMemberComponentIds.length > 0
+                                    onClicked: {
+                                        if (!manager || selectedListId === "" || selectedMemberComponentIds.length === 0) return
+                                        let changed = false
+                                        for (let i = 0; i < selectedMemberComponentIds.length; ++i)
+                                            if (manager.removeComponentFromList(selectedListId, selectedMemberComponentIds[i])) changed = true
+                                        if (changed) {
+                                            refreshListMembership()
+                                            refreshComponentLists(selectedListId)
+                                            loadListMemberDetail()
+                                        }
+                                    }
+                                }
+                                Item { Layout.fillHeight: true }
                             }
 
-                            CompactFrame {
+                            // ── Members list ────────────────────────────
+                            Common.PGroupBox {
+                                fillContent: true
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                SectionHeader { id: membersHeader; width: parent.width; text: "List Members" }
-                                Text { x: 6; y: membersHeader.height + 6; font.pixelSize: 9; color: "#526571"; font.italic: true; text: memberComponentsForList.length + " components" }
-                                ListView {
-                                    id: memberListView
-                                    x: 0; y: membersHeader.height + 22
-                                    width: parent.width; height: parent.height - y
-                                    clip: true
-                                    model: memberComponentsForList
-                                    ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
-                                    delegate: Rectangle {
-                                        width: memberListView.width - 2; height: 38
-                                        color: selectionContains(selectedMemberComponentIds, modelData.id) ? "#2e73b8" : (index % 2 ? "#f4f6f8" : "#ffffff")
-                                        border.color: "#dfe5ea"; border.width: 1
-                                        MouseArea { anchors.fill: parent; onClicked: function(mouse) { handleMemberSelection(index, mouse) } }
-                                        Column {
-                                            anchors.fill: parent; anchors.leftMargin: 6; anchors.topMargin: 4; spacing: 2
-                                            Text { text: modelData.name || modelData.id; font.pixelSize: 10; font.bold: true; color: selectionContains(selectedMemberComponentIds, modelData.id) ? "white" : "#1f2a34" }
-                                            Text { text: modelData.id || ""; font.pixelSize: 9; color: selectionContains(selectedMemberComponentIds, modelData.id) ? "#cce4f8" : "#5b6b75" }
+                                caption: "List Members"
+
+                                Item {
+                                    anchors.fill: parent
+
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        spacing: 6
+
+                                        Text {
+                                            text: memberComponentsForList.length + " components"
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                            color: "#526571"
+                                            font.italic: true
+                                        }
+
+                                        ListView {
+                                            id: memberListView
+                                            Layout.fillWidth: true
+                                            Layout.fillHeight: true
+                                            clip: true
+                                            model: memberComponentsForList
+                                            spacing: 1
+                                            ScrollBar.vertical: ScrollBar { width: 12; policy: ScrollBar.AsNeeded }
+                                            delegate: Common.PListItem {
+                                                id: liMember
+                                                width: memberListView.width - 2
+                                                height: 40
+                                                altIndex: index
+                                                selected: selectionContains(selectedMemberComponentIds, modelData.id)
+
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    onEntered: liMember.hovered = true
+                                                    onExited: liMember.hovered = false
+                                                    onClicked: function(mouse) { handleMemberSelection(index, mouse) }
+                                                }
+
+                                                Column {
+                                                    anchors.fill: parent
+                                                    anchors.leftMargin: 8
+                                                    anchors.topMargin: 4
+                                                    anchors.rightMargin: 4
+                                                    spacing: 2
+                                                    Text {
+                                                        text: modelData.name || modelData.id
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
+                                                        font.bold: true
+                                                        color: liMember.selected ? "white" : "#1f2a34"
+                                                        elide: Text.ElideRight
+                                                        width: parent.width
+                                                    }
+                                                    Text {
+                                                        text: modelData.id || ""
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSizeSmall : 10
+                                                        color: liMember.selected ? "#cce4f8" : "#5b6b75"
+                                                        elide: Text.ElideRight
+                                                        width: parent.width
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Delete Error & Confirm Navigation dialogs ──────────────────────────
+    PMessageDialog {
+        id: deleteErrorDialog
+        parent: Overlay.overlay
+
+        // "component" → click jumps to Lists tab + selects offending list
+        //               + highlights the offending component within it
+        // "list"      → click confirms then emits navigateToFluidPackage
+        property string context: ""
+        property string componentIdToHighlight: ""
+        property string pendingPackageId: ""
+        property string pendingPackageLabel: ""
+
+        onItemClicked: function(index, label) {
+            if (context === "component") {
+                // In-view navigation: switch to Lists tab, select the list,
+                // and highlight the offending component within the members.
+                const listId = root.componentListIdForName(label)
+                if (listId === "") return
+                deleteErrorDialog.close()
+                root.currentTab = 1
+                root.refreshComponentLists(listId)
+                // Highlight the component we tried to delete inside the
+                // member panel, after refreshListMembership has populated it.
+                Qt.callLater(function() {
+                    if (componentIdToHighlight !== "") {
+                        root.selectedMemberComponentId = componentIdToHighlight
+                        root.selectedMemberComponentIds = [componentIdToHighlight]
+                    }
+                })
+            } else if (context === "list") {
+                // Cross-view navigation: confirm first, then signal up to
+                // PfdMainView. Look up the package id from its display name.
+                const pkgId = root.fluidPackageIdForName(label)
+                if (pkgId === "") return
+                deleteErrorDialog.pendingPackageId = pkgId
+                deleteErrorDialog.pendingPackageLabel = label
+                confirmNavigateDialog.message = "Navigate to Fluid Package '" + label + "'?"
+                confirmNavigateDialog.open()
+            }
+        }
+    }
+
+    // Inline confirm-navigation popup with Windows-classic 3D raised bevel.
+    // Behaviorally identical to a Yes/No dialog.
+    Popup {
+        id: confirmNavigateDialog
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape
+
+        property string title: "Navigate"
+        property string message: ""
+        property int minWidth: 320
+
+        // Auto-size to fit the message (which embeds an object name that
+        // could be arbitrarily long). Chrome overhead ~40px horizontally
+        // (margins + padding).
+        readonly property int maxAllowedWidth: parent ? Math.floor(parent.width * 0.85) : 1200
+        width: Math.min(
+            Math.max(minWidth, confirmMsgMetrics.contentWidth + 40),
+            maxAllowedWidth)
+
+        Text {
+            id: confirmMsgMetrics
+            visible: false
+            text: confirmNavigateDialog.message
+            font.pixelSize: 12
+            textFormat: Text.PlainText
+        }
+
+        x: parent ? Math.round((parent.width - width) / 2) : 0
+        y: parent ? Math.round((parent.height - height) / 3) : 0
+        padding: 0
+        background: Rectangle { color: "transparent" }
+
+        function doYes() {
+            const pkgId = deleteErrorDialog.pendingPackageId
+            confirmNavigateDialog.close()
+            deleteErrorDialog.close()
+            if (pkgId !== "") root.navigateToFluidPackage(pkgId)
+        }
+        function doNo() {
+            confirmNavigateDialog.close()
+            // Delete Error stays open behind us so the user can pick another
+            // package or click OK.
+        }
+
+        contentItem: Item {
+            id: confirmChrome
+            implicitHeight: confirmCol.implicitHeight + 4
+
+            // Base fill
+            Rectangle { anchors.fill: parent; color: gAppTheme.pvFrame }
+
+            // Raised 3D outer bevel (bright top+left, dark bottom+right)
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; height: 1; color: gAppTheme.pvFrameHi }
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.bottom: parent.bottom; width: 1; color: gAppTheme.pvFrameHi }
+            Rectangle { anchors.top: parent.top; anchors.right: parent.right; anchors.bottom: parent.bottom; width: 1; color: gAppTheme.pvFrameLo }
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: gAppTheme.pvFrameLo }
+
+            // Inner chisel
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; anchors.topMargin: 1; anchors.leftMargin: 1; anchors.rightMargin: 1; height: 1; color: Qt.lighter(gAppTheme.pvFrame, 1.05) }
+            Rectangle { anchors.top: parent.top; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.topMargin: 1; anchors.leftMargin: 1; anchors.bottomMargin: 1; width: 1; color: Qt.lighter(gAppTheme.pvFrame, 1.05) }
+            Rectangle { anchors.top: parent.top; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.topMargin: 1; anchors.rightMargin: 1; anchors.bottomMargin: 1; width: 1; color: Qt.darker(gAppTheme.pvFrame, 1.08) }
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.leftMargin: 1; anchors.rightMargin: 1; anchors.bottomMargin: 1; height: 1; color: Qt.darker(gAppTheme.pvFrame, 1.08) }
+
+            ColumnLayout {
+                id: confirmCol
+                anchors.fill: parent
+                anchors.margins: 2
+                spacing: 0
+
+                // Title bar
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 22
+                    color: gAppTheme.pvTitleBg
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        height: 1
+                        color: gAppTheme.pvFrameLo
+                    }
+
+                    Text {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: confirmNavigateDialog.title
+                        color: gAppTheme.pvTitleText
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+                }
+
+                // Message
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: confirmMsg.implicitHeight + 28
+                    color: gAppTheme.pvFrame
+                    Text {
+                        id: confirmMsg
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        text: confirmNavigateDialog.message
+                        color: gAppTheme.pvLabelText
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+
+                // Buttons
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 36
+                    color: gAppTheme.pvFrame
+                    Row {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        Common.PButton {
+                            width: 64
+                            text: "Yes"
+                            onClicked: confirmNavigateDialog.doYes()
+                        }
+                        Common.PButton {
+                            width: 64
+                            text: "No"
+                            onClicked: confirmNavigateDialog.doNo()
                         }
                     }
                 }

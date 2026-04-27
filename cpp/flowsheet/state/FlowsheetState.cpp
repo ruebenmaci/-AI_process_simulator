@@ -20,6 +20,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
 #include <QFileInfo>
 
 namespace {
@@ -31,12 +32,104 @@ namespace {
    }
 }
 
+FlowsheetState* FlowsheetState::instance_ = nullptr;
+
+FlowsheetState* FlowsheetState::instance()
+{
+   return instance_;
+}
+
 FlowsheetState::FlowsheetState(QObject* parent)
    : QObject(parent)
 {
+   instance_ = this;
    drawingTitle_ = QStringLiteral("AI Process sim - 001");
    revisionDate_ = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm dd/MM/yyyy"));
+
+   highlightTimer_ = new QTimer(this);
+   highlightTimer_->setSingleShot(true);
+   highlightTimer_->setInterval(3000);
+   QObject::connect(highlightTimer_, &QTimer::timeout, this, [this]() {
+      clearHighlight();
+   });
+
    refreshUnitModel_();
+}
+
+FlowsheetState::~FlowsheetState()
+{
+   if (instance_ == this) instance_ = nullptr;
+}
+
+QStringList FlowsheetState::streamsUsingPackage(const QString& packageId) const
+{
+   QStringList names;
+   if (packageId.trimmed().isEmpty()) return names;
+
+   for (const auto& unit : units_) {
+      auto* su = dynamic_cast<StreamUnitState*>(unit.get());
+      if (!su) continue;
+      MaterialStreamState* stream = su->streamState();
+      if (!stream) continue;
+
+      const QString pkgId = stream->selectedFluidPackageId();
+      if (pkgId.compare(packageId, Qt::CaseInsensitive) != 0) continue;
+
+      // Name priority: the unit's PFD-level name (e.g. "stream_1") is the
+      // user-facing identifier. Fall back to the stream's role label (e.g.
+      // "Feed stream"), then the unit id, in case the PFD name is empty.
+      QString name = su->name().trimmed();
+      if (name.isEmpty()) name = stream->streamName().trimmed();
+      if (name.isEmpty()) name = su->id();
+      names.append(name);
+   }
+   return names;
+}
+
+QStringList FlowsheetState::streamUnitIdsUsingPackage(const QString& packageId) const
+{
+   QStringList ids;
+   if (packageId.trimmed().isEmpty()) return ids;
+
+   for (const auto& unit : units_) {
+      auto* su = dynamic_cast<StreamUnitState*>(unit.get());
+      if (!su) continue;
+      MaterialStreamState* stream = su->streamState();
+      if (!stream) continue;
+
+      const QString pkgId = stream->selectedFluidPackageId();
+      if (pkgId.compare(packageId, Qt::CaseInsensitive) != 0) continue;
+
+      ids.append(su->id());
+   }
+   return ids;
+}
+
+void FlowsheetState::highlightStream(const QString& unitId)
+{
+   const QString trimmed = unitId.trimmed();
+   if (trimmed.isEmpty()) {
+      clearHighlight();
+      return;
+   }
+
+   if (highlightedUnitId_ != trimmed) {
+      highlightedUnitId_ = trimmed;
+      emit highlightedUnitIdChanged();
+   }
+   if (highlightTimer_) {
+      highlightTimer_->stop();
+      highlightTimer_->start();
+   }
+}
+
+void FlowsheetState::clearHighlight()
+{
+   if (highlightTimer_) highlightTimer_->stop();
+   if (!highlightedUnitId_.isEmpty()) {
+      highlightedUnitId_.clear();
+      emit highlightedUnitIdChanged();
+   }
 }
 
 int FlowsheetState::unitCount() const

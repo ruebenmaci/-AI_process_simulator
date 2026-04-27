@@ -171,8 +171,30 @@ QString FormatRegistry::formatWithSpec(double v, const Spec& s)
     if (!std::isfinite(v)) return QStringLiteral("—");
 
     switch (s.kind) {
-    case Fixed:
-        return QString::number(v, 'f', std::max(0, s.digits));
+    case Fixed: {
+        int decimals = std::max(0, s.digits);
+
+        // ── Precision-preservation rule for small values ────────────────────
+        // When |v| < 1 and the spec's fixed decimals would drop the value
+        // below kMinSigFigsForSmallValues significant digits, bump the decimal
+        // count so at least that many sig figs survive. Prevents, e.g.,
+        // MolarMass 0.11630 kg/mol displaying as "0.12" at Fixed/2 — the rule
+        // bumps it to "0.1163" (4 sig figs).
+        //
+        // Integer part is zero, so sig figs = decimals - leadingZeros, where
+        // leadingZeros is the count of zeros between the decimal point and
+        // the first non-zero digit. For v in [0.1, 1): leadingZeros = 0.
+        // For v in [0.01, 0.1): leadingZeros = 1. Etc.
+        constexpr int kMinSigFigsForSmallValues = 4;
+        if (v != 0.0 && std::fabs(v) < 1.0) {
+            const int leadingZeros = -static_cast<int>(
+                std::floor(std::log10(std::fabs(v)))) - 1;
+            const int neededDecimals = leadingZeros + kMinSigFigsForSmallValues;
+            if (neededDecimals > decimals)
+                decimals = neededDecimals;
+        }
+        return QString::number(v, 'f', decimals);
+    }
 
     case Exponential:
         return QString::number(v, 'e', std::max(0, s.digits));
