@@ -225,6 +225,16 @@ Item {
             return unitName ? "Cooler  —  " + unitName : "Cooler"
         } else if (root.activeUnit.type === "heat_exchanger") {
             return unitName ? "Heat Exchanger  —  " + unitName : "Heat Exchanger"
+        } else if (root.activeUnit.type === "pump") {
+            return unitName ? "Pump  —  " + unitName : "Pump"
+        } else if (root.activeUnit.type === "valve") {
+            return unitName ? "Valve  —  " + unitName : "Valve"
+        } else if (root.activeUnit.type === "separator") {
+            return unitName ? "Separator  —  " + unitName : "Separator"
+        } else if (root.activeUnit.type === "tee_splitter") {
+            return unitName ? "Tee / Splitter  —  " + unitName : "Tee / Splitter"
+        } else if (root.activeUnit.type === "mixer") {
+            return unitName ? "Mixer  —  " + unitName : "Mixer"
         } else {
             return unitName ? "Distillation Column  —  " + unitName : "Distillation Column"
         }
@@ -257,6 +267,26 @@ Item {
                         root.flowsheet.selectUnit(unitId)
                     root.floatingWorkspaceVisible = true
                     root.raisePanel(floatingWorkspace)
+                    }
+                }
+
+                // ── Messages dock at the bottom of the PFD ────────────────
+                // Single toggle expands/collapses both the Status (left)
+                // and Trace (right) panels together. Flashes when there
+                // are unread warns or errors. Click-navigates to the
+                // referenced unit using the same pattern as Fluid Manager.
+                MessagesDock {
+                    id: messagesDock
+                    Layout.fillWidth: true
+                    flowsheet: root.flowsheet
+                    onNavigateToUnit: function(unitId) {
+                        if (!unitId || unitId === "") return
+                        if (root.flowsheet) {
+                            root.flowsheet.selectUnit(unitId)
+                            root.flowsheet.highlightStream(unitId)
+                        }
+                        root.floatingWorkspaceVisible = true
+                        root.raisePanel(floatingWorkspace)
                     }
                 }
             }
@@ -534,16 +564,21 @@ Item {
         readonly property int heaterWidth:        465
         readonly property int heaterHeight:       579
 
-        readonly property bool streamMode:  !!root.activeUnit && root.activeUnit.type === "stream"
-        readonly property bool heaterMode:  !!root.activeUnit && root.activeUnit.type === "heater"
-        readonly property bool coolerMode:  !!root.activeUnit && root.activeUnit.type === "cooler"
-        readonly property bool hexMode:     !!root.activeUnit && root.activeUnit.type === "heat_exchanger"
+        readonly property bool streamMode:    !!root.activeUnit && root.activeUnit.type === "stream"
+        readonly property bool heaterMode:    !!root.activeUnit && root.activeUnit.type === "heater"
+        readonly property bool coolerMode:    !!root.activeUnit && root.activeUnit.type === "cooler"
+        readonly property bool hexMode:       !!root.activeUnit && root.activeUnit.type === "heat_exchanger"
+        readonly property bool pumpMode:      !!root.activeUnit && root.activeUnit.type === "pump"
+        readonly property bool valveMode:     !!root.activeUnit && root.activeUnit.type === "valve"
+        readonly property bool separatorMode: !!root.activeUnit && root.activeUnit.type === "separator"
+        readonly property bool splitterMode:  !!root.activeUnit && root.activeUnit.type === "tee_splitter"
+        readonly property bool mixerMode:     !!root.activeUnit && root.activeUnit.type === "mixer"
 
         width:  streamMode  ? streamWidth
-              : (heaterMode || coolerMode || hexMode) ? heaterWidth
+              : (heaterMode || coolerMode || hexMode || pumpMode || valveMode || separatorMode || splitterMode || mixerMode) ? heaterWidth
               : columnNormalWidth
         height: streamMode  ? streamHeight
-              : (heaterMode || coolerMode || hexMode) ? heaterHeight
+              : (heaterMode || coolerMode || hexMode || pumpMode || valveMode || separatorMode || splitterMode || mixerMode) ? heaterHeight
               : columnNormalHeight
 
         active: visible && root.activePanel === floatingWorkspace
@@ -568,7 +603,12 @@ Item {
                     if (t === "stream")  return streamWorkspaceComponent
                     if (t === "heater")       return heaterWorkspaceComponent
                     if (t === "cooler")       return coolerWorkspaceComponent
+                    if (t === "pump")         return pumpWorkspaceComponent
+                    if (t === "valve")        return valveWorkspaceComponent
                     if (t === "heat_exchanger") return hexWorkspaceComponent
+                    if (t === "separator")    return separatorWorkspaceComponent
+                    if (t === "tee_splitter") return splitterWorkspaceComponent
+                    if (t === "mixer")        return mixerWorkspaceComponent
                     return columnWorkspaceComponent
                 }
             }
@@ -607,8 +647,48 @@ Item {
         }
 
         Component {
+            id: pumpWorkspaceComponent
+            PumpWorkspaceWindow {
+                anchors.fill: parent
+                appState: root.activeUnit
+            }
+        }
+
+        Component {
+            id: valveWorkspaceComponent
+            ValveWorkspaceWindow {
+                anchors.fill: parent
+                appState: root.activeUnit
+            }
+        }
+
+        Component {
             id: hexWorkspaceComponent
             HeatExchangerWorkspaceWindow {
+                anchors.fill: parent
+                appState: root.activeUnit
+            }
+        }
+
+        Component {
+            id: separatorWorkspaceComponent
+            SeparatorWorkspaceWindow {
+                anchors.fill: parent
+                appState: root.activeUnit
+            }
+        }
+
+        Component {
+            id: splitterWorkspaceComponent
+            SplitterWorkspaceWindow {
+                anchors.fill: parent
+                appState: root.activeUnit
+            }
+        }
+
+        Component {
+            id: mixerWorkspaceComponent
+            MixerWorkspaceWindow {
                 anchors.fill: parent
                 appState: root.activeUnit
             }

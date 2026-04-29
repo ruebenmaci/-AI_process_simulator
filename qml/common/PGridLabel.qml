@@ -178,6 +178,10 @@ FocusScope {
 
     property string text: ""
     property bool   alt:  false
+    // Optional bold emphasis. Default off so the look of every existing
+    // caller is unchanged. Useful for header / total / "important" rows
+    // where a single cell label should stand out from regular data rows.
+    property bool   bold: false
 
     // Baseline widths.
     //   • preferredWidth defaults to 170 (matches the old default; existing
@@ -219,6 +223,7 @@ FocusScope {
         anchors.verticalCenter: parent.verticalCenter
         font.pixelSize: (typeof gAppTheme !== "undefined") ? gAppTheme.pvFontSize : 11
         font.family: "Segoe UI"
+        font.bold: cell.bold
         color: (typeof gAppTheme !== "undefined") ? gAppTheme.pvLabelText : "#1f2226"
         elide: Text.ElideRight
         width: parent.width - 4

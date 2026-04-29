@@ -139,6 +139,10 @@ public:
 
     void setFlowsheetState(FlowsheetState* fs);
 
+    // Connection-completeness check; consumed by FlowsheetStatusModel for
+    // the bottom Status panel.
+    ConnectivityStatus connectivityStatus() const override;
+
     // ── Spec getters / setters ───────────────────────────────────────────────
     QString specMode()            const { return specMode_; }
     double  outletTemperatureK()  const { return outletTemperatureK_; }

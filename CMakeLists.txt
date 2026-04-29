@@ -78,6 +78,8 @@ qt_add_executable(appChatGPT5_ADT
     cpp/common/models/DiagnosticsModel.cpp
     cpp/common/models/RunLogModel.h
     cpp/common/models/RunLogModel.cpp
+    cpp/common/models/MessageLog.h
+    cpp/common/models/MessageLog.cpp
     cpp/components/ComponentRecord.h
     cpp/components/ComponentRecord.cpp
     cpp/components/ComponentListRecord.h
@@ -91,6 +93,8 @@ qt_add_executable(appChatGPT5_ADT
     cpp/flowsheet/UnitNode.h
     cpp/flowsheet/models/FlowsheetUnitModel.h
     cpp/flowsheet/models/FlowsheetUnitModel.cpp
+    cpp/flowsheet/models/FlowsheetStatusModel.h
+    cpp/flowsheet/models/FlowsheetStatusModel.cpp
     cpp/flowsheet/state/FlowsheetState.h
     cpp/flowsheet/state/FlowsheetState.cpp
     cpp/flowsheet/state/ProcessUnitState.h
@@ -123,8 +127,18 @@ qt_add_executable(appChatGPT5_ADT
     cpp/unitops/column/models/MaterialBalanceModel.cpp
     cpp/unitops/heater/state/HeaterCoolerUnitState.h
     cpp/unitops/heater/state/HeaterCoolerUnitState.cpp
+    cpp/unitops/pump/state/PumpUnitState.h
+    cpp/unitops/pump/state/PumpUnitState.cpp
+    cpp/unitops/valve/state/ValveUnitState.h
+    cpp/unitops/valve/state/ValveUnitState.cpp
     cpp/unitops/hex/state/HeatExchangerUnitState.h
     cpp/unitops/hex/state/HeatExchangerUnitState.cpp
+    cpp/unitops/separator/state/SeparatorUnitState.h
+    cpp/unitops/separator/state/SeparatorUnitState.cpp
+    cpp/unitops/splitter/state/SplitterUnitState.h
+    cpp/unitops/splitter/state/SplitterUnitState.cpp
+    cpp/unitops/mixer/state/MixerUnitState.h
+    cpp/unitops/mixer/state/MixerUnitState.cpp
 )
 
 qt_add_qml_module(appChatGPT5_ADT
@@ -155,6 +169,9 @@ qt_add_qml_module(appChatGPT5_ADT
         qml/pfd/EquipmentPalette.qml
         qml/pfd/UnitNodeItem.qml
         qml/pfd/FloatingPanel.qml
+        qml/pfd/MessagesDock.qml
+        qml/pfd/StatusPanel.qml
+        qml/pfd/MessagesPanel.qml
         qml/components/ComponentManagerView.qml
         qml/fluid/FluidManagerView.qml
         qml/displaySettings/DisplaySettingsPanel.qml
@@ -171,8 +188,18 @@ qt_add_qml_module(appChatGPT5_ADT
         cpp/unitops/heater/qml/HeaterCoolerView.qml
         cpp/unitops/heater/qml/HeaterWorkspaceWindow.qml
         cpp/unitops/heater/qml/CoolerWorkspaceWindow.qml
+        cpp/unitops/pump/qml/PumpView.qml
+        cpp/unitops/pump/qml/PumpWorkspaceWindow.qml
+        cpp/unitops/valve/qml/ValveView.qml
+        cpp/unitops/valve/qml/ValveWorkspaceWindow.qml
         cpp/unitops/hex/qml/HeatExchangerView.qml
         cpp/unitops/hex/qml/HeatExchangerWorkspaceWindow.qml
+        cpp/unitops/separator/qml/SeparatorView.qml
+        cpp/unitops/separator/qml/SeparatorWorkspaceWindow.qml
+        cpp/unitops/splitter/qml/SplitterView.qml
+        cpp/unitops/splitter/qml/SplitterWorkspaceWindow.qml
+        cpp/unitops/mixer/qml/MixerView.qml
+        cpp/unitops/mixer/qml/MixerWorkspaceWindow.qml
         cpp/streams/qml/StreamView.qml
         cpp/streams/qml/StreamCompositionPanel.qml
         cpp/streams/qml/StreamConditionsPanel.qml
@@ -201,7 +228,7 @@ qt_add_qml_module(appChatGPT5_ADT
         icons/svg/2D_Light_Icons/expander.svg
         icons/svg/2D_Light_Icons/filter.svg
         icons/svg/2D_Light_Icons/fired_heater.svg
-        icons/svg/2D_Light_Icons/flash_drum.svg
+        icons/svg/2D_Light_Icons/separator.svg
         icons/svg/2D_Light_Icons/fluid_package.svg
         icons/svg/2D_Light_Icons/heat_exchanger.svg
         icons/svg/2D_Light_Icons/heater.svg
@@ -220,7 +247,7 @@ qt_add_qml_module(appChatGPT5_ADT
         icons/svg/2D_Light_Icons/stream_material.svg
         icons/svg/2D_Light_Icons/stripper.svg
         icons/svg/2D_Light_Icons/tee_splitter.svg
-        icons/svg/2D_Light_Icons/three_phase_flash.svg
+        icons/svg/2D_Light_Icons/three_phase_separator.svg
         icons/svg/2D_Light_Icons/valve.svg
         icons/svg/stop.svg
         cpp/components/data/hydrocarbon_starter_components.json

@@ -19,6 +19,8 @@
 
 #include "unitops/column/state/ColumnUnitState.h"
 #include "flowsheet/state/FlowsheetState.h"
+#include "flowsheet/models/FlowsheetStatusModel.h"
+#include "common/models/MessageLog.h"
 #include "components/ComponentManager.h"
 #include "fluid/FluidPackageManager.h"
 #include "AppTheme.h"
@@ -252,6 +254,18 @@ int main(int argc, char* argv[]) {
 
    FlowsheetState flowsheet;
    engine.rootContext()->setContextProperty("gFlowsheet", &flowsheet);
+
+   // Application-wide trace log for connection events, save/load, solver
+   // summaries, etc. Surfaced in QML as the Messages panel at the bottom
+   // of the PFD. Session-scoped — not persisted to .sim files.
+   MessageLog messageLog;
+   engine.rootContext()->setContextProperty("gMessageLog", &messageLog);
+
+   // Aggregator that walks all unit ops and exposes the list of those with
+   // a non-OK ConnectivityStatus, for the Status panel at the bottom of
+   // the PFD. Auto-refreshes on materialConnectionsChanged + unitCountChanged.
+   FlowsheetStatusModel flowsheetStatus(&flowsheet);
+   engine.rootContext()->setContextProperty("gFlowsheetStatus", &flowsheetStatus);
 
    // ── Saves folder: <project root>/saves ───────────────────────────────────
    // Exe lives at <root>/out/build/x64-release/ — walk up 3 levels to get root.

@@ -185,7 +185,7 @@ Pane {
                 return { x: boxLeft + boxW * 0.917,    y: item.y + iconH * 0.896 }
         }
 
-        if (type === "heater" || type === "cooler") {
+        if (type === "heater" || type === "cooler" || type === "pump" || type === "valve") {
             // Simple box icon: feed enters left-center, product exits right-center
             const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
             const boxW    = item.iconNodeBoxSize
@@ -197,6 +197,24 @@ Pane {
 
         if (type === "heat_exchanger") {
             const pp = hexPortPoint(item, port)
+            if (pp) return { x: pp.x, y: pp.y }
+            return { x: item.x + item.width / 2, y: item.y + item.iconNodeBoxSize / 2 }
+        }
+
+        if (type === "separator") {
+            const pp = separatorPortPoint(item, port)
+            if (pp) return { x: pp.x, y: pp.y }
+            return { x: item.x + item.width / 2, y: item.y + item.iconNodeBoxSize / 2 }
+        }
+
+        if (type === "tee_splitter") {
+            const pp = splitterPortPoint(item, port)
+            if (pp) return { x: pp.x, y: pp.y }
+            return { x: item.x + item.width / 2, y: item.y + item.iconNodeBoxSize / 2 }
+        }
+
+        if (type === "mixer") {
+            const pp = mixerPortPoint(item, port)
             if (pp) return { x: pp.x, y: pp.y }
             return { x: item.x + item.width / 2, y: item.y + item.iconNodeBoxSize / 2 }
         }
@@ -267,7 +285,7 @@ Pane {
         let streamId = ""
         let equipId  = ""
 
-        const isEquip = (t) => t === "column" || t === "heater" || t === "cooler" || t === "heat_exchanger"
+        const isEquip = (t) => t === "column" || t === "heater" || t === "cooler" || t === "pump" || t === "valve" || t === "heat_exchanger" || t === "separator" || t === "tee_splitter" || t === "mixer"
 
         if (firstType === "stream" && isEquip(clickedType)) {
             streamId = firstId
@@ -297,6 +315,20 @@ Pane {
                 ok = root.flowsheet.bindHeaterProductStream(equipId, streamId)
             else
                 ok = root.flowsheet.bindHeaterFeedStream(equipId, streamId)
+        } else if (equipType === "pump") {
+            if (root.connectionMode === "feed")
+                ok = root.flowsheet.bindPumpFeedStream(equipId, streamId)
+            else if (root.connectionMode === "product")
+                ok = root.flowsheet.bindPumpProductStream(equipId, streamId)
+            else
+                ok = root.flowsheet.bindPumpFeedStream(equipId, streamId)
+        } else if (equipType === "valve") {
+            if (root.connectionMode === "feed")
+                ok = root.flowsheet.bindValveFeedStream(equipId, streamId)
+            else if (root.connectionMode === "product")
+                ok = root.flowsheet.bindValveProductStream(equipId, streamId)
+            else
+                ok = root.flowsheet.bindValveFeedStream(equipId, streamId)
         } else if (equipType === "heat_exchanger") {
             // Map connectionMode to HEX port name
             const hexPortMap = { "hotIn": "hotIn", "hotOut": "hotOut",
@@ -304,6 +336,31 @@ Pane {
                                   "feed": "hotIn", "product": "hotOut" }
             const hexPort = hexPortMap[root.connectionMode] || "hotIn"
             ok = root.flowsheet.bindHexStream(equipId, hexPort, streamId)
+        } else if (equipType === "separator") {
+            // Map connectionMode → separator port. "feed"/"product" defaults
+            // matter for paths that came from generic equipment-button flows.
+            const sepPortMap = { "feed": "feed", "vapor": "vapor", "liquid": "liquid",
+                                  "product": "vapor" }
+            const sepPort = sepPortMap[root.connectionMode] || "feed"
+            ok = root.flowsheet.bindSeparatorStream(equipId, sepPort, streamId)
+        } else if (equipType === "tee_splitter") {
+            // Map connectionMode → splitter port. Generic "product" flows
+            // default to the first outlet. Specific outletN names pass
+            // through unchanged.
+            var teePort = root.connectionMode
+            if (teePort === "feed") teePort = "feed"
+            else if (teePort === "product") teePort = "outlet1"
+            else if (!teePort.startsWith("outlet")) teePort = "feed"
+            ok = root.flowsheet.bindSplitterStream(equipId, teePort, streamId)
+        } else if (equipType === "mixer") {
+            // Map connectionMode → mixer port. Generic "feed" flows default
+            // to the first inlet (inlet1). Specific inletN names pass
+            // through unchanged. "product" routes to the single product port.
+            var mxPort = root.connectionMode
+            if (mxPort === "product") mxPort = "product"
+            else if (mxPort === "feed") mxPort = "inlet1"
+            else if (!mxPort.startsWith("inlet") && mxPort !== "product") mxPort = "inlet1"
+            ok = root.flowsheet.bindMixerStream(equipId, mxPort, streamId)
         }
 
         root.connectionStatusText = ok
@@ -417,20 +474,198 @@ Pane {
         return null
     }
 
-    // Port positions on a heat exchanger item
-    // Icon viewBox 48x48: ports at y=19 (upper) and y=29 (lower), x=3 (left) x=45 (right)
-    // Normalised: upper=19/48=0.396, lower=29/48=0.604
+    // Port positions on a heat exchanger item.
+    // Icon viewBox 48x48, pill body x=8..40, y=10..38, port stubs at y=14
+    // (upper) and y=34 (lower). To prevent stream lines from overlapping
+    // when streams are dragged away from the HEX, the ports are placed
+    // OUTSIDE the icon box on both axes — same approach as the column,
+    // whose distillate/bottoms ports sit at boxW * 0.917 (just past the
+    // shell graphic). Here we extend horizontally past both edges and
+    // widen the vertical spread to ~75% of the box (matching the column's
+    // 0.146/0.896 distillate/bottoms split). This forces the four ports
+    // into four distinct corners so each stream line takes a unique
+    // L-routing corridor and they cannot visually overlap.
     function hexPortPoint(item, port) {
         if (!item) return null
         const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
         const boxW    = item.iconNodeBoxSize
-        const upperY  = item.y + item.iconNodeBoxSize * 0.396
-        const lowerY  = item.y + item.iconNodeBoxSize * 0.604
-        if (port === "hotIn")   return Qt.point(boxLeft,        lowerY)
-        if (port === "hotOut")  return Qt.point(boxLeft + boxW, upperY)
-        if (port === "coldIn")  return Qt.point(boxLeft,        upperY)
-        if (port === "coldOut") return Qt.point(boxLeft + boxW, lowerY)
+        const leftX   = boxLeft - boxW * 0.083    // mirror of column's 0.917
+        const rightX  = boxLeft + boxW * 1.083
+        const upperY  = item.y + item.iconNodeBoxSize * 0.146
+        const lowerY  = item.y + item.iconNodeBoxSize * 0.896
+        // Normalise: callers pass either camelCase ("hotIn") or lowercase
+        // ("hotin", from itemPortPoint which lowercases all port names).
+        const p = (port || "").toLowerCase()
+        if (p === "hotin")   return Qt.point(leftX,  lowerY)
+        if (p === "hotout")  return Qt.point(rightX, upperY)
+        if (p === "coldin")  return Qt.point(leftX,  upperY)
+        if (p === "coldout") return Qt.point(rightX, lowerY)
         return null
+    }
+
+    // Port positions on a separator item.
+    // Feed enters at mid-height on the left; vapor exits at the top-right;
+    // liquid exits at the bottom-right. Ports are pushed slightly outside
+    // the icon box on both axes so the colour-coded dots render in clear
+    // canvas space rather than on top of the SVG artwork — same approach
+    // used by the column and the HEX. The vertical spread (15%/85%) on the
+    // right side mirrors the column's distillate/bottoms split, which
+    // gives the two outlet streams genuinely separate L-routing corridors.
+    // Port names are all-lowercase so itemPortPoint's lowercase pass-through
+    // works without a normalisation step (separator ports are "feed" /
+    // "vapor" / "liquid" — already case-clean).
+    function separatorPortPoint(item, port) {
+        if (!item) return null
+        const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
+        const boxW    = item.iconNodeBoxSize
+        const leftX   = boxLeft - boxW * 0.083
+        const rightX  = boxLeft + boxW * 1.083
+        const midY    = item.y + item.iconNodeBoxSize * 0.5
+        const upperY  = item.y + item.iconNodeBoxSize * 0.146
+        const lowerY  = item.y + item.iconNodeBoxSize * 0.896
+        const p = (port || "").toLowerCase()
+        if (p === "feed")   return Qt.point(leftX,  midY)
+        if (p === "vapor")  return Qt.point(rightX, upperY)
+        if (p === "liquid") return Qt.point(rightX, lowerY)
+        return null
+    }
+
+    // Port positions on a Tee/Splitter item.
+    //
+    // Feed enters at mid-height on the left. Outlets exit on the right side,
+    // vertically distributed by these rules (matching the heuristic in the
+    // splitter spec):
+    //
+    //   N = 2  →  15% / 85%    (same as HEX hot-out / cold-out spread)
+    //   N = 3  →  15% / 50% / 85%
+    //   N ≥ 4  →  evenly distributed across [12%, 88%]
+    //
+    // The live outletCount is read from the unit's state via the canvas's
+    // unitItemById/unitState pattern. If the state isn't available (item
+    // detached, or hasn't fully wired up yet), we fall back to N=2 to avoid
+    // null-derefs during the brief construction window.
+    //
+    // Port names: "feed" plus "outlet1".."outletN" — all lowercase, so
+    // itemPortPoint's lowercase normalisation passes through cleanly.
+    function splitterPortPoint(item, port) {
+        if (!item) return null
+        const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
+        const boxW    = item.iconNodeBoxSize
+        const leftX   = boxLeft - boxW * 0.083
+        const rightX  = boxLeft + boxW * 1.083
+        const midY    = item.y + item.iconNodeBoxSize * 0.5
+        const p = (port || "").toLowerCase()
+
+        if (p === "feed") return Qt.point(leftX, midY)
+
+        if (!p.startsWith("outlet")) return null
+        const oneIdx = parseInt(p.substring(6), 10)
+        if (isNaN(oneIdx) || oneIdx < 1) return null
+
+        // Determine N from the live FlowsheetState. Defensively fall back
+        // to 2 if the call isn't available (e.g. flowsheet not yet wired up
+        // during canvas construction).
+        var n = 2
+        if (root.flowsheet && item.unitId) {
+            const live = root.flowsheet.splitterOutletCount(item.unitId)
+            if (live >= 2) n = live
+        }
+        if (oneIdx > n) return null
+
+        // Vertical fractions per the rule above. Index is 0-based for the
+        // fraction lookup but the port name is 1-indexed.
+        var fy = 0.5
+        if (n === 2) {
+            fy = (oneIdx === 1) ? 0.15 : 0.85
+        } else if (n === 3) {
+            if (oneIdx === 1) fy = 0.15
+            else if (oneIdx === 2) fy = 0.50
+            else fy = 0.85
+        } else {
+            // Evenly distributed across [0.12, 0.88]
+            const frac = (oneIdx - 1) / (n - 1)
+            fy = 0.12 + 0.76 * frac
+        }
+        return Qt.point(rightX, item.y + item.iconNodeBoxSize * fy)
+    }
+
+    // Returns the live list of valid port names for a splitter item, given
+    // its current outletCount. Used by snap detection (which iterates a
+    // ports list) and dot rendering.
+    function splitterPortList(item) {
+        var n = 2
+        if (root.flowsheet && item && item.unitId) {
+            const live = root.flowsheet.splitterOutletCount(item.unitId)
+            if (live >= 2) n = live
+        }
+        var ports = ["feed"]
+        for (var i = 1; i <= n; ++i) ports.push("outlet" + i)
+        return ports
+    }
+
+    // Mixer geometry — symmetric counterpart to splitterPortPoint with the
+    // inlet/outlet roles flipped. N inlets land on the LEFT edge of the
+    // icon box (vertically distributed using the same fraction rule the
+    // splitter uses for outlets), and the single "product" port sits at
+    // the right-edge midpoint.
+    //
+    // Inlet vertical fractions:
+    //   N = 2  →  15% / 85%
+    //   N = 3  →  15% / 50% / 85%
+    //   N ≥ 4  →  evenly distributed across [12%, 88%]
+    //
+    // The live inletCount comes from FlowsheetState.mixerInletCount(), with
+    // a defensive fallback to N=2 if the call isn't yet wired up.
+    //
+    // Port names: "inlet1".."inletN" plus "product" — all lowercase.
+    function mixerPortPoint(item, port) {
+        if (!item) return null
+        const boxLeft = item.x + (item.width - item.iconNodeBoxSize) / 2
+        const boxW    = item.iconNodeBoxSize
+        const leftX   = boxLeft - boxW * 0.083
+        const rightX  = boxLeft + boxW * 1.083
+        const midY    = item.y + item.iconNodeBoxSize * 0.5
+        const p = (port || "").toLowerCase()
+
+        if (p === "product") return Qt.point(rightX, midY)
+
+        if (!p.startsWith("inlet")) return null
+        const oneIdx = parseInt(p.substring(5), 10)
+        if (isNaN(oneIdx) || oneIdx < 1) return null
+
+        var n = 2
+        if (root.flowsheet && item.unitId) {
+            const live = root.flowsheet.mixerInletCount(item.unitId)
+            if (live >= 2) n = live
+        }
+        if (oneIdx > n) return null
+
+        var fy = 0.5
+        if (n === 2) {
+            fy = (oneIdx === 1) ? 0.15 : 0.85
+        } else if (n === 3) {
+            if (oneIdx === 1) fy = 0.15
+            else if (oneIdx === 2) fy = 0.50
+            else fy = 0.85
+        } else {
+            const frac = (oneIdx - 1) / (n - 1)
+            fy = 0.12 + 0.76 * frac
+        }
+        return Qt.point(leftX, item.y + item.iconNodeBoxSize * fy)
+    }
+
+    // Returns the live list of valid port names for a mixer item, given
+    // its current inletCount. Used by snap detection and dot rendering.
+    function mixerPortList(item) {
+        var n = 2
+        if (root.flowsheet && item && item.unitId) {
+            const live = root.flowsheet.mixerInletCount(item.unitId)
+            if (live >= 2) n = live
+        }
+        var ports = []
+        for (var i = 1; i <= n; ++i) ports.push("inlet" + i)
+        ports.push("product")
+        return ports
     }
 
     // Check all equipment for snap proximity while a stream is being dragged.
@@ -454,13 +689,21 @@ Pane {
 
             const isCol    = item.unitType === "column"
             const isHeater = item.unitType === "heater" || item.unitType === "cooler"
+            const isPump   = item.unitType === "pump"
+            const isValve  = item.unitType === "valve"
             const isHex    = item.unitType === "heat_exchanger"
-            if (!isCol && !isHeater && !isHex) continue
+            const isSep    = item.unitType === "separator"
+            const isTee    = item.unitType === "tee_splitter"
+            const isMix    = item.unitType === "mixer"
+            if (!isCol && !isHeater && !isPump && !isValve && !isHex && !isSep && !isTee && !isMix) continue
 
             const equipId = item.unitId
             const ports = isCol  ? ["feed", "distillate", "bottoms"]
                         : isHex  ? ["hotIn", "hotOut", "coldIn", "coldOut"]
-                        : ["feed", "product"]
+                        : isSep  ? ["feed", "vapor", "liquid"]
+                        : isTee  ? splitterPortList(item)
+                        : isMix  ? mixerPortList(item)
+                        : ["feed", "product"]   // heater, cooler, pump, valve all share this list
 
             for (let p = 0; p < ports.length; ++p) {
                 const port = ports[p]
@@ -477,7 +720,12 @@ Pane {
                 }
                 if (alreadyConnected) continue
 
-                const pp = isCol ? columnPortPoint(item, port) : isHex ? hexPortPoint(item, port) : heaterPortPoint(item, port)
+                const pp = isCol ? columnPortPoint(item, port)
+                                  : isHex ? hexPortPoint(item, port)
+                                  : isSep ? separatorPortPoint(item, port)
+                                  : isTee ? splitterPortPoint(item, port)
+                                  : isMix ? mixerPortPoint(item, port)
+                                  : heaterPortPoint(item, port)   // heater, cooler, pump, valve share geometry
                 if (!pp) continue
 
                 const dist = Math.sqrt((sx - pp.x) * (sx - pp.x) + (sy - pp.y) * (sy - pp.y))
@@ -523,6 +771,22 @@ Pane {
                 ok = root.flowsheet.bindHeaterFeedStream(snapColumnId, streamId)
             else if (snapPortName === "product")
                 ok = root.flowsheet.bindHeaterProductStream(snapColumnId, streamId)
+        } else if (equipType === "pump") {
+            if (snapPortName === "feed")
+                ok = root.flowsheet.bindPumpFeedStream(snapColumnId, streamId)
+            else if (snapPortName === "product")
+                ok = root.flowsheet.bindPumpProductStream(snapColumnId, streamId)
+        } else if (equipType === "valve") {
+            if (snapPortName === "feed")
+                ok = root.flowsheet.bindValveFeedStream(snapColumnId, streamId)
+            else if (snapPortName === "product")
+                ok = root.flowsheet.bindValveProductStream(snapColumnId, streamId)
+        } else if (equipType === "separator") {
+            ok = root.flowsheet.bindSeparatorStream(snapColumnId, snapPortName, streamId)
+        } else if (equipType === "tee_splitter") {
+            ok = root.flowsheet.bindSplitterStream(snapColumnId, snapPortName, streamId)
+        } else if (equipType === "mixer") {
+            ok = root.flowsheet.bindMixerStream(snapColumnId, snapPortName, streamId)
         }
         clearSnapTarget()
         if (ok) connectionOverlay.requestPaint()
@@ -646,8 +910,18 @@ Pane {
                         unitId = root.flowsheet.addHeaterAndReturnId(seedX, seedY)
                     else if (root.placementType === "cooler")
                         unitId = root.flowsheet.addCoolerAndReturnId(seedX, seedY)
+                    else if (root.placementType === "pump")
+                        unitId = root.flowsheet.addPumpAndReturnId(seedX, seedY)
+                    else if (root.placementType === "valve")
+                        unitId = root.flowsheet.addValveAndReturnId(seedX, seedY)
                     else if (root.placementType === "heat_exchanger")
                         unitId = root.flowsheet.addHeatExchangerAndReturnId(seedX, seedY)
+                    else if (root.placementType === "separator")
+                        unitId = root.flowsheet.addSeparatorAndReturnId(seedX, seedY)
+                    else if (root.placementType === "tee_splitter")
+                        unitId = root.flowsheet.addSplitterAndReturnId(seedX, seedY)
+                    else if (root.placementType === "mixer")
+                        unitId = root.flowsheet.addMixerAndReturnId(seedX, seedY)
                     root.seedUnitRelPosFromClick(unitId, clickX, clickY, seedBox)
                     root.cancelPlacement()
                 }
@@ -779,9 +1053,15 @@ Pane {
                                 ctx.fillStyle = "#2e73b8"
                                 ctx.fill()
                             }
-                        } else if (citem.unitType === "heater" || citem.unitType === "cooler") {
+                        } else if (citem.unitType === "heater" || citem.unitType === "cooler" || citem.unitType === "pump" || citem.unitType === "valve") {
                             const hPorts = ["feed", "product"]
-                            const hColor = citem.unitType === "heater" ? "#a73c1c" : "#1c6ea7"
+                            // Color-code the dots so the user can tell at a glance
+                            // what kind of unit-op a connected stream is on:
+                            //   heater → red, cooler → blue, pump → green, valve → orange.
+                            const hColor = citem.unitType === "heater" ? "#a73c1c"
+                                         : citem.unitType === "pump"   ? "#1a7a3c"
+                                         : citem.unitType === "valve"  ? "#c97a1f"
+                                         : "#1c6ea7"
                             for (let hp = 0; hp < hPorts.length; ++hp) {
                                 const pp = root.heaterPortPoint(citem, hPorts[hp])
                                 if (!pp) continue
@@ -798,6 +1078,106 @@ Pane {
                                 ctx.fillStyle = hColor
                                 ctx.fill()
                             }
+                        } else if (citem.unitType === "heat_exchanger") {
+                            // Four ports: hot side (red) and cold side (blue),
+                            // each split into in/out. The colour-coding lets
+                            // the user tell which side a connected stream
+                            // belongs to without opening the property view.
+                            const xPorts = ["hotIn", "hotOut", "coldIn", "coldOut"]
+                            for (let xp = 0; xp < xPorts.length; ++xp) {
+                                const portName = xPorts[xp]
+                                const pp = root.hexPortPoint(citem, portName)
+                                if (!pp) continue
+                                const px = pp.x - drawingBorder.x
+                                const py = pp.y - drawingBorder.y
+                                const xColor = (portName === "hotIn" || portName === "hotOut")
+                                                ? "#a73c1c" : "#1c6ea7"
+                                // Outer white ring for visibility over icon
+                                ctx.beginPath()
+                                ctx.arc(px, py, 5.5, 0, Math.PI * 2)
+                                ctx.fillStyle = "#ffffff"
+                                ctx.fill()
+                                // Coloured dot
+                                ctx.beginPath()
+                                ctx.arc(px, py, 4, 0, Math.PI * 2)
+                                ctx.fillStyle = xColor
+                                ctx.fill()
+                            }
+                        } else if (citem.unitType === "separator") {
+                            // Three ports. Feed and liquid outlet share the
+                            // standard column-port blue (#2e73b8) so they
+                            // visually associate with the column's feed dot
+                            // — both are liquid-phase or full-stream
+                            // material connections. The vapor outlet uses
+                            // the lighter blue (#67b0ff) that the column's
+                            // Profiles tab uses for the vapor (V*) bar, so
+                            // the cross-view colour association is
+                            // consistent across the simulator.
+                            const sPorts = ["feed", "vapor", "liquid"]
+                            for (let sp = 0; sp < sPorts.length; ++sp) {
+                                const portName = sPorts[sp]
+                                const pp = root.separatorPortPoint(citem, portName)
+                                if (!pp) continue
+                                const px = pp.x - drawingBorder.x
+                                const py = pp.y - drawingBorder.y
+                                const sColor = portName === "vapor" ? "#67b0ff"
+                                                                    : "#2e73b8"
+                                ctx.beginPath()
+                                ctx.arc(px, py, 5.5, 0, Math.PI * 2)
+                                ctx.fillStyle = "#ffffff"
+                                ctx.fill()
+                                ctx.beginPath()
+                                ctx.arc(px, py, 4, 0, Math.PI * 2)
+                                ctx.fillStyle = sColor
+                                ctx.fill()
+                            }
+                        } else if (citem.unitType === "tee_splitter") {
+                            // Variable-N ports. All ports share the column-
+                            // port blue (#2e73b8) — there's no vapor/liquid
+                            // distinction on a Tee, every outlet carries the
+                            // same composition as the feed. Live port list
+                            // comes from splitterPortList(item) which reads
+                            // outletCount via the FlowsheetState
+                            // Q_INVOKABLE.
+                            const tPorts = root.splitterPortList(citem)
+                            for (let tp = 0; tp < tPorts.length; ++tp) {
+                                const tPortName = tPorts[tp]
+                                const tpp = root.splitterPortPoint(citem, tPortName)
+                                if (!tpp) continue
+                                const tpx = tpp.x - drawingBorder.x
+                                const tpy = tpp.y - drawingBorder.y
+                                ctx.beginPath()
+                                ctx.arc(tpx, tpy, 5.5, 0, Math.PI * 2)
+                                ctx.fillStyle = "#ffffff"
+                                ctx.fill()
+                                ctx.beginPath()
+                                ctx.arc(tpx, tpy, 4, 0, Math.PI * 2)
+                                ctx.fillStyle = "#2e73b8"
+                                ctx.fill()
+                            }
+                        } else if (citem.unitType === "mixer") {
+                            // Variable-N inlets on the left, single product
+                            // on the right. Same blue (#2e73b8) for all
+                            // ports — like the splitter, all streams share
+                            // a single composition role at the mixer
+                            // (in or out, not vapor/liquid). Live port
+                            // list comes from mixerPortList(item).
+                            const mPorts = root.mixerPortList(citem)
+                            for (let mp = 0; mp < mPorts.length; ++mp) {
+                                const mPortName = mPorts[mp]
+                                const mpp = root.mixerPortPoint(citem, mPortName)
+                                if (!mpp) continue
+                                const mpx = mpp.x - drawingBorder.x
+                                const mpy = mpp.y - drawingBorder.y
+                                ctx.beginPath()
+                                ctx.arc(mpx, mpy, 5.5, 0, Math.PI * 2)
+                                ctx.fillStyle = "#ffffff"
+                                ctx.fill()
+                                ctx.beginPath()
+                                ctx.arc(mpx, mpy, 4, 0, Math.PI * 2)
+                                ctx.fillStyle = "#2e73b8"
+                                ctx.fill()
+                            }
                         }
                     }
 
@@ -811,9 +1191,28 @@ Pane {
                         } else if (snapEquipType === "heater" || snapEquipType === "cooler") {
                             const hItem = root.unitItemById(root.snapColumnId)
                             pp = hItem ? root.heaterPortPoint(hItem, root.snapPortName) : null
+                        } else if (snapEquipType === "pump") {
+                            // Pump shares heater port geometry — same left/right midline
+                            // feed/product layout — so we reuse heaterPortPoint.
+                            const hItem = root.unitItemById(root.snapColumnId)
+                            pp = hItem ? root.heaterPortPoint(hItem, root.snapPortName) : null
+                        } else if (snapEquipType === "valve") {
+                            // Valve shares heater/pump port geometry — same simple
+                            // box icon with feed on the left, product on the right.
+                            const hItem = root.unitItemById(root.snapColumnId)
+                            pp = hItem ? root.heaterPortPoint(hItem, root.snapPortName) : null
                         } else if (snapEquipType === "heat_exchanger") {
                             const hItem = root.unitItemById(root.snapColumnId)
                             pp = hItem ? root.hexPortPoint(hItem, root.snapPortName) : null
+                        } else if (snapEquipType === "separator") {
+                            const sItem = root.unitItemById(root.snapColumnId)
+                            pp = sItem ? root.separatorPortPoint(sItem, root.snapPortName) : null
+                        } else if (snapEquipType === "tee_splitter") {
+                            const tItem = root.unitItemById(root.snapColumnId)
+                            pp = tItem ? root.splitterPortPoint(tItem, root.snapPortName) : null
+                        } else if (snapEquipType === "mixer") {
+                            const mItem = root.unitItemById(root.snapColumnId)
+                            pp = mItem ? root.mixerPortPoint(mItem, root.snapPortName) : null
                         }
                         if (pp) {
                             const px = pp.x - drawingBorder.x
@@ -1143,6 +1542,12 @@ Pane {
                             return Qt.resolvedUrl(gAppTheme.iconPath("cooler"))
                         if (root.placementType === "heat_exchanger")
                             return Qt.resolvedUrl(gAppTheme.iconPath("heat_exchanger"))
+                        if (root.placementType === "separator")
+                            return Qt.resolvedUrl(gAppTheme.iconPath("separator"))
+                        if (root.placementType === "tee_splitter")
+                            return Qt.resolvedUrl(gAppTheme.iconPath("tee_splitter"))
+                        if (root.placementType === "mixer")
+                            return Qt.resolvedUrl(gAppTheme.iconPath("mixer"))
                         return Qt.resolvedUrl(gAppTheme.iconPath("stream_material"))
                     }
                     fillMode: Image.PreserveAspectFit

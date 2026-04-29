@@ -10,6 +10,7 @@
 #include "thermo/ThermoConfig.hpp"
 
 #include <QDebug>
+#include <QStringList>
 #include <QDateTime>
 #include <cmath>
 #include <limits>
@@ -32,6 +33,28 @@ HeatExchangerUnitState::HeatExchangerUnitState(QObject* parent)
 void HeatExchangerUnitState::setFlowsheetState(FlowsheetState* fs)
 {
     flowsheetState_ = fs;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// connectivityStatus
+//
+// All four ports are required for a HEX to solve. We surface a compact
+// summary listing which ports are missing rather than four separate rows
+// in the Status panel.
+// ─────────────────────────────────────────────────────────────────────────────
+ConnectivityStatus HeatExchangerUnitState::connectivityStatus() const
+{
+    QStringList missing;
+    if (hotInStreamUnitId_.isEmpty())   missing << QStringLiteral("hot-in");
+    if (hotOutStreamUnitId_.isEmpty())  missing << QStringLiteral("hot-out");
+    if (coldInStreamUnitId_.isEmpty())  missing << QStringLiteral("cold-in");
+    if (coldOutStreamUnitId_.isEmpty()) missing << QStringLiteral("cold-out");
+
+    if (missing.isEmpty()) return {};
+    return { 3, QStringLiteral("missing %1 stream%2: %3")
+                 .arg(missing.size())
+                 .arg(missing.size() == 1 ? QString{} : QStringLiteral("s"))
+                 .arg(missing.join(QStringLiteral(", "))) };
 }
 
 void HeatExchangerUnitState::setConnectedHotInStreamUnitId(const QString& id)

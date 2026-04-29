@@ -389,6 +389,33 @@ QString ColumnUnitState::connectedProductStreamUnitId(const QString& portName) c
    return {};
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// connectivityStatus
+//
+// A column needs:
+//   - a feed (HARD requirement — Fail without it)
+//   - distillate AND bottoms (Soft; missing one is Warn since the user might
+//     be wiring the column up. Both missing isn't worse than one missing,
+//     since the user clearly hasn't finished plumbing. We surface them as
+//     a single warning to avoid noise.)
+// ─────────────────────────────────────────────────────────────────────────────
+ConnectivityStatus ColumnUnitState::connectivityStatus() const
+{
+   if (connectedFeedStreamUnitId_.isEmpty())
+      return { 3, QStringLiteral("missing feed stream") };
+
+   const bool noDistillate = connectedDistillateStreamUnitId_.isEmpty();
+   const bool noBottoms    = connectedBottomsStreamUnitId_.isEmpty();
+   if (noDistillate && noBottoms)
+      return { 2, QStringLiteral("missing distillate and bottoms streams") };
+   if (noDistillate)
+      return { 2, QStringLiteral("missing distillate stream") };
+   if (noBottoms)
+      return { 2, QStringLiteral("missing bottoms stream") };
+
+   return {};
+}
+
 void ColumnUnitState::detachActiveFeedStreamSignals_()
 {
    QObject::disconnect(activeFeedSelectedFluidConn_);

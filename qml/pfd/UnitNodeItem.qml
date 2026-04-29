@@ -213,9 +213,26 @@ Item {
         propagateComposedEvents: false
         cursorShape: (pressed && pressedButtons === Qt.LeftButton) ? Qt.ClosedHandCursor : Qt.OpenHandCursor
 
+        // Tracking state for click-vs-drag disambiguation. pressOffsetX/Y are
+        // the cursor position within this MouseArea at press time; pressX/Y
+        // are the unit's canvas position at press time. The latter is the
+        // source of truth for "did this move?" — comparing to root.x/root.y
+        // on release is what catches sub-threshold drift cases that the
+        // older implementation silently dropped.
         property real pressOffsetX: 0
         property real pressOffsetY: 0
+        property real pressX: 0
+        property real pressY: 0
         property bool dragged: false
+
+        // Pixel hysteresis before we consider a press to be a drag. Below
+        // this distance the press is treated as a click — the icon does NOT
+        // move at all, which prevents the "click jitter" symptom where a
+        // tiny mouse twitch would visually shift the icon by 1 px without
+        // notifying the canvas overlay (so port dots + stream lines lagged
+        // behind the icon body). 4 px matches Qt's default startDragDistance
+        // and is large enough to swallow ordinary mouse-driver jitter.
+        readonly property real dragThresholdPx: 4
 
         onPressed: function(mouse) {
             if (mouse.button === Qt.RightButton) {
@@ -226,6 +243,8 @@ Item {
 
             pressOffsetX = mouse.x
             pressOffsetY = mouse.y
+            pressX = root.x
+            pressY = root.y
             dragged = false
             root.clicked(root.unitId)
             mouse.accepted = true
@@ -237,7 +256,14 @@ Item {
                 return
             }
 
-            if (dragged)
+            // Notify the canvas any time the icon's actual position changed
+            // since press, not just when `dragged` was tripped during the
+            // drag. This catches the edge case where mouse jitter or a very
+            // slow drag shifted the icon by a sub-threshold amount but the
+            // hysteresis kept `dragged` false — without this fix, the
+            // canvas overlay would never learn about the move and port dots
+            // / stream lines would stay glued to the old position.
+            if (root.x !== pressX || root.y !== pressY)
                 root.moved(root.unitId, root.x, root.y)
 
             mouse.accepted = true
@@ -248,8 +274,15 @@ Item {
                 return
             const dx = mouse.x - pressOffsetX
             const dy = mouse.y - pressOffsetY
-            if (!dragged && (Math.abs(dx) > 1 || Math.abs(dy) > 1))
+            // Suppress visual movement until we've crossed the drag
+            // threshold. Movement and the `dragged` flag flip together —
+            // they MUST stay in lock-step or a click can leave the icon
+            // visually displaced without firing onMoved on release.
+            if (!dragged) {
+                if (Math.abs(dx) <= dragThresholdPx && Math.abs(dy) <= dragThresholdPx)
+                    return
                 dragged = true
+            }
             root.applyConstrainedPosition(root.x + dx, root.y + dy)
             mouse.accepted = true
         }

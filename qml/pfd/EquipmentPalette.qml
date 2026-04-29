@@ -30,26 +30,26 @@ Item {
         { iconId: "expander",             label: "Expander", unitType: "expander", enabled: false },
         { iconId: "filter",               label: "Filter", unitType: "filter", enabled: false },
         { iconId: "fired_heater",         label: "Fired Heater", unitType: "fired_heater", enabled: false },
-        { iconId: "flash_drum",           label: "Flash Drum", unitType: "flash_drum", enabled: false },
+        { iconId: "separator",            label: "Separator", unitType: "separator", enabled: true },
         
         { iconId: "heat_exchanger",       label: "Heat Exchanger", unitType: "heat_exchanger", enabled: true },
         { iconId: "heater",               label: "Heater", unitType: "heater", enabled: true },
         { iconId: "hen",                  label: "HEN", unitType: "hen", enabled: false },
         { iconId: "kettle_vaporizer",     label: "Kettle Vaporizer", unitType: "kettle_vaporizer", enabled: false },
-        { iconId: "mixer",                label: "Mixer", unitType: "mixer", enabled: false },
+        { iconId: "mixer",                label: "Mixer", unitType: "mixer", enabled: true },
         { iconId: "pid_controller",       label: "PID Controller", unitType: "pid_controller", enabled: false },
         { iconId: "pipe_segment",         label: "Pipe Segment", unitType: "pipe_segment", enabled: false },
         { iconId: "plate_heat_exchanger", label: "Plate HX", unitType: "plate_heat_exchanger", enabled: false },
-        { iconId: "pump",                 label: "Pump", unitType: "pump", enabled: false },
+        { iconId: "pump",                 label: "Pump", unitType: "pump", enabled: true },
         { iconId: "reboiler",             label: "Reboiler", unitType: "reboiler", enabled: false },
         { iconId: "recycle",              label: "Recycle", unitType: "recycle", enabled: false },
         { iconId: "sensor",               label: "Sensor", unitType: "sensor", enabled: false },
         { iconId: "shortcut_column",      label: "Shortcut Column", unitType: "shortcut_column", enabled: false },
         { iconId: "stream_energy",        label: "Energy Stream", unitType: "stream_energy", enabled: false },
         { iconId: "stripper",             label: "Stripper", unitType: "stripper", enabled: false },
-        { iconId: "tee_splitter",         label: "Tee Splitter", unitType: "tee_splitter", enabled: false },
-        { iconId: "three_phase_flash",    label: "3-Phase Flash", unitType: "three_phase_flash", enabled: false },
-        { iconId: "valve",                label: "Valve", unitType: "valve", enabled: false }
+        { iconId: "tee_splitter",         label: "Tee Splitter", unitType: "tee_splitter", enabled: true },
+        { iconId: "three_phase_separator",    label: "3-Phase Separator", unitType: "three_phase_separator", enabled: false },
+        { iconId: "valve",                label: "Valve", unitType: "valve", enabled: true }
     ]
 
     onVisibleChanged: {
@@ -59,10 +59,36 @@ Item {
         }
     }
 
+    // ── Layout constants (single source of truth for grid sizing) ──────────
+    readonly property int paletteColumns:    4
+    readonly property int paletteCellSize:   50
+    readonly property int paletteCellGap:    4
+    readonly property int paletteSideMargin: 8
+    readonly property int paletteTopMargin:  6
+    readonly property int paletteBottomMargin: 8
+    readonly property int paletteTitleBarHeight: 28
+
+    // Derived: number of grid rows needed to display every palette item.
+    readonly property int paletteRowCount:
+        Math.ceil(paletteItems.length / paletteColumns)
+
+    // Derived: pixel height of the grid itself (rows + inter-row gaps).
+    readonly property int paletteGridHeight:
+        paletteRowCount * paletteCellSize
+        + Math.max(0, paletteRowCount - 1) * paletteCellGap
+
+    // Derived: full panel height. Add/remove items in paletteItems and the
+    // panel auto-resizes — no manual height bumping required.
+    readonly property int palettePanelHeight:
+        paletteTitleBarHeight
+        + paletteTopMargin
+        + paletteGridHeight
+        + paletteBottomMargin
+
     Rectangle {
         id: palettePanel
         width: 236
-        height: 560
+        height: root.palettePanelHeight
         radius: 7
         color: gAppTheme.palettePanelBg
         border.color: gAppTheme.palettePanelBorder
@@ -73,7 +99,7 @@ Item {
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
-            height: 28
+            height: root.paletteTitleBarHeight
             radius: 7
             color: gAppTheme.paletteTitleBg
 
@@ -146,39 +172,29 @@ Item {
             }
         }
 
-        ColumnLayout {
+        GridLayout {
             anchors.top: titleBar.bottom
+            anchors.topMargin: root.paletteTopMargin
             anchors.left: parent.left
+            anchors.leftMargin: root.paletteSideMargin
             anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: 8
-            anchors.topMargin: 6
-            spacing: 4
+            anchors.rightMargin: root.paletteSideMargin
 
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
+            columns: root.paletteColumns
+            columnSpacing: root.paletteCellGap
+            rowSpacing: root.paletteCellGap
 
-                GridLayout {
-                    anchors.fill: parent
-                    columns: 4
-                    columnSpacing: 4
-                    rowSpacing: 4
+            Repeater {
+                model: root.paletteItems
 
-                    Repeater {
-                        model: root.paletteItems
-
-                        delegate: PaletteIconButton {
-                            Layout.alignment: Qt.AlignTop
-                            Layout.preferredWidth: 50
-                            Layout.preferredHeight: 50
-                            iconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath(modelData.iconId))
-                            label: modelData.label
-                            enabled: modelData.enabled
-                            onActivated: root.placementRequested(modelData.unitType)
-                        }
-                    }
+                delegate: PaletteIconButton {
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: root.paletteCellSize
+                    Layout.preferredHeight: root.paletteCellSize
+                    iconSource: Qt.resolvedUrl(gAppTheme.paletteSvgIconPath(modelData.iconId))
+                    label: modelData.label
+                    enabled: modelData.enabled
+                    onActivated: root.placementRequested(modelData.unitType)
                 }
             }
         }

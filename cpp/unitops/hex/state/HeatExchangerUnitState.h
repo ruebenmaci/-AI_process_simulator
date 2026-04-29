@@ -112,6 +112,9 @@ public:
 
     void setFlowsheetState(FlowsheetState* fs);
 
+    // Connection-completeness check. All four ports are required.
+    ConnectivityStatus connectivityStatus() const override;
+
     // ── Spec getters / setters ────────────────────────────────────────────────
     QString specMode()              const { return specMode_; }
     double  dutyKW()                const { return dutyKW_; }

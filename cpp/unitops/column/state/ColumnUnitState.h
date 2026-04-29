@@ -158,6 +158,10 @@ public:
    QString connectedFeedStreamName() const;
    void setConnectedProductStreamUnitId(const QString& portName, const QString& streamUnitId);
    QString connectedProductStreamUnitId(const QString& portName) const;
+
+   // Connection-completeness check; consumed by FlowsheetStatusModel for
+   // the bottom Status panel. A column needs a feed to be solvable.
+   ConnectivityStatus connectivityStatus() const override;
    QString selectedCrude() const;
    void setSelectedCrude(const QString& v);
    QString selectedFluidPackageName() const;

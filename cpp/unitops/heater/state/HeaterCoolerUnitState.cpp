@@ -34,6 +34,26 @@ void HeaterCoolerUnitState::setFlowsheetState(FlowsheetState* fs)
     flowsheetState_ = fs;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// connectivityStatus
+//
+// Both feed and product are HARD requirements: a heater/cooler can't solve
+// without knowing where its inlet stream comes from, and there's nowhere
+// for the outlet conditions to land if the product stream isn't connected.
+// ─────────────────────────────────────────────────────────────────────────────
+ConnectivityStatus HeaterCoolerUnitState::connectivityStatus() const
+{
+    const bool noFeed    = feedStreamUnitId_.isEmpty();
+    const bool noProduct = productStreamUnitId_.isEmpty();
+    if (noFeed && noProduct)
+        return { 3, QStringLiteral("missing feed and product streams") };
+    if (noFeed)
+        return { 3, QStringLiteral("missing feed stream") };
+    if (noProduct)
+        return { 3, QStringLiteral("missing product stream") };
+    return {};
+}
+
 void HeaterCoolerUnitState::setConnectedFeedStreamUnitId(const QString& id)
 {
     if (feedStreamUnitId_ == id) return;
